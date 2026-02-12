@@ -3,6 +3,9 @@ import type { Express, RequestHandler } from "express";
 import connectPg from "connect-pg-simple";
 import bcrypt from "bcryptjs";
 import { authStorage } from "./storage";
+import { db } from "../../db";
+import { userProfiles } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000;
@@ -101,6 +104,16 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const user = await authStorage.getUser(userId);
   if (!user) {
     return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.userId, user.id));
+  if (profile) {
+    if (!profile.isActive) {
+      return res.status(403).json({ message: "Hisobingiz faolsizlantirilgan. Admin bilan bog'laning." });
+    }
+    if (profile.subscriptionExpiresAt && new Date(profile.subscriptionExpiresAt) < new Date()) {
+      return res.status(403).json({ message: "Obuna muddatingiz tugagan. Admin bilan bog'laning." });
+    }
   }
 
   (req as any).userId = user.id;

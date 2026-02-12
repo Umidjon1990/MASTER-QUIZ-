@@ -14,6 +14,8 @@ export const userProfiles = pgTable("user_profiles", {
   plan: varchar("plan", { length: 20 }).notNull().default("free"),
   quizLimit: integer("quiz_limit").notNull().default(5),
   bio: text("bio"),
+  subscriptionExpiresAt: timestamp("subscription_expires_at"),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
