@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { io, Socket } from "socket.io-client";
 import confetti from "canvas-confetti";
-import { Play, Trophy, Clock, CheckCircle, X, Zap, Star } from "lucide-react";
+import { Play, Trophy, Clock, CheckCircle, X, Zap, Star, Music } from "lucide-react";
 
 let socket: Socket | null = null;
 
@@ -210,8 +210,20 @@ export default function JoinPlay() {
 
             <Progress value={(timeLeft / totalTime) * 100} className="h-2" />
 
-            <Card className="p-6 text-center">
+            <Card className="p-6 text-center space-y-3">
               <h2 className="text-xl md:text-2xl font-bold" data-testid="text-question">{currentQuestion.questionText}</h2>
+              {currentQuestion.mediaUrl && currentQuestion.mediaType === "video" && (
+                <video src={currentQuestion.mediaUrl} controls className="rounded-md max-h-56 w-full object-contain bg-black mx-auto" data-testid="play-media-video" />
+              )}
+              {currentQuestion.mediaUrl && currentQuestion.mediaType === "audio" && (
+                <div className="flex items-center gap-2 p-3 bg-muted rounded-md justify-center">
+                  <Music className="w-5 h-5 text-muted-foreground shrink-0" />
+                  <audio src={currentQuestion.mediaUrl} controls className="w-full max-w-sm h-8" data-testid="play-media-audio" />
+                </div>
+              )}
+              {currentQuestion.mediaUrl && currentQuestion.mediaType === "image" && (
+                <img src={currentQuestion.mediaUrl} alt="Savol rasmi" className="rounded-md max-h-56 object-contain mx-auto" data-testid="play-media-image" />
+              )}
             </Card>
 
             {currentQuestion.type === "multiple_choice" && currentQuestion.options && (

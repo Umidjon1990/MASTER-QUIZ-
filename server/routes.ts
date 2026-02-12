@@ -295,6 +295,34 @@ export async function registerRoutes(
     }
   });
 
+  const mediaUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024 },
+  });
+
+  app.post("/api/media/upload", requireAuth, requireRole(["teacher", "admin"]), mediaUpload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file" });
+      const { ObjectStorageService, objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+      const objService = new ObjectStorageService();
+      const privateDir = objService.getPrivateObjectDir();
+      const ext = req.file.originalname.split(".").pop() || "bin";
+      const filename = `media_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const fullPath = `${privateDir}/media/${filename}`;
+      const parts = fullPath.startsWith("/") ? fullPath.slice(1).split("/") : fullPath.split("/");
+      const bucketName = parts[0];
+      const objectName = parts.slice(1).join("/");
+      const bucket = objectStorageClient.bucket(bucketName);
+      const file = bucket.file(objectName);
+      await file.save(req.file.buffer, { contentType: req.file.mimetype });
+      const objectPath = `/objects/media/${filename}`;
+      res.json({ url: objectPath, mediaType: req.file.mimetype.startsWith("video") ? "video" : req.file.mimetype.startsWith("audio") ? "audio" : "image" });
+    } catch (error) {
+      console.error("Media upload error:", error);
+      res.status(500).json({ message: "Upload failed" });
+    }
+  });
+
   app.delete("/api/questions/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       await storage.deleteQuestion(req.params.id);

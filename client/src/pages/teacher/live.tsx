@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { io, Socket } from "socket.io-client";
-import { Play, SkipForward, Users, Trophy, Copy, Send } from "lucide-react";
+import { Play, SkipForward, Users, Trophy, Copy, Send, Music } from "lucide-react";
 import type { Quiz, LiveSession } from "@shared/schema";
 
 let socket: Socket | null = null;
@@ -240,8 +240,20 @@ export default function TeacherLive() {
               </div>
             </div>
 
-            <Card className="p-8 text-center">
-              <h2 className="text-2xl font-bold mb-6" data-testid="text-current-question">{currentQuestion.questionText}</h2>
+            <Card className="p-8 text-center space-y-4">
+              <h2 className="text-2xl font-bold" data-testid="text-current-question">{currentQuestion.questionText}</h2>
+              {currentQuestion.mediaUrl && currentQuestion.mediaType === "video" && (
+                <video src={currentQuestion.mediaUrl} controls className="rounded-md max-h-56 w-full object-contain bg-black mx-auto" />
+              )}
+              {currentQuestion.mediaUrl && currentQuestion.mediaType === "audio" && (
+                <div className="flex items-center gap-2 p-3 bg-muted rounded-md justify-center">
+                  <Music className="w-5 h-5 text-muted-foreground shrink-0" />
+                  <audio src={currentQuestion.mediaUrl} controls className="w-full max-w-sm h-8" />
+                </div>
+              )}
+              {currentQuestion.mediaUrl && currentQuestion.mediaType === "image" && (
+                <img src={currentQuestion.mediaUrl} alt="Savol rasmi" className="rounded-md max-h-56 object-contain mx-auto" />
+              )}
               {currentQuestion.options && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
                   {(currentQuestion.options as string[]).map((opt: string, i: number) => (

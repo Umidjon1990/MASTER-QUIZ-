@@ -91,8 +91,9 @@ function TeacherLayout() {
           <main className="flex-1 overflow-auto">
             <Switch>
               <Route path="/teacher" component={TeacherDashboard} />
-              <Route path="/teacher/quizzes" component={TeacherQuizzes} />
+              <Route path="/teacher/quizzes/new" component={QuizEditor} />
               <Route path="/teacher/quizzes/:id" component={QuizEditor} />
+              <Route path="/teacher/quizzes" component={TeacherQuizzes} />
               <Route path="/teacher/live" component={TeacherLive} />
               <Route path="/teacher/results" component={TeacherResults} />
               <Route component={NotFound} />

@@ -13,14 +13,35 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle } from "lucide-react";
+import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2 } from "lucide-react";
 import type { Quiz, Question } from "@shared/schema";
 
+function MediaPreview({ mediaUrl, mediaType, className }: { mediaUrl: string; mediaType: string; className?: string }) {
+  if (!mediaUrl) return null;
+  if (mediaType === "video") {
+    return (
+      <video src={mediaUrl} controls className={`rounded-md max-h-48 w-full object-contain bg-black ${className || ""}`} data-testid="media-preview-video" />
+    );
+  }
+  if (mediaType === "audio") {
+    return (
+      <div className={`flex items-center gap-2 p-3 bg-muted rounded-md ${className || ""}`}>
+        <Music className="w-5 h-5 text-muted-foreground shrink-0" />
+        <audio src={mediaUrl} controls className="w-full h-8" data-testid="media-preview-audio" />
+      </div>
+    );
+  }
+  return (
+    <img src={mediaUrl} alt="Media" className={`rounded-md max-h-48 object-contain ${className || ""}`} data-testid="media-preview-image" />
+  );
+}
+
 export default function QuizEditor() {
+  const [matchNew] = useRoute("/teacher/quizzes/new");
   const [, params] = useRoute("/teacher/quizzes/:id");
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const { toast } = useToast();
-  const isNew = params?.id === "new";
+  const isNew = matchNew || params?.id === "new";
   const quizId = isNew ? null : params?.id;
 
   const [title, setTitle] = useState("");
@@ -167,7 +188,35 @@ export default function QuizEditor() {
     correctAnswer: "",
     points: 100,
     timeLimit: 30,
+    mediaUrl: "",
+    mediaType: "",
   });
+
+  const [uploading, setUploading] = useState(false);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/media/upload", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      setNewQ((prev) => ({ ...prev, mediaUrl: data.url, mediaType: data.mediaType }));
+      toast({ title: "Media yuklandi!" });
+    } catch {
+      toast({ title: "Media yuklashda xatolik", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleAddQuestion = () => {
     if (!newQ.questionText || !newQ.correctAnswer) {
@@ -178,9 +227,11 @@ export default function QuizEditor() {
     addQuestion.mutate({
       ...newQ,
       options: opts,
+      mediaUrl: newQ.mediaUrl || null,
+      mediaType: newQ.mediaType || null,
       orderIndex: (questionsList?.length || 0),
     });
-    setNewQ({ type: "multiple_choice", questionText: "", options: ["", "", "", ""], correctAnswer: "", points: 100, timeLimit: 30 });
+    setNewQ({ type: "multiple_choice", questionText: "", options: ["", "", "", ""], correctAnswer: "", points: 100, timeLimit: 30, mediaUrl: "", mediaType: "" });
   };
 
   if (quizLoading) {
@@ -263,15 +314,24 @@ export default function QuizEditor() {
                 <motion.div key={q.id} variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0 } }}>
                   <Card className="p-4" data-testid={`card-question-${q.id}`}>
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
+                      <div className="flex-1 space-y-2">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <Badge variant="secondary" className="text-xs">{idx + 1}</Badge>
                           <Badge variant="secondary" className="text-xs">
                             {q.type === "multiple_choice" ? "Ko'p variant" : q.type === "true_false" ? "To'g'ri/Noto'g'ri" : "Ochiq"}
                           </Badge>
+                          {q.mediaType && (
+                            <Badge variant="secondary" className="text-xs">
+                              {q.mediaType === "video" ? <Video className="w-3 h-3 mr-1 inline" /> : q.mediaType === "audio" ? <Music className="w-3 h-3 mr-1 inline" /> : <Image className="w-3 h-3 mr-1 inline" />}
+                              {q.mediaType === "video" ? "Video" : q.mediaType === "audio" ? "Audio" : "Rasm"}
+                            </Badge>
+                          )}
                           <span className="text-xs text-muted-foreground">{q.points} ball | {q.timeLimit}s</span>
                         </div>
                         <p className="font-medium">{q.questionText}</p>
+                        {q.mediaUrl && q.mediaType && (
+                          <MediaPreview mediaUrl={q.mediaUrl} mediaType={q.mediaType} />
+                        )}
                         {q.options && (
                           <div className="flex gap-2 mt-2 flex-wrap">
                             {(q.options as string[]).map((opt, oi) => (
@@ -311,6 +371,44 @@ export default function QuizEditor() {
               <Label>Savol matni</Label>
               <Textarea value={newQ.questionText} onChange={(e) => setNewQ({ ...newQ, questionText: e.target.value })} placeholder="Savolingizni yozing..." data-testid="input-question-text" />
             </div>
+
+            <div className="space-y-2">
+              <Label>Media (rasm, audio yoki video)</Label>
+              <div className="flex gap-2 flex-wrap">
+                <input
+                  type="file"
+                  ref={mediaInputRef}
+                  onChange={handleMediaUpload}
+                  accept="image/*,audio/*,video/*"
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => mediaInputRef.current?.click()}
+                  disabled={uploading}
+                  data-testid="button-upload-media"
+                >
+                  {uploading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />}
+                  {uploading ? "Yuklanmoqda..." : "Media yuklash"}
+                </Button>
+                {newQ.mediaUrl && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setNewQ((prev) => ({ ...prev, mediaUrl: "", mediaType: "" }))}
+                    data-testid="button-remove-media"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+              {newQ.mediaUrl && newQ.mediaType && (
+                <MediaPreview mediaUrl={newQ.mediaUrl} mediaType={newQ.mediaType} />
+              )}
+            </div>
+
             {newQ.type === "multiple_choice" && (
               <div className="space-y-2">
                 <Label>Javob variantlari</Label>
