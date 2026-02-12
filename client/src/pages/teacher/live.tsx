@@ -4,11 +4,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { io, Socket } from "socket.io-client";
-import { Play, SkipForward, Users, Trophy, Copy, Send, Music } from "lucide-react";
+import { Play, SkipForward, Users, Trophy, Copy, Send, Music, Lock, Link2, Check } from "lucide-react";
 import type { Quiz, LiveSession } from "@shared/schema";
 
 let socket: Socket | null = null;
@@ -20,6 +22,7 @@ export default function TeacherLive() {
   const preselectedQuizId = searchParams.get("quizId");
 
   const [selectedQuizId, setSelectedQuizId] = useState(preselectedQuizId || "");
+  const [sessionPassword, setSessionPassword] = useState("");
   const [session, setSession] = useState<LiveSession | null>(null);
   const [participants, setParticipants] = useState<any[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
@@ -29,6 +32,7 @@ export default function TeacherLive() {
   const [phase, setPhase] = useState<"setup" | "waiting" | "question" | "leaderboard" | "finished">("setup");
   const [answersReceived, setAnswersReceived] = useState(0);
   const [telegramChatId, setTelegramChatId] = useState("");
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const { data: quizzes } = useQuery<Quiz[]>({ queryKey: ["/api/quizzes"] });
 
@@ -89,7 +93,7 @@ export default function TeacherLive() {
       const res = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quizId: selectedQuizId }),
+        body: JSON.stringify({ quizId: selectedQuizId, password: sessionPassword || null }),
         credentials: "include",
       });
       const data = await res.json();
@@ -133,6 +137,16 @@ export default function TeacherLive() {
     }
   };
 
+  const copyLink = () => {
+    if (session) {
+      const link = `${window.location.origin}/play/join?code=${session.joinCode}`;
+      navigator.clipboard.writeText(link);
+      setLinkCopied(true);
+      toast({ title: "Havola nusxalandi!" });
+      setTimeout(() => setLinkCopied(false), 2000);
+    }
+  };
+
   const shareToTelegram = async () => {
     if (!selectedQuizId || !telegramChatId) return;
     try {
@@ -161,7 +175,7 @@ export default function TeacherLive() {
           <motion.div key="setup" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
             <Card className="p-6 max-w-lg space-y-4">
               <div>
-                <label className="text-sm font-medium mb-2 block">Quizni tanlang</label>
+                <Label className="mb-2 block">Quizni tanlang</Label>
                 <Select value={selectedQuizId} onValueChange={setSelectedQuizId}>
                   <SelectTrigger data-testid="select-quiz">
                     <SelectValue placeholder="Quiz tanlang..." />
@@ -173,6 +187,18 @@ export default function TeacherLive() {
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <Label className="mb-2 block">
+                  <Lock className="w-3.5 h-3.5 inline mr-1" />
+                  Sessiya paroli (ixtiyoriy)
+                </Label>
+                <Input
+                  value={sessionPassword}
+                  onChange={(e) => setSessionPassword(e.target.value)}
+                  placeholder="Parolsiz — barcha qo'shila oladi"
+                  data-testid="input-session-password"
+                />
+              </div>
               <Button className="w-full gradient-purple border-0" onClick={createSession} disabled={!selectedQuizId} data-testid="button-create-session">
                 <Play className="w-4 h-4 mr-1" /> Sessiya boshlash
               </Button>
@@ -181,8 +207,7 @@ export default function TeacherLive() {
                 <div className="border-t pt-4 space-y-3">
                   <p className="text-sm font-medium">Telegram'da ulashish</p>
                   <div className="flex gap-2">
-                    <input
-                      className="flex-1 rounded-md border px-3 py-2 text-sm bg-background"
+                    <Input
                       placeholder="Chat ID yoki @username"
                       value={telegramChatId}
                       onChange={(e) => setTelegramChatId(e.target.value)}
@@ -202,7 +227,7 @@ export default function TeacherLive() {
           <motion.div key="waiting" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="text-center space-y-8">
             <Card className="p-8 max-w-md mx-auto">
               <p className="text-muted-foreground mb-4">O'quvchilar ushbu kod bilan qo'shilsin:</p>
-              <div className="flex items-center justify-center gap-2 mb-6">
+              <div className="flex items-center justify-center gap-2 mb-4">
                 <motion.div
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -216,6 +241,21 @@ export default function TeacherLive() {
                   <Copy className="w-5 h-5" />
                 </Button>
               </div>
+
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Button variant="outline" onClick={copyLink} data-testid="button-copy-link">
+                  {linkCopied ? <Check className="w-4 h-4 mr-1" /> : <Link2 className="w-4 h-4 mr-1" />}
+                  {linkCopied ? "Nusxalandi!" : "Havola nusxalash"}
+                </Button>
+              </div>
+
+              {session.password && (
+                <div className="flex items-center justify-center gap-1 text-sm text-muted-foreground mb-4">
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Parol bilan himoyalangan</span>
+                </div>
+              )}
+
               <div className="flex items-center justify-center gap-2 mb-6 text-muted-foreground">
                 <Users className="w-4 h-4" />
                 <span>{participants.length} ta o'quvchi qo'shildi</span>

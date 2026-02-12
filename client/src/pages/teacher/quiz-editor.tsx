@@ -6,14 +6,14 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText } from "lucide-react";
 import type { Quiz, Question } from "@shared/schema";
 
 function MediaPreview({ mediaUrl, mediaType, className }: { mediaUrl: string; mediaType: string; className?: string }) {
@@ -50,6 +50,8 @@ export default function QuizEditor() {
   const [isPublic, setIsPublic] = useState(false);
   const [timePerQuestion, setTimePerQuestion] = useState(30);
   const [initialized, setInitialized] = useState(false);
+  const [textImportOpen, setTextImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
 
   const { data: quiz, isLoading: quizLoading } = useQuery<Quiz>({
     queryKey: ["/api/quizzes", quizId],
@@ -179,13 +181,34 @@ export default function QuizEditor() {
     } catch {
       toast({ title: "Import xatosi", variant: "destructive" });
     }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleTextImport = async () => {
+    if (!importText.trim() || !quizId) return;
+    try {
+      const res = await fetch(`/api/quizzes/${quizId}/import-text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: importText }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Import failed");
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/quizzes", quizId, "questions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
+      toast({ title: `${data.imported} ta savol yuklandi!` });
+      setImportText("");
+      setTextImportOpen(false);
+    } catch {
+      toast({ title: "Import xatosi", variant: "destructive" });
+    }
   };
 
   const [newQ, setNewQ] = useState({
-    type: "multiple_choice",
     questionText: "",
     options: ["", "", "", ""],
-    correctAnswer: "",
+    correctIndex: -1,
     points: 100,
     timeLimit: 30,
     mediaUrl: "",
@@ -219,19 +242,31 @@ export default function QuizEditor() {
   };
 
   const handleAddQuestion = () => {
-    if (!newQ.questionText || !newQ.correctAnswer) {
-      toast({ title: "Savol va to'g'ri javobni kiriting", variant: "destructive" });
+    if (!newQ.questionText.trim()) {
+      toast({ title: "Savol matnini kiriting", variant: "destructive" });
       return;
     }
-    const opts = newQ.type === "multiple_choice" ? newQ.options.filter((o) => o.trim()) : null;
+    const filledOptions = newQ.options.filter((o) => o.trim());
+    if (filledOptions.length < 2) {
+      toast({ title: "Kamida 2 ta variant kiriting", variant: "destructive" });
+      return;
+    }
+    if (newQ.correctIndex < 0 || newQ.correctIndex >= newQ.options.length || !newQ.options[newQ.correctIndex]?.trim()) {
+      toast({ title: "To'g'ri javobni tanlang", variant: "destructive" });
+      return;
+    }
     addQuestion.mutate({
-      ...newQ,
-      options: opts,
+      type: "multiple_choice",
+      questionText: newQ.questionText,
+      options: filledOptions,
+      correctAnswer: newQ.options[newQ.correctIndex].trim(),
+      points: newQ.points,
+      timeLimit: newQ.timeLimit,
       mediaUrl: newQ.mediaUrl || null,
       mediaType: newQ.mediaType || null,
       orderIndex: (questionsList?.length || 0),
     });
-    setNewQ({ type: "multiple_choice", questionText: "", options: ["", "", "", ""], correctAnswer: "", points: 100, timeLimit: 30, mediaUrl: "", mediaType: "" });
+    setNewQ({ questionText: "", options: ["", "", "", ""], correctIndex: -1, points: 100, timeLimit: 30, mediaUrl: "", mediaType: "" });
   };
 
   if (quizLoading) {
@@ -309,10 +344,47 @@ export default function QuizEditor() {
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <h2 className="text-lg font-semibold">Savollar ({questionsList?.length || 0})</h2>
             <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" onClick={() => window.open("/api/template/download")} data-testid="button-download-template">
+                <Download className="w-4 h-4 mr-1" /> Shablon
+              </Button>
               <input type="file" ref={fileInputRef} onChange={handleImport} accept=".xlsx,.xls,.csv" className="hidden" />
               <Button variant="outline" onClick={() => fileInputRef.current?.click()} data-testid="button-import">
-                <Upload className="w-4 h-4 mr-1" /> Import (Excel)
+                <Upload className="w-4 h-4 mr-1" /> Excel import
               </Button>
+              <Dialog open={textImportOpen} onOpenChange={setTextImportOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" data-testid="button-text-import">
+                    <FileText className="w-4 h-4 mr-1" /> Matndan import
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>Matndan savollar yuklash</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Har bir savolni quyidagi formatda yozing. To'g'ri javob yoniga * belgisini qo'ying:
+                    </p>
+                    <Card className="p-3 text-xs font-mono text-muted-foreground space-y-1">
+                      <p>1. Savol matni</p>
+                      <p>A) Birinchi variant</p>
+                      <p>B) To'g'ri javob *</p>
+                      <p>C) Uchinchi variant</p>
+                      <p>D) To'rtinchi variant</p>
+                    </Card>
+                    <Textarea
+                      value={importText}
+                      onChange={(e) => setImportText(e.target.value)}
+                      placeholder="Savollarni shu yerga yozing yoki joylashtiring..."
+                      className="min-h-[200px] font-mono text-sm"
+                      data-testid="textarea-text-import"
+                    />
+                    <Button onClick={handleTextImport} className="w-full gradient-purple border-0" data-testid="button-submit-text-import">
+                      <Upload className="w-4 h-4 mr-1" /> Yuklash
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
 
@@ -329,15 +401,6 @@ export default function QuizEditor() {
                       <div className="flex-1 space-y-2">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <Badge variant="secondary" className="text-xs">{idx + 1}</Badge>
-                          <Badge variant="secondary" className="text-xs">
-                            {q.type === "multiple_choice" ? "Ko'p variant" : q.type === "true_false" ? "To'g'ri/Noto'g'ri" : "Ochiq"}
-                          </Badge>
-                          {q.mediaType && (
-                            <Badge variant="secondary" className="text-xs">
-                              {q.mediaType === "video" ? <Video className="w-3 h-3 mr-1 inline" /> : q.mediaType === "audio" ? <Music className="w-3 h-3 mr-1 inline" /> : <Image className="w-3 h-3 mr-1 inline" />}
-                              {q.mediaType === "video" ? "Video" : q.mediaType === "audio" ? "Audio" : "Rasm"}
-                            </Badge>
-                          )}
                           <span className="text-xs text-muted-foreground">{q.points} ball | {q.timeLimit}s</span>
                         </div>
                         <p className="font-medium">{q.questionText}</p>
@@ -348,7 +411,7 @@ export default function QuizEditor() {
                           <div className="flex gap-2 mt-2 flex-wrap">
                             {(q.options as string[]).map((opt, oi) => (
                               <span key={oi} className={`text-xs px-2 py-1 rounded-sm ${opt === q.correctAnswer ? "gradient-teal text-white" : "bg-muted"}`}>
-                                {opt}
+                                {String.fromCharCode(65 + oi)}) {opt}
                               </span>
                             ))}
                           </div>
@@ -366,19 +429,6 @@ export default function QuizEditor() {
 
           <Card className="p-6 space-y-4 border-dashed">
             <h3 className="font-semibold">Yangi savol qo'shish</h3>
-            <div>
-              <Label>Savol turi</Label>
-              <Select value={newQ.type} onValueChange={(v) => setNewQ({ ...newQ, type: v })}>
-                <SelectTrigger data-testid="select-question-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="multiple_choice">Ko'p variantli</SelectItem>
-                  <SelectItem value="true_false">To'g'ri/Noto'g'ri</SelectItem>
-                  <SelectItem value="open_ended">Ochiq javob</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             <div>
               <Label>Savol matni</Label>
               <Textarea value={newQ.questionText} onChange={(e) => setNewQ({ ...newQ, questionText: e.target.value })} placeholder="Savolingizni yozing..." data-testid="input-question-text" />
@@ -421,33 +471,43 @@ export default function QuizEditor() {
               )}
             </div>
 
-            {newQ.type === "multiple_choice" && (
-              <div className="space-y-2">
-                <Label>Javob variantlari</Label>
-                {newQ.options.map((opt, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-md flex items-center justify-center text-white text-sm font-bold ${["quiz-option-a", "quiz-option-b", "quiz-option-c", "quiz-option-d"][i]}`}>
-                      {String.fromCharCode(65 + i)}
-                    </div>
-                    <Input
-                      value={opt}
-                      onChange={(e) => {
-                        const opts = [...newQ.options];
-                        opts[i] = e.target.value;
-                        setNewQ({ ...newQ, options: opts });
-                      }}
-                      placeholder={`Variant ${String.fromCharCode(65 + i)}`}
-                      data-testid={`input-option-${i}`}
-                    />
+            <div className="space-y-2">
+              <Label>Javob variantlari (to'g'ri javobni tanlang)</Label>
+              {newQ.options.map((opt, i) => (
+                <label
+                  key={i}
+                  className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${
+                    newQ.correctIndex === i ? "border-green-500 bg-green-500/10" : "hover-elevate"
+                  }`}
+                  data-testid={`label-option-${i}`}
+                >
+                  <input
+                    type="radio"
+                    name="correctAnswer"
+                    checked={newQ.correctIndex === i}
+                    onChange={() => setNewQ({ ...newQ, correctIndex: i })}
+                    className="w-4 h-4 accent-green-500"
+                    data-testid={`radio-option-${i}`}
+                  />
+                  <div className={`w-8 h-8 rounded-md flex items-center justify-center text-white text-sm font-bold shrink-0 ${["quiz-option-a", "quiz-option-b", "quiz-option-c", "quiz-option-d"][i]}`}>
+                    {String.fromCharCode(65 + i)}
                   </div>
-                ))}
-              </div>
-            )}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <Label>To'g'ri javob</Label>
-                <Input value={newQ.correctAnswer} onChange={(e) => setNewQ({ ...newQ, correctAnswer: e.target.value })} placeholder="To'g'ri javob" data-testid="input-correct-answer" />
-              </div>
+                  <Input
+                    value={opt}
+                    onChange={(e) => {
+                      const opts = [...newQ.options];
+                      opts[i] = e.target.value;
+                      setNewQ({ ...newQ, options: opts });
+                    }}
+                    placeholder={`Variant ${String.fromCharCode(65 + i)}`}
+                    className="flex-1"
+                    data-testid={`input-option-${i}`}
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Ball</Label>
                 <Input type="number" value={newQ.points} onChange={(e) => setNewQ({ ...newQ, points: Number(e.target.value) })} data-testid="input-points" />

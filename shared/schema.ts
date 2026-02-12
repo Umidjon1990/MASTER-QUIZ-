@@ -54,6 +54,7 @@ export const liveSessions = pgTable("live_sessions", {
   quizId: varchar("quiz_id").notNull(),
   hostId: varchar("host_id").notNull(),
   joinCode: varchar("join_code", { length: 6 }).notNull().unique(),
+  password: varchar("password", { length: 100 }),
   status: varchar("status", { length: 20 }).notNull().default("waiting"),
   currentQuestionIndex: integer("current_question_index").notNull().default(-1),
   participantCount: integer("participant_count").notNull().default(0),

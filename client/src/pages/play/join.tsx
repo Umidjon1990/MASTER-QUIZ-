@@ -9,7 +9,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { io, Socket } from "socket.io-client";
 import confetti from "canvas-confetti";
-import { Play, Trophy, Clock, CheckCircle, X, Zap, Star, Music } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Play, Trophy, Clock, CheckCircle, X, Zap, Star, Music, Lock } from "lucide-react";
 
 let socket: Socket | null = null;
 
@@ -28,6 +29,8 @@ export default function JoinPlay() {
 
   const [code, setCode] = useState(preCode);
   const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [requiresPassword, setRequiresPassword] = useState(false);
   const [sessionId, setSessionId] = useState("");
   const [participantId, setParticipantId] = useState("");
   const [phase, setPhase] = useState<"join" | "waiting" | "question" | "result" | "leaderboard" | "finished">("join");
@@ -110,10 +113,15 @@ export default function JoinPlay() {
       const res = await fetch("/api/sessions/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, guestName: name, userId: user?.id }),
+        body: JSON.stringify({ code, guestName: name, userId: user?.id, password: password || undefined }),
       });
       if (!res.ok) {
         const err = await res.json();
+        if (err.requiresPassword) {
+          setRequiresPassword(true);
+          toast({ title: "Bu sessiya parol bilan himoyalangan", variant: "destructive" });
+          return;
+        }
         toast({ title: err.message || "Xatolik", variant: "destructive" });
         return;
       }
@@ -176,7 +184,22 @@ export default function JoinPlay() {
                   className="text-center h-12"
                   data-testid="input-name"
                 />
-                <Button className="w-full h-12 gradient-purple border-0 text-lg" onClick={joinSession} disabled={code.length !== 6 || !name.trim()} data-testid="button-join">
+                {requiresPassword && (
+                  <div className="space-y-1">
+                    <Label className="flex items-center gap-1 text-sm">
+                      <Lock className="w-3.5 h-3.5" /> Sessiya paroli
+                    </Label>
+                    <Input
+                      type="password"
+                      placeholder="Parolni kiriting"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="text-center h-12"
+                      data-testid="input-password"
+                    />
+                  </div>
+                )}
+                <Button className="w-full h-12 gradient-purple border-0 text-lg" onClick={joinSession} disabled={code.length !== 6 || !name.trim() || (requiresPassword && !password)} data-testid="button-join">
                   <Play className="w-5 h-5 mr-2" /> Qo'shilish
                 </Button>
               </div>

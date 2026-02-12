@@ -332,6 +332,93 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/template/download", (req, res) => {
+    const wb = XLSX.utils.book_new();
+    const wsData = [
+      ["savol", "option_a", "option_b", "option_c", "option_d", "togri_javob", "ball", "vaqt"],
+      ["2+2 nechaga teng?", "3", "4", "5", "6", "4", 100, 30],
+      ["O'zbekiston poytaxti qaysi?", "Samarqand", "Buxoro", "Toshkent", "Namangan", "Toshkent", 100, 30],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws["!cols"] = [{ wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 8 }, { wch: 8 }];
+    XLSX.utils.book_append_sheet(wb, ws, "Savollar");
+    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    res.setHeader("Content-Disposition", "attachment; filename=quiz_shablon.xlsx");
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.send(buf);
+  });
+
+  app.post("/api/quizzes/:quizId/import-text", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { text } = req.body;
+      if (!text) return res.status(400).json({ message: "Matn kerak" });
+
+      const existingQuestions = await storage.getQuestionsByQuiz(req.params.quizId);
+      const startIndex = existingQuestions.length;
+
+      const lines = text.split("\n").map((l: string) => l.trim()).filter(Boolean);
+      const imported: any[] = [];
+      let currentQ: any = null;
+
+      for (const line of lines) {
+        const qMatch = line.match(/^(\d+[\.\)]\s*|Savol:\s*)(.*)/i);
+        const optMatch = line.match(/^([A-Da-d])[\.\)]\s*(.*)/);
+
+        if (qMatch && !optMatch) {
+          if (currentQ && currentQ.questionText) {
+            const correct = currentQ.options.find((o: string) => o.endsWith(" *"));
+            if (correct) {
+              currentQ.correctAnswer = correct.replace(/\s*\*$/, "");
+              currentQ.options = currentQ.options.map((o: string) => o.replace(/\s*\*$/, ""));
+            }
+            if (currentQ.correctAnswer) {
+              const question = await storage.createQuestion({
+                quizId: req.params.quizId,
+                orderIndex: startIndex + imported.length,
+                type: "multiple_choice",
+                questionText: currentQ.questionText,
+                options: currentQ.options.filter(Boolean),
+                correctAnswer: currentQ.correctAnswer,
+                points: 100,
+                timeLimit: 30,
+              });
+              imported.push(question);
+            }
+          }
+          currentQ = { questionText: qMatch[2].trim(), options: [], correctAnswer: "" };
+        } else if (optMatch && currentQ) {
+          currentQ.options.push(optMatch[2].trim());
+        }
+      }
+
+      if (currentQ && currentQ.questionText) {
+        const correct = currentQ.options.find((o: string) => o.endsWith(" *"));
+        if (correct) {
+          currentQ.correctAnswer = correct.replace(/\s*\*$/, "");
+          currentQ.options = currentQ.options.map((o: string) => o.replace(/\s*\*$/, ""));
+        }
+        if (currentQ.correctAnswer) {
+          const question = await storage.createQuestion({
+            quizId: req.params.quizId,
+            orderIndex: startIndex + imported.length,
+            type: "multiple_choice",
+            questionText: currentQ.questionText,
+            options: currentQ.options.filter(Boolean),
+            correctAnswer: currentQ.correctAnswer,
+            points: 100,
+            timeLimit: 30,
+          });
+          imported.push(question);
+        }
+      }
+
+      res.json({ imported: imported.length, questions: imported });
+    } catch (error) {
+      console.error("Text import error:", error);
+      res.status(500).json({ message: "Import xatosi" });
+    }
+  });
+
   app.post("/api/quizzes/:quizId/import", requireAuth, requireRole(["teacher", "admin"]), upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
@@ -379,6 +466,7 @@ export async function registerRoutes(
         quizId: req.body.quizId,
         hostId: userId,
         joinCode,
+        password: req.body.password || null,
         status: "waiting",
       });
       res.json(session);
@@ -399,10 +487,14 @@ export async function registerRoutes(
 
   app.post("/api/sessions/join", async (req, res) => {
     try {
-      const { code, guestName, userId } = req.body;
+      const { code, guestName, userId, password } = req.body;
       const session = await storage.getLiveSessionByCode(code);
-      if (!session) return res.status(404).json({ message: "Session not found" });
-      if (session.status === "finished") return res.status(400).json({ message: "Session ended" });
+      if (!session) return res.status(404).json({ message: "Sessiya topilmadi" });
+      if (session.status === "finished") return res.status(400).json({ message: "Sessiya tugagan" });
+
+      if (session.password && session.password !== password) {
+        return res.status(403).json({ message: "Parol noto'g'ri", requiresPassword: true });
+      }
 
       const participant = await storage.addParticipant({
         sessionId: session.id,
@@ -411,6 +503,18 @@ export async function registerRoutes(
       });
 
       res.json({ session, participant });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/sessions/check", async (req, res) => {
+    try {
+      const { code } = req.body;
+      const session = await storage.getLiveSessionByCode(code);
+      if (!session) return res.status(404).json({ message: "Sessiya topilmadi" });
+      if (session.status === "finished") return res.status(400).json({ message: "Sessiya tugagan" });
+      res.json({ requiresPassword: !!session.password, sessionId: session.id });
     } catch (error) {
       res.status(500).json({ message: "Server error" });
     }
