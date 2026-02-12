@@ -38,13 +38,14 @@ async function seed() {
   ];
 
   for (const u of testUsers) {
+    const hashedPassword = await bcrypt.hash(u.password, 10);
     const existing = await db.select().from(users).where(eq(users.email, u.email));
     if (existing.length > 0) {
-      console.log(`User ${u.email} already exists, skipping...`);
+      await db.update(users).set({ password: hashedPassword }).where(eq(users.email, u.email));
+      console.log(`Updated password for ${u.email}`);
       continue;
     }
 
-    const hashedPassword = await bcrypt.hash(u.password, 10);
     const [newUser] = await db
       .insert(users)
       .values({
