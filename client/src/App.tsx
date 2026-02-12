@@ -62,18 +62,7 @@ function ThemeToggle() {
   );
 }
 
-function PublicRouter() {
-  return (
-    <Switch>
-      <Route path="/" component={Landing} />
-      <Route path="/play/join" component={JoinPlay} />
-      <Route path="/dashboard" component={Dashboard} />
-      <Route component={NotFound} />
-    </Switch>
-  );
-}
-
-function AdminLayout() {
+function DashboardLayout({ children }: { children: React.ReactNode }) {
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
@@ -90,12 +79,7 @@ function AdminLayout() {
               <ThemeToggle />
             </header>
             <main className="flex-1 overflow-auto">
-              <Switch>
-                <Route path="/admin" component={AdminDashboard} />
-                <Route path="/admin/users" component={AdminUsers} />
-                <Route path="/admin/quizzes" component={AdminQuizzes} />
-                <Route component={NotFound} />
-              </Switch>
+              {children}
             </main>
           </div>
         </div>
@@ -104,85 +88,11 @@ function AdminLayout() {
   );
 }
 
-function TeacherLayout() {
-  const style = {
-    "--sidebar-width": "16rem",
-    "--sidebar-width-icon": "3rem",
-  };
-
+function ProtectedPage({ component: Component }: { component: React.ComponentType }) {
   return (
-    <AuthGuard>
-      <SidebarProvider style={style as React.CSSProperties}>
-        <div className="flex h-screen w-full">
-          <AppSidebar />
-          <div className="flex flex-col flex-1 min-w-0">
-            <header className="flex items-center justify-between gap-4 p-3 border-b sticky top-0 z-50 bg-background/80 backdrop-blur-md">
-              <SidebarTrigger data-testid="button-sidebar-toggle" />
-              <ThemeToggle />
-            </header>
-            <main className="flex-1 overflow-auto">
-              <Switch>
-                <Route path="/teacher" component={TeacherDashboard} />
-                <Route path="/teacher/quizzes/new" component={QuizEditor} />
-                <Route path="/teacher/quizzes/:id" component={QuizEditor} />
-                <Route path="/teacher/quizzes" component={TeacherQuizzes} />
-                <Route path="/teacher/live" component={TeacherLive} />
-                <Route path="/teacher/results" component={TeacherResults} />
-                <Route component={NotFound} />
-              </Switch>
-            </main>
-          </div>
-        </div>
-      </SidebarProvider>
-    </AuthGuard>
-  );
-}
-
-function StudentLayout() {
-  const style = {
-    "--sidebar-width": "16rem",
-    "--sidebar-width-icon": "3rem",
-  };
-
-  return (
-    <AuthGuard>
-      <SidebarProvider style={style as React.CSSProperties}>
-        <div className="flex h-screen w-full">
-          <AppSidebar />
-          <div className="flex flex-col flex-1 min-w-0">
-            <header className="flex items-center justify-between gap-4 p-3 border-b sticky top-0 z-50 bg-background/80 backdrop-blur-md">
-              <SidebarTrigger data-testid="button-sidebar-toggle" />
-              <ThemeToggle />
-            </header>
-            <main className="flex-1 overflow-auto">
-              <Switch>
-                <Route path="/student" component={StudentDashboard} />
-                <Route path="/student/results" component={StudentResults} />
-                <Route component={NotFound} />
-              </Switch>
-            </main>
-          </div>
-        </div>
-      </SidebarProvider>
-    </AuthGuard>
-  );
-}
-
-function AppRouter() {
-  return (
-    <Switch>
-      <Route path="/" component={Landing} />
-      <Route path="/auth" component={AuthPage} />
-      <Route path="/dashboard" component={Dashboard} />
-      <Route path="/play/join" component={JoinPlay} />
-      <Route path="/admin/:rest*" component={AdminLayout} />
-      <Route path="/teacher/:rest*" component={TeacherLayout} />
-      <Route path="/student/:rest*" component={StudentLayout} />
-      <Route path="/admin" component={AdminLayout} />
-      <Route path="/teacher" component={TeacherLayout} />
-      <Route path="/student" component={StudentLayout} />
-      <Route component={NotFound} />
-    </Switch>
+    <DashboardLayout>
+      <Component />
+    </DashboardLayout>
   );
 }
 
@@ -192,7 +102,50 @@ function App() {
       <ThemeProvider>
         <TooltipProvider>
           <Toaster />
-          <AppRouter />
+          <Switch>
+            <Route path="/" component={Landing} />
+            <Route path="/auth" component={AuthPage} />
+            <Route path="/dashboard" component={Dashboard} />
+            <Route path="/play/join" component={JoinPlay} />
+
+            <Route path="/admin">
+              {() => <ProtectedPage component={AdminDashboard} />}
+            </Route>
+            <Route path="/admin/users">
+              {() => <ProtectedPage component={AdminUsers} />}
+            </Route>
+            <Route path="/admin/quizzes">
+              {() => <ProtectedPage component={AdminQuizzes} />}
+            </Route>
+
+            <Route path="/teacher">
+              {() => <ProtectedPage component={TeacherDashboard} />}
+            </Route>
+            <Route path="/teacher/quizzes">
+              {() => <ProtectedPage component={TeacherQuizzes} />}
+            </Route>
+            <Route path="/teacher/quizzes/new">
+              {() => <ProtectedPage component={QuizEditor} />}
+            </Route>
+            <Route path="/teacher/quizzes/:id">
+              {() => <ProtectedPage component={QuizEditor} />}
+            </Route>
+            <Route path="/teacher/live">
+              {() => <ProtectedPage component={TeacherLive} />}
+            </Route>
+            <Route path="/teacher/results">
+              {() => <ProtectedPage component={TeacherResults} />}
+            </Route>
+
+            <Route path="/student">
+              {() => <ProtectedPage component={StudentDashboard} />}
+            </Route>
+            <Route path="/student/results">
+              {() => <ProtectedPage component={StudentResults} />}
+            </Route>
+
+            <Route component={NotFound} />
+          </Switch>
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>
