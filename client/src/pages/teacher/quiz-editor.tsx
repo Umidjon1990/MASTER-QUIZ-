@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, Send, ListChecks, ToggleLeft, MessageSquare } from "lucide-react";
+import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, Send, ListChecks, ToggleLeft, MessageSquare, Pencil } from "lucide-react";
 import type { Quiz, Question, UserProfile } from "@shared/schema";
 
 function MediaPreview({ mediaUrl, mediaType, className }: { mediaUrl: string; mediaType: string; className?: string }) {
@@ -165,6 +165,31 @@ export default function QuizEditor() {
     },
   });
 
+  const updateQuestion = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const res = await fetch(`/api/questions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Saqlashda xatolik");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quizzes", quizId, "questions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
+      toast({ title: "Savol yangilandi!" });
+      setEditingQuestion(null);
+    },
+    onError: (error: any) => {
+      toast({ title: error.message || "Saqlashda xatolik", variant: "destructive" });
+    },
+  });
+
   const deleteQuestion = useMutation({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/questions/${id}`, { method: "DELETE", credentials: "include" });
@@ -176,6 +201,86 @@ export default function QuizEditor() {
       queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
     },
   });
+
+  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [editQ, setEditQ] = useState({
+    questionText: "",
+    options: ["", "", "", ""],
+    correctIndex: -1,
+    points: 100,
+    timeLimit: 30,
+    type: "multiple_choice" as string,
+    openAnswer: "",
+  });
+
+  const openEditDialog = (q: Question) => {
+    setEditingQuestion(q);
+    const opts = (q.options as string[]) || ["", "", "", ""];
+    while (opts.length < 4) opts.push("");
+    let correctIdx = -1;
+    if (q.type === "multiple_choice" || !q.type) {
+      correctIdx = opts.indexOf(q.correctAnswer);
+    } else if (q.type === "true_false") {
+      correctIdx = q.correctAnswer === "true" ? 0 : 1;
+    }
+    setEditQ({
+      questionText: q.questionText,
+      options: opts,
+      correctIndex: correctIdx,
+      points: q.points,
+      timeLimit: q.timeLimit,
+      type: q.type || "multiple_choice",
+      openAnswer: q.type === "open_ended" ? q.correctAnswer : "",
+    });
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingQuestion || !editQ.questionText.trim()) {
+      toast({ title: "Savol matnini kiriting", variant: "destructive" });
+      return;
+    }
+    let correctAnswer = "";
+    let options: string[] | null = null;
+
+    if (editQ.type === "multiple_choice") {
+      const filledOptions = editQ.options.filter((o) => o.trim());
+      if (filledOptions.length < 2) {
+        toast({ title: "Kamida 2 ta variant kiriting", variant: "destructive" });
+        return;
+      }
+      if (editQ.correctIndex < 0 || !editQ.options[editQ.correctIndex]?.trim()) {
+        toast({ title: "To'g'ri javobni tanlang", variant: "destructive" });
+        return;
+      }
+      options = filledOptions;
+      correctAnswer = editQ.options[editQ.correctIndex].trim();
+    } else if (editQ.type === "true_false") {
+      if (editQ.correctIndex < 0) {
+        toast({ title: "To'g'ri yoki Noto'g'ri tanlang", variant: "destructive" });
+        return;
+      }
+      correctAnswer = editQ.correctIndex === 0 ? "true" : "false";
+      options = ["To'g'ri", "Noto'g'ri"];
+    } else if (editQ.type === "open_ended") {
+      if (!editQ.openAnswer.trim()) {
+        toast({ title: "To'g'ri javobni kiriting", variant: "destructive" });
+        return;
+      }
+      correctAnswer = editQ.openAnswer.trim();
+    }
+
+    updateQuestion.mutate({
+      id: editingQuestion.id,
+      data: {
+        questionText: editQ.questionText,
+        options,
+        correctAnswer,
+        type: editQ.type,
+        points: editQ.points,
+        timeLimit: editQ.timeLimit,
+      },
+    });
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -575,9 +680,14 @@ export default function QuizEditor() {
                           </div>
                         )}
                       </div>
-                      <Button variant="ghost" size="icon" onClick={() => deleteQuestion.mutate(q.id)} data-testid={`button-delete-q-${q.id}`}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => openEditDialog(q)} data-testid={`button-edit-q-${q.id}`}>
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => deleteQuestion.mutate(q.id)} data-testid={`button-delete-q-${q.id}`}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
                   </Card>
                 </motion.div>
@@ -757,6 +867,114 @@ export default function QuizEditor() {
           </Card>
         </>
       )}
+
+      <Dialog open={!!editingQuestion} onOpenChange={(open) => !open && setEditingQuestion(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Savolni tahrirlash</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Savol turi</Label>
+              <Select value={editQ.type} onValueChange={(v) => setEditQ({ ...editQ, type: v, correctIndex: -1, openAnswer: "" })}>
+                <SelectTrigger data-testid="edit-select-question-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="multiple_choice">
+                    <span className="flex items-center gap-2"><ListChecks className="w-4 h-4" /> Variantli (A/B/C/D)</span>
+                  </SelectItem>
+                  <SelectItem value="true_false">
+                    <span className="flex items-center gap-2"><ToggleLeft className="w-4 h-4" /> To'g'ri / Noto'g'ri</span>
+                  </SelectItem>
+                  <SelectItem value="open_ended">
+                    <span className="flex items-center gap-2"><MessageSquare className="w-4 h-4" /> Yozma javob</span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Savol matni</Label>
+              <Textarea value={editQ.questionText} onChange={(e) => setEditQ({ ...editQ, questionText: e.target.value })} data-testid="edit-input-question-text" />
+            </div>
+
+            {editQ.type === "multiple_choice" && (
+              <div className="space-y-2">
+                <Label>Javob variantlari</Label>
+                {editQ.options.map((opt, i) => (
+                  <label
+                    key={i}
+                    className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${
+                      editQ.correctIndex === i ? "border-green-500 bg-green-500/10" : "hover-elevate"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="editCorrectAnswer"
+                      checked={editQ.correctIndex === i}
+                      onChange={() => setEditQ({ ...editQ, correctIndex: i })}
+                      className="w-4 h-4 accent-green-500"
+                      data-testid={`edit-radio-option-${i}`}
+                    />
+                    <div className={`w-8 h-8 rounded-md flex items-center justify-center text-white text-sm font-bold shrink-0 ${["quiz-option-a", "quiz-option-b", "quiz-option-c", "quiz-option-d"][i]}`}>
+                      {String.fromCharCode(65 + i)}
+                    </div>
+                    <Input
+                      value={opt}
+                      onChange={(e) => {
+                        const opts = [...editQ.options];
+                        opts[i] = e.target.value;
+                        setEditQ({ ...editQ, options: opts });
+                      }}
+                      placeholder={`Variant ${String.fromCharCode(65 + i)}`}
+                      className="flex-1"
+                      data-testid={`edit-input-option-${i}`}
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {editQ.type === "true_false" && (
+              <div className="space-y-2">
+                <Label>To'g'ri javobni tanlang</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className={`flex items-center justify-center gap-2 p-4 rounded-md border cursor-pointer transition-colors text-lg font-semibold ${editQ.correctIndex === 0 ? "border-green-500 bg-green-500/10" : "hover-elevate"}`}>
+                    <input type="radio" name="editCorrectAnswer" checked={editQ.correctIndex === 0} onChange={() => setEditQ({ ...editQ, correctIndex: 0 })} className="w-4 h-4 accent-green-500" data-testid="edit-radio-tf-true" />
+                    <CheckCircle className="w-5 h-5 text-green-500" /> To'g'ri
+                  </label>
+                  <label className={`flex items-center justify-center gap-2 p-4 rounded-md border cursor-pointer transition-colors text-lg font-semibold ${editQ.correctIndex === 1 ? "border-red-500 bg-red-500/10" : "hover-elevate"}`}>
+                    <input type="radio" name="editCorrectAnswer" checked={editQ.correctIndex === 1} onChange={() => setEditQ({ ...editQ, correctIndex: 1 })} className="w-4 h-4 accent-red-500" data-testid="edit-radio-tf-false" />
+                    <X className="w-5 h-5 text-red-500" /> Noto'g'ri
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {editQ.type === "open_ended" && (
+              <div className="space-y-2">
+                <Label>To'g'ri javob</Label>
+                <Input value={editQ.openAnswer} onChange={(e) => setEditQ({ ...editQ, openAnswer: e.target.value })} placeholder="To'g'ri javobni yozing..." data-testid="edit-input-open-correct" />
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Ball</Label>
+                <Input type="number" value={editQ.points} onChange={(e) => setEditQ({ ...editQ, points: Number(e.target.value) })} data-testid="edit-input-points" />
+              </div>
+              <div>
+                <Label>Vaqt (soniya)</Label>
+                <Input type="number" value={editQ.timeLimit} onChange={(e) => setEditQ({ ...editQ, timeLimit: Number(e.target.value) })} data-testid="edit-input-time-limit" />
+              </div>
+            </div>
+            <Button onClick={handleSaveEdit} disabled={updateQuestion.isPending} className="w-full gradient-purple border-0" data-testid="button-save-edit">
+              {updateQuestion.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+              Saqlash
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
