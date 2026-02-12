@@ -13,8 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { useUpload } from "@/hooks/use-upload";
-import { Plus, Trash2, Save, Upload, ArrowLeft, Image, Music, CheckCircle, X } from "lucide-react";
+import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle } from "lucide-react";
 import type { Quiz, Question } from "@shared/schema";
 
 export default function QuizEditor() {
