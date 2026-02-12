@@ -276,13 +276,32 @@ export async function registerRoutes(
 
   app.post("/api/quizzes/:quizId/questions", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
+      const { questionText, options, correctAnswer, points, timeLimit, mediaUrl, mediaType, orderIndex } = req.body;
+      if (!questionText || !correctAnswer) {
+        return res.status(400).json({ message: "Savol matni va to'g'ri javob kerak" });
+      }
+      if (!options || !Array.isArray(options) || options.length < 2) {
+        return res.status(400).json({ message: "Kamida 2 ta variant kerak" });
+      }
+      if (!options.includes(correctAnswer)) {
+        return res.status(400).json({ message: "To'g'ri javob variantlar ichida bo'lishi kerak" });
+      }
       const question = await storage.createQuestion({
-        ...req.body,
         quizId: req.params.quizId,
+        questionText,
+        options,
+        correctAnswer,
+        type: req.body.type || "multiple_choice",
+        points: points || 100,
+        timeLimit: timeLimit || 30,
+        mediaUrl: mediaUrl || null,
+        mediaType: mediaType || null,
+        orderIndex: orderIndex || 0,
       });
       res.json(question);
-    } catch (error) {
-      res.status(500).json({ message: "Server error" });
+    } catch (error: any) {
+      console.error("Question create error:", error?.message || error);
+      res.status(500).json({ message: error?.message || "Savol saqlashda xatolik" });
     }
   });
 
@@ -548,35 +567,53 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/telegram/share", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+  app.post("/api/telegram/send-quiz", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
-      const { quizId, chatId } = req.body;
-      const botToken = process.env.TELEGRAM_BOT_TOKEN;
-      if (!botToken) return res.status(400).json({ message: "Telegram bot not configured" });
+      const { quizId, botToken, chatId } = req.body;
+      if (!botToken || !chatId) {
+        return res.status(400).json({ message: "Telegram bot token va chat ID kerak" });
+      }
 
       const quiz = await storage.getQuiz(quizId);
-      if (!quiz) return res.status(404).json({ message: "Quiz not found" });
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
+      }
 
       const questionsList = await storage.getQuestionsByQuiz(quizId);
+      if (questionsList.length === 0) return res.status(400).json({ message: "Quizda savollar yo'q. Avval savollar qo'shing" });
 
       const TelegramBot = (await import("node-telegram-bot-api")).default;
       const bot = new TelegramBot(botToken);
 
+      let sent = 0;
+      const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
+
+      await bot.sendMessage(targetChat, `📝 *${quiz.title}*\n${quiz.description || ""}\n\n_${questionsList.length} ta savol_`, { parse_mode: "Markdown" });
+
       for (const q of questionsList) {
-        if (q.type === "multiple_choice" && q.options && q.options.length >= 2) {
+        if (q.options && q.options.length >= 2) {
           const correctIndex = q.options.indexOf(q.correctAnswer);
-          await bot.sendPoll(chatId, q.questionText, q.options, {
+          await bot.sendPoll(targetChat, q.questionText, q.options, {
             type: "quiz",
             correct_option_id: correctIndex >= 0 ? correctIndex : 0,
-            is_anonymous: false,
+            is_anonymous: true,
           } as any);
+          sent++;
+          if (sent < questionsList.length) {
+            await new Promise(r => setTimeout(r, 500));
+          }
         }
       }
 
-      res.json({ success: true, sent: questionsList.length });
-    } catch (error) {
-      console.error("Telegram error:", error);
-      res.status(500).json({ message: "Failed to send to Telegram" });
+      res.json({ success: true, sent });
+    } catch (error: any) {
+      console.error("Telegram error:", error?.message || error);
+      const msg = error?.message?.includes("chat not found") ? "Chat topilmadi. Bot guruhga admin qilib qo'shilganligini tekshiring"
+        : error?.message?.includes("Unauthorized") ? "Bot tokeni noto'g'ri. @BotFather dan to'g'ri tokenni oling"
+        : error?.message?.includes("bot was blocked") ? "Bot bloklangan yoki guruhdan chiqarilgan"
+        : "Telegramga yuborishda xatolik yuz berdi";
+      res.status(500).json({ message: msg });
     }
   });
 

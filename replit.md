@@ -98,4 +98,12 @@ Preferred communication style: Simple, everyday language.
 - `stripe` — Payment processing (listed in build dependencies)
 - `openai`, `@google/generative-ai` — AI integrations (listed in build dependencies)
 - `nodemailer` — Email sending
-- `node-telegram-bot-api` — Telegram bot integration (type definitions present)
+- `node-telegram-bot-api` — Telegram bot integration for sending quizzes as anonymous polls to Telegram groups/channels
+
+### Telegram Integration
+- Teachers can send quiz questions to Telegram groups/channels as anonymous quiz polls
+- Bot token and chat ID stored in userProfiles (telegramBotToken, telegramChatId columns)
+- API: POST /api/telegram/send-quiz with { quizId, botToken, chatId }
+- Sends quiz title message first, then each question as a Telegram quiz poll (type: "quiz", is_anonymous: true)
+- Ownership check: only quiz creator or admin can send
+- UI: "Telegramga yuborish" button in quiz editor opens dialog with bot token / chat ID inputs
