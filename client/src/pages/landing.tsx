@@ -1,0 +1,232 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
+import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AnimatedCounter } from "@/components/animated-counter";
+import { useLocation } from "wouter";
+import { Zap, Users, Trophy, Play, BookOpen, ArrowRight, Moon, Sun, Sparkles, Globe } from "lucide-react";
+import { useTheme } from "@/components/theme-provider";
+import type { Quiz } from "@shared/schema";
+
+const container = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { staggerChildren: 0.1 } },
+};
+
+const item = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
+};
+
+export default function Landing() {
+  const { user, isLoading: authLoading } = useAuth();
+  const [, navigate] = useLocation();
+  const { theme, toggleTheme } = useTheme();
+  const [joinCode, setJoinCode] = useState("");
+
+  const { data: publicQuizzes, isLoading: quizzesLoading } = useQuery<Quiz[]>({
+    queryKey: ["/api/quizzes/public"],
+  });
+
+  const handleJoinQuiz = () => {
+    if (joinCode.trim().length === 6) {
+      navigate(`/play/join?code=${joinCode.trim()}`);
+    }
+  };
+
+  return (
+    <div className="min-h-screen">
+      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 rounded-md gradient-purple flex items-center justify-center">
+              <Zap className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-bold text-lg" data-testid="text-logo">QuizLive</span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="icon" variant="ghost" onClick={toggleTheme} data-testid="button-theme-toggle">
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
+            {authLoading ? (
+              <Skeleton className="h-9 w-20" />
+            ) : user ? (
+              <Button onClick={() => navigate("/dashboard")} data-testid="button-dashboard">
+                Dashboard
+              </Button>
+            ) : (
+              <Button onClick={() => (window.location.href = "/api/login")} data-testid="button-login">
+                Kirish
+              </Button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <section className="relative overflow-hidden gradient-hero py-20 md:py-32">
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-purple-500/20 blur-3xl animate-float" />
+          <div className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-teal-500/20 blur-3xl animate-float" style={{ animationDelay: "1.5s" }} />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-purple-600/10 blur-3xl" />
+        </div>
+
+        <div className="relative max-w-7xl mx-auto px-4 text-center">
+          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }}>
+            <Badge variant="secondary" className="mb-6 bg-white/10 text-white border-white/20">
+              <Sparkles className="w-3 h-3 mr-1" />
+              Interaktiv ta'lim platformasi
+            </Badge>
+
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight" data-testid="text-hero-title">
+              O'qishni <span className="text-gradient">qiziqarli</span> va{" "}
+              <span className="text-gradient">interaktiv</span> qiling
+            </h1>
+
+            <p className="text-lg md:text-xl text-white/70 max-w-2xl mx-auto mb-10">
+              Jonli quizlar, real vaqt natijalari va zamonaviy interfeys bilan ta'lim jarayonini yangi darajaga olib chiqing
+            </p>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.3 }}
+            className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12"
+          >
+            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-md p-1.5 border border-white/20">
+              <Input
+                placeholder="6-raqamli kod"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                className="w-40 bg-transparent border-0 text-white placeholder:text-white/40 text-center text-lg font-mono tracking-widest focus-visible:ring-0"
+                maxLength={6}
+                data-testid="input-join-code"
+              />
+              <Button onClick={handleJoinQuiz} disabled={joinCode.length !== 6} className="gradient-purple border-0" data-testid="button-join-quiz">
+                <Play className="w-4 h-4 mr-1" /> Qo'shilish
+              </Button>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 1, delay: 0.6 }}
+            className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto"
+          >
+            {[
+              { icon: Users, label: "Foydalanuvchilar", value: 500 },
+              { icon: BookOpen, label: "Quizlar", value: 120 },
+              { icon: Zap, label: "Jonli o'yinlar", value: 1000 },
+              { icon: Trophy, label: "Natijalar", value: 5000 },
+            ].map((stat, i) => (
+              <div key={i} className="glass-card rounded-md p-4 text-center">
+                <stat.icon className="w-5 h-5 text-purple-400 mx-auto mb-2" />
+                <div className="text-2xl font-bold text-white">
+                  <AnimatedCounter end={stat.value} suffix="+" />
+                </div>
+                <div className="text-sm text-white/60">{stat.label}</div>
+              </div>
+            ))}
+          </motion.div>
+        </div>
+      </section>
+
+      <section className="py-16 md:py-24 max-w-7xl mx-auto px-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="text-center mb-12"
+        >
+          <h2 className="text-3xl md:text-4xl font-bold mb-4" data-testid="text-features-title">Nima uchun QuizLive?</h2>
+          <p className="text-muted-foreground max-w-xl mx-auto">Eng zamonaviy texnologiyalar bilan qurilgan interaktiv ta'lim platformasi</p>
+        </motion.div>
+
+        <motion.div variants={container} initial="hidden" whileInView="show" viewport={{ once: true }} className="grid md:grid-cols-3 gap-6">
+          {[
+            { icon: Zap, color: "gradient-purple", title: "Jonli Quizlar", desc: "Real vaqtda o'quvchilar bilan interaktiv quiz o'tkazing" },
+            { icon: Globe, color: "gradient-teal", title: "Har Qayerdan", desc: "Telefon, planshet yoki kompyuterdan foydalaning" },
+            { icon: Trophy, color: "gradient-orange", title: "Reyting Tizimi", desc: "Natijalar va leaderboard bilan motivatsiyani oshiring" },
+          ].map((feature, i) => (
+            <motion.div key={i} variants={item}>
+              <Card className="p-6 h-full hover-elevate">
+                <div className={`w-12 h-12 rounded-md ${feature.color} flex items-center justify-center mb-4`}>
+                  <feature.icon className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
+                <p className="text-muted-foreground text-sm">{feature.desc}</p>
+              </Card>
+            </motion.div>
+          ))}
+        </motion.div>
+      </section>
+
+      <section className="py-16 md:py-24 max-w-7xl mx-auto px-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="text-center mb-12"
+        >
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">Ommaviy Quizlar</h2>
+          <p className="text-muted-foreground max-w-xl mx-auto">Bepul quizlarni sinab ko'ring va bilimingizni tekshiring</p>
+        </motion.div>
+
+        {quizzesLoading ? (
+          <div className="grid md:grid-cols-3 gap-6">
+            {[1, 2, 3].map((i) => (
+              <Card key={i} className="p-5">
+                <Skeleton className="h-5 w-3/4 mb-3" />
+                <Skeleton className="h-4 w-full mb-2" />
+                <Skeleton className="h-4 w-1/2 mb-4" />
+                <Skeleton className="h-9 w-full" />
+              </Card>
+            ))}
+          </div>
+        ) : publicQuizzes && publicQuizzes.length > 0 ? (
+          <motion.div variants={container} initial="hidden" whileInView="show" viewport={{ once: true }} className="grid md:grid-cols-3 gap-6">
+            {publicQuizzes.map((quiz) => (
+              <motion.div key={quiz.id} variants={item}>
+                <Card className="p-5 hover-elevate" data-testid={`card-quiz-${quiz.id}`}>
+                  <div className="flex items-start justify-between gap-2 mb-3 flex-wrap">
+                    <h3 className="font-semibold">{quiz.title}</h3>
+                    <Badge variant="secondary">{quiz.category || "Umumiy"}</Badge>
+                  </div>
+                  {quiz.description && (
+                    <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{quiz.description}</p>
+                  )}
+                  <div className="flex items-center justify-between gap-2 flex-wrap text-sm text-muted-foreground mb-4">
+                    <span>{quiz.totalQuestions} savol</span>
+                    <span>{quiz.totalPlays} marta o'ynalgan</span>
+                  </div>
+                  <Button className="w-full gradient-purple border-0" onClick={() => navigate(`/quiz/${quiz.id}`)} data-testid={`button-view-quiz-${quiz.id}`}>
+                    Ko'rish <ArrowRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </Card>
+              </motion.div>
+            ))}
+          </motion.div>
+        ) : (
+          <div className="text-center py-12">
+            <BookOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">Hozircha ommaviy quizlar yo'q</p>
+          </div>
+        )}
+      </section>
+
+      <footer className="border-t py-8">
+        <div className="max-w-7xl mx-auto px-4 text-center text-sm text-muted-foreground">
+          <p>QuizLive - Interaktiv ta'lim platformasi</p>
+        </div>
+      </footer>
+    </div>
+  );
+}
