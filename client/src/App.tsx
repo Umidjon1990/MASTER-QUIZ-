@@ -1,4 +1,5 @@
-import { Switch, Route } from "wouter";
+import { useEffect } from "react";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -7,7 +8,9 @@ import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Moon, Sun } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
@@ -23,6 +26,32 @@ import StudentDashboard from "@/pages/student/index";
 import StudentResults from "@/pages/student/results";
 import JoinPlay from "@/pages/play/join";
 import AuthPage from "@/pages/auth";
+
+function AuthGuard({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      navigate("/auth");
+    }
+  }, [isLoading, user, navigate]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 rounded-md gradient-purple mx-auto animate-pulse" />
+          <Skeleton className="h-5 w-40 mx-auto" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) return null;
+
+  return <>{children}</>;
+}
 
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
@@ -51,25 +80,27 @@ function AdminLayout() {
   };
 
   return (
-    <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex h-screen w-full">
-        <AppSidebar />
-        <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-4 p-3 border-b sticky top-0 z-50 bg-background/80 backdrop-blur-md">
-            <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <ThemeToggle />
-          </header>
-          <main className="flex-1 overflow-auto">
-            <Switch>
-              <Route path="/admin" component={AdminDashboard} />
-              <Route path="/admin/users" component={AdminUsers} />
-              <Route path="/admin/quizzes" component={AdminQuizzes} />
-              <Route component={NotFound} />
-            </Switch>
-          </main>
+    <AuthGuard>
+      <SidebarProvider style={style as React.CSSProperties}>
+        <div className="flex h-screen w-full">
+          <AppSidebar />
+          <div className="flex flex-col flex-1 min-w-0">
+            <header className="flex items-center justify-between gap-4 p-3 border-b sticky top-0 z-50 bg-background/80 backdrop-blur-md">
+              <SidebarTrigger data-testid="button-sidebar-toggle" />
+              <ThemeToggle />
+            </header>
+            <main className="flex-1 overflow-auto">
+              <Switch>
+                <Route path="/admin" component={AdminDashboard} />
+                <Route path="/admin/users" component={AdminUsers} />
+                <Route path="/admin/quizzes" component={AdminQuizzes} />
+                <Route component={NotFound} />
+              </Switch>
+            </main>
+          </div>
         </div>
-      </div>
-    </SidebarProvider>
+      </SidebarProvider>
+    </AuthGuard>
   );
 }
 
@@ -80,28 +111,30 @@ function TeacherLayout() {
   };
 
   return (
-    <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex h-screen w-full">
-        <AppSidebar />
-        <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-4 p-3 border-b sticky top-0 z-50 bg-background/80 backdrop-blur-md">
-            <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <ThemeToggle />
-          </header>
-          <main className="flex-1 overflow-auto">
-            <Switch>
-              <Route path="/teacher" component={TeacherDashboard} />
-              <Route path="/teacher/quizzes/new" component={QuizEditor} />
-              <Route path="/teacher/quizzes/:id" component={QuizEditor} />
-              <Route path="/teacher/quizzes" component={TeacherQuizzes} />
-              <Route path="/teacher/live" component={TeacherLive} />
-              <Route path="/teacher/results" component={TeacherResults} />
-              <Route component={NotFound} />
-            </Switch>
-          </main>
+    <AuthGuard>
+      <SidebarProvider style={style as React.CSSProperties}>
+        <div className="flex h-screen w-full">
+          <AppSidebar />
+          <div className="flex flex-col flex-1 min-w-0">
+            <header className="flex items-center justify-between gap-4 p-3 border-b sticky top-0 z-50 bg-background/80 backdrop-blur-md">
+              <SidebarTrigger data-testid="button-sidebar-toggle" />
+              <ThemeToggle />
+            </header>
+            <main className="flex-1 overflow-auto">
+              <Switch>
+                <Route path="/teacher" component={TeacherDashboard} />
+                <Route path="/teacher/quizzes/new" component={QuizEditor} />
+                <Route path="/teacher/quizzes/:id" component={QuizEditor} />
+                <Route path="/teacher/quizzes" component={TeacherQuizzes} />
+                <Route path="/teacher/live" component={TeacherLive} />
+                <Route path="/teacher/results" component={TeacherResults} />
+                <Route component={NotFound} />
+              </Switch>
+            </main>
+          </div>
         </div>
-      </div>
-    </SidebarProvider>
+      </SidebarProvider>
+    </AuthGuard>
   );
 }
 
@@ -112,24 +145,26 @@ function StudentLayout() {
   };
 
   return (
-    <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex h-screen w-full">
-        <AppSidebar />
-        <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-4 p-3 border-b sticky top-0 z-50 bg-background/80 backdrop-blur-md">
-            <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <ThemeToggle />
-          </header>
-          <main className="flex-1 overflow-auto">
-            <Switch>
-              <Route path="/student" component={StudentDashboard} />
-              <Route path="/student/results" component={StudentResults} />
-              <Route component={NotFound} />
-            </Switch>
-          </main>
+    <AuthGuard>
+      <SidebarProvider style={style as React.CSSProperties}>
+        <div className="flex h-screen w-full">
+          <AppSidebar />
+          <div className="flex flex-col flex-1 min-w-0">
+            <header className="flex items-center justify-between gap-4 p-3 border-b sticky top-0 z-50 bg-background/80 backdrop-blur-md">
+              <SidebarTrigger data-testid="button-sidebar-toggle" />
+              <ThemeToggle />
+            </header>
+            <main className="flex-1 overflow-auto">
+              <Switch>
+                <Route path="/student" component={StudentDashboard} />
+                <Route path="/student/results" component={StudentResults} />
+                <Route component={NotFound} />
+              </Switch>
+            </main>
+          </div>
         </div>
-      </div>
-    </SidebarProvider>
+      </SidebarProvider>
+    </AuthGuard>
   );
 }
 
