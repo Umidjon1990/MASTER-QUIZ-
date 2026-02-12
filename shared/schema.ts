@@ -29,6 +29,7 @@ export const quizzes = pgTable("quizzes", {
   coverImage: text("cover_image"),
   isPublic: boolean("is_public").notNull().default(false),
   creatorId: varchar("creator_id").notNull(),
+  timerEnabled: boolean("timer_enabled").notNull().default(true),
   timePerQuestion: integer("time_per_question").notNull().default(30),
   shuffleQuestions: boolean("shuffle_questions").notNull().default(false),
   shuffleOptions: boolean("shuffle_options").notNull().default(false),
@@ -59,7 +60,7 @@ export const assignmentAttempts = pgTable("assignment_attempts", {
   score: integer("score").notNull().default(0),
   correctAnswers: integer("correct_answers").notNull().default(0),
   totalQuestions: integer("total_questions").notNull().default(0),
-  answers: jsonb("answers").$type<Record<string, { answer: string; isCorrect: boolean; points: number }>>(),
+  answers: jsonb("answers").$type<Record<string, { answer: string | string[]; isCorrect: boolean; points: number }>>(),
   completedAt: timestamp("completed_at").defaultNow(),
 });
 

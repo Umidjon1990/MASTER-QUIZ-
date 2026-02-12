@@ -10,7 +10,8 @@ import { useToast } from "@/hooks/use-toast";
 import { io, Socket } from "socket.io-client";
 import confetti from "canvas-confetti";
 import { Label } from "@/components/ui/label";
-import { Play, Trophy, Clock, CheckCircle, X, Zap, Star, Music, Lock } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Play, Trophy, Clock, CheckCircle, X, Zap, Star, Music, Lock, BarChart3 } from "lucide-react";
 
 let socket: Socket | null = null;
 
@@ -38,10 +39,12 @@ export default function JoinPlay() {
   const [questionIndex, setQuestionIndex] = useState(0);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [selectedMulti, setSelectedMulti] = useState<string[]>([]);
   const [answerResult, setAnswerResult] = useState<{ isCorrect: boolean; points: number; correctAnswer: string } | null>(null);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [timeLeft, setTimeLeft] = useState(0);
   const [totalTime, setTotalTime] = useState(30);
+  const [timerEnabled, setTimerEnabled] = useState(true);
   const [answered, setAnswered] = useState(false);
   const [myScore, setMyScore] = useState(0);
 
@@ -52,11 +55,11 @@ export default function JoinPlay() {
   }, []);
 
   useEffect(() => {
-    if (phase === "question" && timeLeft > 0 && !answered) {
+    if (phase === "question" && timerEnabled && timeLeft > 0 && !answered) {
       const timer = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
       return () => clearTimeout(timer);
     }
-  }, [timeLeft, phase, answered]);
+  }, [timeLeft, phase, answered, timerEnabled]);
 
   const connectSocket = useCallback(() => {
     if (socket) return socket;
@@ -72,10 +75,18 @@ export default function JoinPlay() {
       setTotalQuestions(data.total);
       setPhase("question");
       setSelectedAnswer(null);
+      setSelectedMulti([]);
       setAnswerResult(null);
       setAnswered(false);
-      setTimeLeft(data.question.timeLimit);
-      setTotalTime(data.question.timeLimit);
+      const hasTimer = data.timerEnabled !== false;
+      setTimerEnabled(hasTimer);
+      if (hasTimer && data.question.timeLimit > 0) {
+        setTimeLeft(data.question.timeLimit);
+        setTotalTime(data.question.timeLimit);
+      } else {
+        setTimeLeft(0);
+        setTotalTime(0);
+      }
     });
 
     socket.on("answer:result", (data) => {
@@ -145,12 +156,32 @@ export default function JoinPlay() {
     if (answered || !socket || !currentQuestion) return;
     setSelectedAnswer(answer);
     setAnswered(true);
-    const timeSpent = totalTime - timeLeft;
+    const timeSpent = timerEnabled ? totalTime - timeLeft : 0;
     socket.emit("player:answer", {
       sessionId,
       participantId,
       questionId: currentQuestion.id,
       answer,
+      timeSpent,
+    });
+  };
+
+  const toggleMultiOption = (option: string) => {
+    if (answered) return;
+    setSelectedMulti((prev) =>
+      prev.includes(option) ? prev.filter((o) => o !== option) : [...prev, option]
+    );
+  };
+
+  const submitMultiAnswer = () => {
+    if (answered || !socket || !currentQuestion || selectedMulti.length === 0) return;
+    setAnswered(true);
+    const timeSpent = timerEnabled ? totalTime - timeLeft : 0;
+    socket.emit("player:answer", {
+      sessionId,
+      participantId,
+      questionId: currentQuestion.id,
+      answer: selectedMulti.join(","),
       timeSpent,
     });
   };
@@ -224,17 +255,32 @@ export default function JoinPlay() {
           <motion.div key={`q-${questionIndex}`} initial={{ opacity: 0, x: 100 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -100 }} className="w-full max-w-2xl space-y-6">
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <Badge variant="secondary" className="text-base px-3 py-1">{questionIndex + 1}/{totalQuestions}</Badge>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-muted-foreground" />
-                <span className={`font-mono font-bold text-lg ${timeLeft <= 5 ? "text-red-500" : ""}`}>{timeLeft}s</span>
+              {timerEnabled && (
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-muted-foreground" />
+                  <span className={`font-mono font-bold text-lg ${timeLeft <= 5 ? "text-red-500" : ""}`} data-testid="text-time-left">{timeLeft}s</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                {currentQuestion.type === "poll" && (
+                  <Badge variant="outline" data-testid="badge-poll"><BarChart3 className="w-3 h-3 mr-1" />So'rovnoma</Badge>
+                )}
+                <Badge className="gradient-purple border-0">{currentQuestion.points} ball</Badge>
               </div>
-              <Badge className="gradient-purple border-0">{currentQuestion.points} ball</Badge>
             </div>
 
-            <Progress value={(timeLeft / totalTime) * 100} className="h-2" />
+            {timerEnabled && totalTime > 0 && (
+              <Progress value={(timeLeft / totalTime) * 100} className="h-2" data-testid="progress-timer" />
+            )}
 
             <Card className="p-6 text-center space-y-3">
               <h2 className="text-xl md:text-2xl font-bold" data-testid="text-question">{currentQuestion.questionText}</h2>
+              {currentQuestion.type === "poll" && (
+                <p className="text-sm text-muted-foreground">Ball berilmaydi — faqat fikringizni bildiring</p>
+              )}
+              {currentQuestion.type === "multiple_select" && (
+                <p className="text-sm text-muted-foreground">Bir nechta javobni tanlang</p>
+              )}
               {currentQuestion.mediaUrl && currentQuestion.mediaType === "video" && (
                 <video src={currentQuestion.mediaUrl} controls className="rounded-md max-h-56 w-full object-contain bg-black mx-auto" data-testid="play-media-video" />
               )}
@@ -249,7 +295,7 @@ export default function JoinPlay() {
               )}
             </Card>
 
-            {currentQuestion.type === "multiple_choice" && currentQuestion.options && (
+            {(currentQuestion.type === "multiple_choice" || currentQuestion.type === "poll") && currentQuestion.options && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {(currentQuestion.options as string[]).map((opt: string, i: number) => (
                   <motion.button
@@ -257,7 +303,7 @@ export default function JoinPlay() {
                     whileTap={{ scale: 0.95 }}
                     onClick={() => submitAnswer(opt)}
                     disabled={answered}
-                    className={`p-5 rounded-md text-white font-semibold text-lg text-left transition-all ${optionColors[i]} ${
+                    className={`p-5 rounded-md text-white font-semibold text-lg text-left transition-all ${optionColors[i % optionColors.length]} ${
                       answered && selectedAnswer === opt ? "ring-4 ring-white/50" : ""
                     } ${answered ? "opacity-70" : ""}`}
                     data-testid={`button-option-${i}`}
@@ -266,6 +312,36 @@ export default function JoinPlay() {
                     {opt}
                   </motion.button>
                 ))}
+              </div>
+            )}
+
+            {currentQuestion.type === "multiple_select" && currentQuestion.options && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {(currentQuestion.options as string[]).map((opt: string, i: number) => {
+                    const isSelected = selectedMulti.includes(opt);
+                    return (
+                      <motion.button
+                        key={i}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => toggleMultiOption(opt)}
+                        disabled={answered}
+                        className={`p-5 rounded-md text-white font-semibold text-lg text-left transition-all ${optionColors[i % optionColors.length]} ${
+                          isSelected ? "ring-4 ring-white/50" : ""
+                        } ${answered ? "opacity-70" : ""}`}
+                        data-testid={`button-multi-option-${i}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Checkbox checked={isSelected} className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black" />
+                          <span><span className="mr-2 font-bold">{String.fromCharCode(65 + i)}.</span>{opt}</span>
+                        </div>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+                <Button className="w-full gradient-teal border-0 text-lg" onClick={submitMultiAnswer} disabled={answered || selectedMulti.length === 0} data-testid="button-submit-multi">
+                  Javobni yuborish ({selectedMulti.length} tanlangan)
+                </Button>
               </div>
             )}
 

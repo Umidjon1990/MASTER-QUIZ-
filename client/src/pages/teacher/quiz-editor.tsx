@@ -50,6 +50,7 @@ export default function QuizEditor() {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [isPublic, setIsPublic] = useState(false);
+  const [timerEnabled, setTimerEnabled] = useState(true);
   const [shuffleQuestions, setShuffleQuestions] = useState(false);
   const [shuffleOptions, setShuffleOptions] = useState(false);
   const [timePerQuestion, setTimePerQuestion] = useState(30);
@@ -88,6 +89,7 @@ export default function QuizEditor() {
     setDescription(quiz.description || "");
     setCategory(quiz.category || "");
     setIsPublic(quiz.isPublic);
+    setTimerEnabled(quiz.timerEnabled ?? true);
     setShuffleQuestions(quiz.shuffleQuestions ?? false);
     setShuffleOptions(quiz.shuffleOptions ?? false);
     setTimePerQuestion(quiz.timePerQuestion);
@@ -99,7 +101,7 @@ export default function QuizEditor() {
       const res = await fetch("/api/quizzes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, category, isPublic, shuffleQuestions, shuffleOptions, timePerQuestion, status: "draft" }),
+        body: JSON.stringify({ title, description, category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, timePerQuestion, status: "draft" }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed");
@@ -124,7 +126,7 @@ export default function QuizEditor() {
       const res = await fetch(`/api/quizzes/${quizId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, category, isPublic, shuffleQuestions, shuffleOptions, timePerQuestion }),
+        body: JSON.stringify({ title, description, category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, timePerQuestion }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed");
@@ -564,10 +566,16 @@ export default function QuizEditor() {
             <Label>Kategoriya</Label>
             <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Masalan: Matematika" data-testid="input-quiz-category" />
           </div>
-          <div>
-            <Label>Har bir savol uchun vaqt (soniya)</Label>
-            <Input type="number" value={timePerQuestion} onChange={(e) => setTimePerQuestion(Number(e.target.value))} data-testid="input-time-per-question" />
-          </div>
+          {timerEnabled && (
+            <div>
+              <Label>Har bir savol uchun vaqt (soniya)</Label>
+              <Input type="number" value={timePerQuestion} onChange={(e) => setTimePerQuestion(Number(e.target.value))} data-testid="input-time-per-question" />
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <Switch checked={timerEnabled} onCheckedChange={setTimerEnabled} data-testid="switch-timer-enabled" />
+          <Label>Taymer yoqish (vaqt chegarasi)</Label>
         </div>
         <div className="flex items-center gap-3">
           <Switch checked={isPublic} onCheckedChange={setIsPublic} data-testid="switch-is-public" />

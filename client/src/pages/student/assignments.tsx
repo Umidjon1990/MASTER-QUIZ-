@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ClipboardList, Calendar, ArrowLeft, ArrowRight, Send, CheckCircle, X, Clock, BarChart3 } from "lucide-react";
+import { ClipboardList, Calendar, ArrowLeft, ArrowRight, Send, CheckCircle, X, Clock, BarChart3, Music } from "lucide-react";
 import type { Assignment, Question } from "@shared/schema";
 
 interface StudentAssignment extends Assignment {
@@ -175,6 +175,19 @@ export default function StudentAssignments() {
               )}
               {currentQuestion.type === "multiple_select" && (
                 <p className="text-xs text-muted-foreground mb-3">Bir nechta javobni tanlang</p>
+              )}
+
+              {currentQuestion.mediaUrl && currentQuestion.mediaType === "video" && (
+                <video src={currentQuestion.mediaUrl} controls className="rounded-md max-h-48 w-full object-contain bg-black mb-3" data-testid="assignment-media-video" />
+              )}
+              {currentQuestion.mediaUrl && currentQuestion.mediaType === "audio" && (
+                <div className="flex items-center gap-2 p-3 bg-muted rounded-md mb-3">
+                  <Music className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <audio src={currentQuestion.mediaUrl} controls className="w-full h-8" data-testid="assignment-media-audio" />
+                </div>
+              )}
+              {currentQuestion.mediaUrl && currentQuestion.mediaType === "image" && (
+                <img src={currentQuestion.mediaUrl} alt="Savol rasmi" className="rounded-md max-h-48 object-contain mb-3" data-testid="assignment-media-image" />
               )}
 
               {currentQuestion.type === "multiple_select" && currentQuestion.options && (currentQuestion.options as string[]).length > 0 ? (

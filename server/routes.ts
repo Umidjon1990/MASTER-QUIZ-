@@ -874,6 +874,117 @@ export async function registerRoutes(
     }
   });
 
+  // === Teacher Stats ===
+  app.get("/api/teacher/stats", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const userId = req.userId;
+      const quizzesList = await storage.getQuizzesByCreator(userId);
+      const classList = await storage.getClassesByTeacher(userId);
+      const assignmentsList = await storage.getAssignmentsByCreator(userId);
+
+      const totalQuizzes = quizzesList.length;
+      const totalPlays = quizzesList.reduce((a, q) => a + q.totalPlays, 0);
+      const totalLikes = quizzesList.reduce((a, q) => a + q.totalLikes, 0);
+      const totalStudents = new Set<string>();
+
+      for (const cls of classList) {
+        const members = await storage.getClassMembers(cls.id);
+        members.forEach((m) => totalStudents.add(m.userId));
+      }
+
+      let totalAttempts = 0;
+      let totalScore = 0;
+      let totalCorrect = 0;
+      let totalQuestions = 0;
+      const quizStats: { quizTitle: string; attempts: number; avgScore: number }[] = [];
+      const categoryStats: Record<string, { plays: number; quizzes: number }> = {};
+
+      const studentScores: Record<string, { attempts: number; totalScore: number; name: string }> = {};
+      const questionCorrectness: Record<string, { correct: number; total: number; text: string }> = {};
+
+      for (const assignment of assignmentsList) {
+        const attempts = await storage.getAttemptsByAssignment(assignment.id);
+        totalAttempts += attempts.length;
+
+        const questions = await storage.getQuestionsByQuiz(assignment.quizId);
+        const questionMap = new Map(questions.map((q) => [q.id, q]));
+
+        for (const attempt of attempts) {
+          totalScore += attempt.score;
+          totalCorrect += attempt.correctAnswers;
+          totalQuestions += attempt.totalQuestions;
+
+          if (!studentScores[attempt.userId]) {
+            const user = await authStorage.getUser(attempt.userId);
+            studentScores[attempt.userId] = { attempts: 0, totalScore: 0, name: user?.name || "Noma'lum" };
+          }
+          studentScores[attempt.userId].attempts += 1;
+          studentScores[attempt.userId].totalScore += attempt.score;
+
+          if (attempt.answers) {
+            for (const [qId, detail] of Object.entries(attempt.answers)) {
+              if (!questionCorrectness[qId]) {
+                const q = questionMap.get(qId);
+                questionCorrectness[qId] = { correct: 0, total: 0, text: q?.question?.slice(0, 40) || qId };
+              }
+              questionCorrectness[qId].total += 1;
+              if (detail.isCorrect) questionCorrectness[qId].correct += 1;
+            }
+          }
+        }
+      }
+
+      const topStudents = Object.entries(studentScores)
+        .map(([id, s]) => ({ name: s.name, attempts: s.attempts, avgScore: s.attempts > 0 ? Math.round(s.totalScore / s.attempts) : 0 }))
+        .sort((a, b) => b.avgScore - a.avgScore)
+        .slice(0, 5);
+
+      const hardestQuestions = Object.entries(questionCorrectness)
+        .map(([id, q]) => ({ question: q.text, correctRate: q.total > 0 ? Math.round((q.correct / q.total) * 100) : 0, total: q.total }))
+        .filter((q) => q.total >= 1)
+        .sort((a, b) => a.correctRate - b.correctRate)
+        .slice(0, 5);
+
+      for (const quiz of quizzesList) {
+        const cat = quiz.category || "Boshqa";
+        if (!categoryStats[cat]) categoryStats[cat] = { plays: 0, quizzes: 0 };
+        categoryStats[cat].plays += quiz.totalPlays;
+        categoryStats[cat].quizzes += 1;
+
+        quizStats.push({
+          quizTitle: quiz.title.slice(0, 20),
+          attempts: quiz.totalPlays,
+          avgScore: 0,
+        });
+      }
+
+      const categoryData = Object.entries(categoryStats).map(([name, data]) => ({
+        name,
+        plays: data.plays,
+        quizzes: data.quizzes,
+      }));
+
+      res.json({
+        totalQuizzes,
+        totalPlays,
+        totalLikes,
+        totalStudents: totalStudents.size,
+        totalClasses: classList.length,
+        totalAssignments: assignmentsList.length,
+        totalAttempts,
+        avgScore: totalAttempts > 0 ? Math.round(totalScore / totalAttempts) : 0,
+        avgCorrectRate: totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0,
+        quizStats: quizStats.slice(0, 10),
+        categoryData,
+        topStudents,
+        hardestQuestions,
+      });
+    } catch (error) {
+      console.error("Teacher stats error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   // === Class Routes ===
   app.post("/api/classes", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {

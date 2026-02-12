@@ -83,13 +83,18 @@ export function setupWebSocket(httpServer: HttpServer) {
           }
         }
 
+        const timerEnabled = quiz?.timerEnabled ?? true;
+        const effectiveTimeLimit = timerEnabled ? (q.timeLimit || quiz?.timePerQuestion || 30) : 0;
+
         io.to(`session:${sessionId}`).emit("quiz:started", {
           totalQuestions: questionsList.length,
+          timerEnabled,
         });
 
         io.to(`session:${sessionId}`).emit("question:show", {
           index: 0,
           total: questionsList.length,
+          timerEnabled,
           question: {
             id: q.id,
             type: q.type,
@@ -97,8 +102,8 @@ export function setupWebSocket(httpServer: HttpServer) {
             mediaType: q.mediaType,
             mediaUrl: q.mediaUrl,
             options: questionOptions,
-            timeLimit: q.timeLimit,
-            points: q.points,
+            timeLimit: effectiveTimeLimit,
+            points: q.type === "poll" ? 0 : q.points,
           },
         });
       } catch (err) {
@@ -163,9 +168,13 @@ export function setupWebSocket(httpServer: HttpServer) {
           }
         }
 
+        const timerEnabled = quiz?.timerEnabled ?? true;
+        const effectiveTimeLimit = timerEnabled ? (q.timeLimit || quiz?.timePerQuestion || 30) : 0;
+
         io.to(`session:${sessionId}`).emit("question:show", {
           index: nextIndex,
           total: questionsList.length,
+          timerEnabled,
           question: {
             id: q.id,
             type: q.type,
@@ -173,8 +182,8 @@ export function setupWebSocket(httpServer: HttpServer) {
             mediaType: q.mediaType,
             mediaUrl: q.mediaUrl,
             options: questionOptions,
-            timeLimit: q.timeLimit,
-            points: q.points,
+            timeLimit: effectiveTimeLimit,
+            points: q.type === "poll" ? 0 : q.points,
           },
         });
       } catch (err) {
@@ -213,10 +222,11 @@ export function setupWebSocket(httpServer: HttpServer) {
           isCorrect = true;
           points = 0;
         } else if (question.type === "multiple_select") {
-          const correctSet = new Set(question.correctAnswer.split(",").map(s => s.trim().toLowerCase()));
-          const answerSet = new Set(String(answer).split(",").map(s => s.trim().toLowerCase()));
-          const correctCount = [...answerSet].filter(a => correctSet.has(a)).length;
-          const wrongCount = [...answerSet].filter(a => !correctSet.has(a)).length;
+          const correctArr = question.correctAnswer.split(",").map(s => s.trim().toLowerCase());
+          const correctSet = new Set(correctArr);
+          const answerArr = Array.from(new Set(String(answer).split(",").map(s => s.trim().toLowerCase())));
+          const correctCount = answerArr.filter(a => correctSet.has(a)).length;
+          const wrongCount = answerArr.filter(a => !correctSet.has(a)).length;
           const totalCorrect = correctSet.size;
           if (wrongCount === 0 && correctCount > 0) {
             const ratio = correctCount / totalCorrect;
