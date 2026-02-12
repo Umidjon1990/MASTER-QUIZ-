@@ -11,7 +11,7 @@ import { io, Socket } from "socket.io-client";
 import confetti from "canvas-confetti";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Play, Trophy, Clock, CheckCircle, X, Zap, Star, Music, Lock, BarChart3 } from "lucide-react";
+import { Play, Trophy, Clock, CheckCircle, X, Zap, Star, Music, Lock, BarChart3, Medal, Crown, Award, Flame } from "lucide-react";
 
 let socket: Socket | null = null;
 
@@ -21,6 +21,15 @@ const optionColors = [
   "quiz-option-c",
   "quiz-option-d",
 ];
+
+const MEDAL_STYLES = [
+  { bg: "from-yellow-400 to-amber-500", ring: "ring-yellow-400/60", text: "text-yellow-400", label: "Oltin", shadow: "shadow-yellow-400/30" },
+  { bg: "from-gray-300 to-gray-400", ring: "ring-gray-300/60", text: "text-gray-300", label: "Kumush", shadow: "shadow-gray-300/30" },
+  { bg: "from-amber-600 to-amber-700", ring: "ring-amber-600/60", text: "text-amber-600", label: "Bronza", shadow: "shadow-amber-600/30" },
+];
+
+const PODIUM_HEIGHTS = [160, 200, 120];
+const PODIUM_ORDER = [1, 0, 2];
 
 export default function JoinPlay() {
   const { user } = useAuth();
@@ -99,16 +108,23 @@ export default function JoinPlay() {
     });
 
     socket.on("leaderboard:show", (data) => {
-      setLeaderboard(data.leaderboard);
+      const sorted = [...data.leaderboard].sort((a: any, b: any) => b.score - a.score).map((e: any, i: number) => ({ ...e, rank: i + 1 }));
+      setLeaderboard(sorted);
       setPhase("leaderboard");
     });
 
     socket.on("quiz:finished", (data) => {
-      setLeaderboard(data.leaderboard);
+      const sorted = [...data.leaderboard].sort((a: any, b: any) => b.score - a.score).map((e: any, i: number) => ({ ...e, rank: i + 1 }));
+      setLeaderboard(sorted);
       setPhase("finished");
-      const myRank = data.leaderboard.find((e: any) => e.participantId === participantId);
+      const myRank = sorted.find((e: any) => e.participantId === participantId);
+      if (myRank) setMyScore(myRank.score);
       if (myRank && myRank.rank <= 3) {
-        confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 } });
+        setTimeout(() => {
+          confetti({ particleCount: 300, spread: 120, origin: { y: 0.4 }, colors: ["#FFD700", "#C0C0C0", "#CD7F32"] });
+          setTimeout(() => confetti({ particleCount: 150, spread: 80, origin: { x: 0.2, y: 0.5 }, colors: ["#FFD700", "#FFA500"] }), 500);
+          setTimeout(() => confetti({ particleCount: 150, spread: 80, origin: { x: 0.8, y: 0.5 }, colors: ["#C0C0C0", "#B87333"] }), 1000);
+        }, 800);
       }
     });
 
@@ -186,6 +202,9 @@ export default function JoinPlay() {
     });
   };
 
+  const myRankEntry = leaderboard.find((e) => e.participantId === participantId);
+  const myRank = myRankEntry?.rank || 0;
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <AnimatePresence mode="wait">
@@ -230,7 +249,7 @@ export default function JoinPlay() {
                     />
                   </div>
                 )}
-                <Button className="w-full h-12 gradient-purple border-0 text-lg" onClick={joinSession} disabled={code.length !== 6 || !name.trim() || (requiresPassword && !password)} data-testid="button-join">
+                <Button className="w-full gradient-purple border-0" onClick={joinSession} disabled={code.length !== 6 || !name.trim() || (requiresPassword && !password)} data-testid="button-join">
                   <Play className="w-5 h-5 mr-2" /> Qo'shilish
                 </Button>
               </div>
@@ -402,36 +421,161 @@ export default function JoinPlay() {
           </motion.div>
         )}
 
-        {(phase === "leaderboard" || phase === "finished") && (
+        {phase === "leaderboard" && (
           <motion.div key="lb" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md space-y-4">
-            <div className="text-center mb-6">
-              <Trophy className="w-12 h-12 text-yellow-500 mx-auto mb-2" />
-              <h2 className="text-2xl font-bold">{phase === "finished" ? "Yakuniy Natijalar" : "Reyting"}</h2>
+            <div className="text-center mb-4">
+              <Trophy className="w-10 h-10 text-yellow-500 mx-auto mb-2" />
+              <h2 className="text-2xl font-bold">Reyting</h2>
               <p className="text-lg font-semibold text-gradient">Sizning ballingiz: {myScore}</p>
             </div>
-            {leaderboard.map((entry, i) => {
+            {leaderboard.slice(0, 10).map((entry, i) => {
               const isMe = entry.participantId === participantId;
+              const medal = MEDAL_STYLES[i];
               return (
-                <motion.div key={entry.participantId} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.1 }}>
-                  <Card className={`p-4 ${isMe ? "ring-2 ring-purple-500" : ""}`} data-testid={`card-lb-${i}`}>
-                    <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${i === 0 ? "gradient-orange" : i === 1 ? "gradient-purple" : i === 2 ? "gradient-teal" : "bg-muted text-muted-foreground"}`}>
-                        {i === 0 ? <Star className="w-5 h-5" /> : entry.rank}
+                <motion.div key={entry.participantId} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }}>
+                  <Card className={`p-3 ${isMe ? "ring-2 ring-purple-500" : ""}`} data-testid={`card-lb-${i}`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shrink-0 ${
+                        i === 0 ? "bg-gradient-to-br from-yellow-400 to-amber-500" :
+                        i === 1 ? "bg-gradient-to-br from-gray-300 to-gray-400 text-gray-700" :
+                        i === 2 ? "bg-gradient-to-br from-amber-600 to-amber-700" :
+                        "bg-muted text-muted-foreground"
+                      }`}>
+                        {i < 3 ? (
+                          i === 0 ? <Crown className="w-5 h-5" /> : <Medal className="w-5 h-5" />
+                        ) : entry.rank}
                       </div>
-                      <div className="flex-1">
-                        <p className={`font-semibold ${isMe ? "text-gradient" : ""}`}>{entry.name} {isMe ? "(Siz)" : ""}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-semibold truncate ${isMe ? "text-gradient" : ""}`}>
+                          {entry.name} {isMe ? "(Siz)" : ""}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{entry.correctAnswers} to'g'ri javob</p>
                       </div>
-                      <p className="text-xl font-bold">{entry.score}</p>
+                      <div className="text-right shrink-0">
+                        <p className="text-xl font-bold">{entry.score}</p>
+                        {i < 3 && medal && (
+                          <span className={`text-xs font-medium ${medal.text}`}>{medal.label}</span>
+                        )}
+                      </div>
                     </div>
                   </Card>
                 </motion.div>
               );
             })}
-            {phase === "finished" && (
+          </motion.div>
+        )}
+
+        {phase === "finished" && (
+          <motion.div key="finished" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-2xl space-y-6">
+            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center">
+              <h2 className="text-3xl font-bold mb-1" data-testid="text-final-title">Yakuniy Natijalar</h2>
+              <p className="text-muted-foreground">
+                Sizning o'rningiz: <span className="font-bold text-foreground">{myRank}-o'rin</span> — <span className="font-bold text-gradient">{myScore} ball</span>
+              </p>
+            </motion.div>
+
+            {leaderboard.length >= 1 && (
+              <div className="flex items-end justify-center gap-3 md:gap-6 pt-4 pb-2" data-testid="podium-container">
+                {PODIUM_ORDER.map((pos) => {
+                  const entry = leaderboard[pos];
+                  if (!entry) return <div key={pos} className="w-24 md:w-28" />;
+                  const medal = MEDAL_STYLES[pos];
+                  const isMe = entry.participantId === participantId;
+                  const height = PODIUM_HEIGHTS[pos];
+                  return (
+                    <motion.div
+                      key={pos}
+                      initial={{ opacity: 0, y: 60 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: pos === 0 ? 0.6 : pos === 1 ? 0.3 : 0.9, type: "spring", damping: 12 }}
+                      className="flex flex-col items-center"
+                      data-testid={`podium-place-${pos + 1}`}
+                    >
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: pos === 0 ? 0.8 : pos === 1 ? 0.5 : 1.1, type: "spring" }}
+                        className="mb-2"
+                      >
+                        {pos === 0 && <Crown className="w-8 h-8 text-yellow-400 mx-auto drop-shadow-lg" />}
+                        {pos === 1 && <Medal className="w-7 h-7 text-gray-400 mx-auto" />}
+                        {pos === 2 && <Award className="w-7 h-7 text-amber-600 mx-auto" />}
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: pos === 0 ? 0.9 : pos === 1 ? 0.6 : 1.2, type: "spring" }}
+                        className={`w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br ${medal.bg} flex items-center justify-center shadow-lg ${medal.shadow} ${isMe ? "ring-4 ring-purple-500" : `ring-2 ${medal.ring}`}`}
+                      >
+                        <span className="text-white font-bold text-lg md:text-xl">{entry.name.charAt(0).toUpperCase()}</span>
+                      </motion.div>
+
+                      <p className={`text-sm font-semibold mt-1.5 truncate max-w-[5.5rem] text-center ${isMe ? "text-gradient" : ""}`}>
+                        {entry.name}
+                      </p>
+                      <p className="font-bold text-lg">{entry.score}</p>
+
+                      <motion.div
+                        initial={{ height: 0 }}
+                        animate={{ height }}
+                        transition={{ delay: pos === 0 ? 1.0 : pos === 1 ? 0.7 : 1.3, duration: 0.6, type: "spring" }}
+                        className={`w-24 md:w-28 rounded-t-md bg-gradient-to-t ${medal.bg} flex items-start justify-center pt-3 mt-1`}
+                        style={{ minHeight: 0 }}
+                      >
+                        <span className="text-white text-3xl md:text-4xl font-black drop-shadow">{pos + 1}</span>
+                      </motion.div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+
+            {myRank <= 3 && myRank >= 1 && (
+              <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 1.5 }} className="text-center" data-testid="text-medal-message">
+                <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-md bg-gradient-to-r ${MEDAL_STYLES[myRank - 1].bg} text-white font-bold shadow-lg`}>
+                  <Flame className="w-5 h-5" />
+                  {myRank === 1 ? "Tabriklaymiz! Siz g'olib bo'ldingiz!" : myRank === 2 ? "Ajoyib! 2-o'rin!" : "Zo'r! 3-o'rin!"}
+                  <Flame className="w-5 h-5" />
+                </div>
+              </motion.div>
+            )}
+
+            {leaderboard.length > 3 && (
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-muted-foreground text-center">To'liq reyting</h3>
+                {leaderboard.slice(3).map((entry, i) => {
+                  const isMe = entry.participantId === participantId;
+                  const rank = i + 4;
+                  return (
+                    <motion.div key={entry.participantId} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.4 + i * 0.05 }}>
+                      <Card className={`p-3 ${isMe ? "ring-2 ring-purple-500" : ""}`} data-testid={`card-rank-${rank}`}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-sm text-muted-foreground shrink-0">
+                            {rank}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-medium truncate text-sm ${isMe ? "text-gradient" : ""}`}>
+                              {entry.name} {isMe ? "(Siz)" : ""}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="font-bold">{entry.score}</p>
+                            <p className="text-xs text-muted-foreground">{entry.correctAnswers} to'g'ri</p>
+                          </div>
+                        </div>
+                      </Card>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2 }}>
               <Button variant="outline" className="w-full" onClick={() => window.location.href = "/"} data-testid="button-go-home">
                 Bosh sahifaga qaytish
               </Button>
-            )}
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

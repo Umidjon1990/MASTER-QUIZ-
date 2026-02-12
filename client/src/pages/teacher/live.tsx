@@ -10,10 +10,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { io, Socket } from "socket.io-client";
-import { Play, SkipForward, Users, Trophy, Copy, Send, Music, Lock, Link2, Check } from "lucide-react";
+import confetti from "canvas-confetti";
+import { Play, SkipForward, Users, Trophy, Copy, Send, Music, Lock, Link2, Check, Crown, Medal, Award, Flame, BarChart3 } from "lucide-react";
 import type { Quiz, LiveSession } from "@shared/schema";
 
 let socket: Socket | null = null;
+
+const MEDAL_STYLES = [
+  { bg: "from-yellow-400 to-amber-500", ring: "ring-yellow-400/60", text: "text-yellow-400", label: "Oltin", shadow: "shadow-yellow-400/30" },
+  { bg: "from-gray-300 to-gray-400", ring: "ring-gray-300/60", text: "text-gray-300", label: "Kumush", shadow: "shadow-gray-300/30" },
+  { bg: "from-amber-600 to-amber-700", ring: "ring-amber-600/60", text: "text-amber-600", label: "Bronza", shadow: "shadow-amber-600/30" },
+];
+
+const PODIUM_HEIGHTS = [180, 220, 140];
+const PODIUM_ORDER = [1, 0, 2];
 
 export default function TeacherLive() {
   const { toast } = useToast();
@@ -75,13 +85,20 @@ export default function TeacherLive() {
     });
 
     socket.on("leaderboard:show", (data) => {
-      setLeaderboard(data.leaderboard);
+      const sorted = [...data.leaderboard].sort((a: any, b: any) => b.score - a.score).map((e: any, i: number) => ({ ...e, rank: i + 1 }));
+      setLeaderboard(sorted);
       setPhase("leaderboard");
     });
 
     socket.on("quiz:finished", (data) => {
-      setLeaderboard(data.leaderboard);
+      const sorted = [...data.leaderboard].sort((a: any, b: any) => b.score - a.score).map((e: any, i: number) => ({ ...e, rank: i + 1 }));
+      setLeaderboard(sorted);
       setPhase("finished");
+      setTimeout(() => {
+        confetti({ particleCount: 300, spread: 120, origin: { y: 0.4 }, colors: ["#FFD700", "#C0C0C0", "#CD7F32"] });
+        setTimeout(() => confetti({ particleCount: 150, spread: 80, origin: { x: 0.2, y: 0.5 }, colors: ["#FFD700", "#FFA500"] }), 500);
+        setTimeout(() => confetti({ particleCount: 150, spread: 80, origin: { x: 0.8, y: 0.5 }, colors: ["#C0C0C0", "#B87333"] }), 1000);
+      }, 800);
     });
 
     return socket;
@@ -324,38 +341,147 @@ export default function TeacherLive() {
           </motion.div>
         )}
 
-        {(phase === "leaderboard" || phase === "finished") && (
+        {phase === "leaderboard" && (
           <motion.div key="leaderboard" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-lg mx-auto space-y-4">
-            <div className="text-center mb-6">
-              <Trophy className="w-12 h-12 text-yellow-500 mx-auto mb-2" />
-              <h2 className="text-2xl font-bold">{phase === "finished" ? "Yakuniy Natijalar" : "Reyting"}</h2>
+            <div className="text-center mb-4">
+              <Trophy className="w-10 h-10 text-yellow-500 mx-auto mb-2" />
+              <h2 className="text-2xl font-bold">Reyting</h2>
+              <p className="text-sm text-muted-foreground">{participants.length} o'quvchi</p>
             </div>
-            {leaderboard.map((entry, i) => (
-              <motion.div key={entry.participantId} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.1 }}>
-                <Card className={`p-4 ${i === 0 ? "border-yellow-500/50" : ""}`} data-testid={`card-rank-${i}`}>
-                  <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${i === 0 ? "gradient-orange" : i === 1 ? "gradient-purple" : i === 2 ? "gradient-teal" : "bg-muted text-muted-foreground"}`}>
-                      {entry.rank}
+            {leaderboard.slice(0, 10).map((entry, i) => {
+              const medal = MEDAL_STYLES[i];
+              return (
+                <motion.div key={entry.participantId} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }}>
+                  <Card className={`p-3 ${i === 0 ? "ring-2 ring-yellow-400/40" : ""}`} data-testid={`card-rank-${i}`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shrink-0 ${
+                        i === 0 ? "bg-gradient-to-br from-yellow-400 to-amber-500" :
+                        i === 1 ? "bg-gradient-to-br from-gray-300 to-gray-400 text-gray-700" :
+                        i === 2 ? "bg-gradient-to-br from-amber-600 to-amber-700" :
+                        "bg-muted text-muted-foreground"
+                      }`}>
+                        {i < 3 ? (
+                          i === 0 ? <Crown className="w-5 h-5" /> : <Medal className="w-5 h-5" />
+                        ) : entry.rank}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold truncate">{entry.name}</p>
+                        <p className="text-xs text-muted-foreground">{entry.correctAnswers} to'g'ri javob</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xl font-bold">{entry.score}</p>
+                        {i < 3 && medal && (
+                          <span className={`text-xs font-medium ${medal.text}`}>{medal.label}</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <p className="font-semibold">{entry.name}</p>
-                      <p className="text-sm text-muted-foreground">{entry.correctAnswers} to'g'ri javob</p>
-                    </div>
-                    <p className="text-xl font-bold">{entry.score}</p>
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
-            {phase === "leaderboard" && (
-              <Button className="w-full gradient-purple border-0" onClick={nextQuestion} data-testid="button-continue">
-                <SkipForward className="w-4 h-4 mr-1" /> Keyingi savol
-              </Button>
+                  </Card>
+                </motion.div>
+              );
+            })}
+            <Button className="w-full gradient-purple border-0" onClick={nextQuestion} data-testid="button-continue">
+              <SkipForward className="w-4 h-4 mr-1" /> Keyingi savol
+            </Button>
+          </motion.div>
+        )}
+
+        {phase === "finished" && (
+          <motion.div key="finished" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-2xl mx-auto space-y-6">
+            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center">
+              <h2 className="text-3xl font-bold mb-1" data-testid="text-final-results">Yakuniy Natijalar</h2>
+              <p className="text-muted-foreground">{participants.length} o'quvchi ishtirok etdi</p>
+            </motion.div>
+
+            {leaderboard.length >= 1 && (
+              <div className="flex items-end justify-center gap-3 md:gap-6 pt-4 pb-2" data-testid="podium-container">
+                {PODIUM_ORDER.map((pos) => {
+                  const entry = leaderboard[pos];
+                  if (!entry) return <div key={pos} className="w-28 md:w-32" />;
+                  const medal = MEDAL_STYLES[pos];
+                  const height = PODIUM_HEIGHTS[pos];
+                  return (
+                    <motion.div
+                      key={pos}
+                      initial={{ opacity: 0, y: 60 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: pos === 0 ? 0.6 : pos === 1 ? 0.3 : 0.9, type: "spring", damping: 12 }}
+                      className="flex flex-col items-center"
+                      data-testid={`podium-place-${pos + 1}`}
+                    >
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: pos === 0 ? 0.8 : pos === 1 ? 0.5 : 1.1, type: "spring" }}
+                        className="mb-2"
+                      >
+                        {pos === 0 && <Crown className="w-10 h-10 text-yellow-400 mx-auto drop-shadow-lg" />}
+                        {pos === 1 && <Medal className="w-8 h-8 text-gray-400 mx-auto" />}
+                        {pos === 2 && <Award className="w-8 h-8 text-amber-600 mx-auto" />}
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: pos === 0 ? 0.9 : pos === 1 ? 0.6 : 1.2, type: "spring" }}
+                        className={`w-16 h-16 md:w-20 md:h-20 rounded-full bg-gradient-to-br ${medal.bg} flex items-center justify-center shadow-lg ${medal.shadow} ring-2 ${medal.ring}`}
+                      >
+                        <span className="text-white font-bold text-xl md:text-2xl">{entry.name.charAt(0).toUpperCase()}</span>
+                      </motion.div>
+
+                      <p className="text-sm font-semibold mt-1.5 truncate max-w-[6rem] text-center">{entry.name}</p>
+                      <p className="font-bold text-lg">{entry.score}</p>
+                      <p className="text-xs text-muted-foreground">{entry.correctAnswers} to'g'ri</p>
+
+                      <motion.div
+                        initial={{ height: 0 }}
+                        animate={{ height }}
+                        transition={{ delay: pos === 0 ? 1.0 : pos === 1 ? 0.7 : 1.3, duration: 0.6, type: "spring" }}
+                        className={`w-28 md:w-32 rounded-t-md bg-gradient-to-t ${medal.bg} flex items-start justify-center pt-4 mt-1`}
+                        style={{ minHeight: 0 }}
+                      >
+                        <span className="text-white text-4xl md:text-5xl font-black drop-shadow">{pos + 1}</span>
+                      </motion.div>
+                    </motion.div>
+                  );
+                })}
+              </div>
             )}
-            {phase === "finished" && (
-              <Button className="w-full" variant="outline" onClick={() => { setPhase("setup"); setSession(null); setParticipants([]); }} data-testid="button-new-session">
+
+            {leaderboard.length > 3 && (
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-muted-foreground text-center">To'liq reyting</h3>
+                {leaderboard.slice(3).map((entry, i) => {
+                  const rank = i + 4;
+                  return (
+                    <motion.div key={entry.participantId} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.4 + i * 0.05 }}>
+                      <Card className="p-3" data-testid={`card-rank-${rank}`}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-sm text-muted-foreground shrink-0">
+                            {rank}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium truncate text-sm">{entry.name}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="font-bold">{entry.score}</p>
+                            <p className="text-xs text-muted-foreground">{entry.correctAnswers} to'g'ri</p>
+                          </div>
+                        </div>
+                      </Card>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.8 }} className="flex gap-3 justify-center flex-wrap">
+              <Button variant="outline" onClick={() => { setPhase("setup"); setSession(null); setParticipants([]); setLeaderboard([]); }} data-testid="button-new-session">
                 Yangi sessiya
               </Button>
-            )}
+              <Button variant="outline" onClick={() => navigate("/teacher/results")} data-testid="button-view-results">
+                <BarChart3 className="w-4 h-4 mr-1" /> Natijalarni ko'rish
+              </Button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
