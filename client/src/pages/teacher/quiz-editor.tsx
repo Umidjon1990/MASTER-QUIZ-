@@ -107,6 +107,13 @@ export default function QuizEditor() {
     },
   });
 
+  const handleSaveQuiz = async () => {
+    if (newQ.questionText.trim()) {
+      handleAddQuestion();
+    }
+    updateQuiz.mutate();
+  };
+
   const updateQuiz = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/quizzes/${quizId}`, {
@@ -120,7 +127,7 @@ export default function QuizEditor() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
-      toast({ title: "Quiz yangilandi!" });
+      toast({ title: "Quiz saqlandi!" });
     },
   });
 
@@ -475,8 +482,8 @@ export default function QuizEditor() {
         <div className="flex gap-2 flex-wrap">
           {!isNew && (
             <Button
-              onClick={() => updateQuiz.mutate()}
-              disabled={updateQuiz.isPending}
+              onClick={handleSaveQuiz}
+              disabled={updateQuiz.isPending || addQuestion.isPending}
               className="gradient-purple border-0"
               data-testid="button-save-quiz-top"
             >
@@ -515,8 +522,8 @@ export default function QuizEditor() {
           <Label>Ommaviy quiz (bepul)</Label>
         </div>
         <Button
-          onClick={() => isNew ? createQuiz.mutate() : updateQuiz.mutate()}
-          disabled={createQuiz.isPending || updateQuiz.isPending}
+          onClick={() => isNew ? createQuiz.mutate() : handleSaveQuiz()}
+          disabled={createQuiz.isPending || updateQuiz.isPending || addQuestion.isPending}
           className="gradient-purple border-0"
           data-testid="button-save-quiz"
         >
