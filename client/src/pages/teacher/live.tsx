@@ -93,6 +93,10 @@ export default function TeacherLive() {
         credentials: "include",
       });
       const data = await res.json();
+      if (!res.ok) {
+        toast({ title: data.message || "Xatolik yuz berdi", variant: "destructive" });
+        return;
+      }
       setSession(data);
       setPhase("waiting");
 
@@ -105,7 +109,11 @@ export default function TeacherLive() {
 
   const startQuiz = () => {
     if (!session || !socket) return;
-    socket.emit("host:start-quiz", { sessionId: session.id });
+    socket.emit("host:start-quiz", { sessionId: session.id }, (response: any) => {
+      if (response && !response.success) {
+        toast({ title: response.error || "Quizni boshlashda xatolik", variant: "destructive" });
+      }
+    });
   };
 
   const nextQuestion = () => {

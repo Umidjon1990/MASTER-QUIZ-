@@ -367,6 +367,13 @@ export async function registerRoutes(
   app.post("/api/sessions", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const userId = req.userId;
+      const quiz = await storage.getQuiz(req.body.quizId);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.status !== "published") return res.status(400).json({ message: "Quiz avval nashr qilinishi kerak" });
+
+      const questionsList = await storage.getQuestionsByQuiz(req.body.quizId);
+      if (questionsList.length === 0) return res.status(400).json({ message: "Quizda savollar yo'q. Avval savollar qo'shing" });
+
       const joinCode = generateJoinCode();
       const session = await storage.createLiveSession({
         quizId: req.body.quizId,

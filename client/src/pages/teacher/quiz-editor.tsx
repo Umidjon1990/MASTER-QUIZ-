@@ -252,11 +252,23 @@ export default function QuizEditor() {
         <div className="flex-1">
           <h1 className="text-2xl font-bold" data-testid="text-editor-title">{isNew ? "Yangi Quiz" : "Quiz Tahrirlash"}</h1>
         </div>
-        {!isNew && quiz?.status === "draft" && (
-          <Button onClick={() => publishQuiz.mutate()} className="gradient-teal border-0" data-testid="button-publish">
-            <CheckCircle className="w-4 h-4 mr-1" /> Nashr qilish
-          </Button>
-        )}
+        <div className="flex gap-2 flex-wrap">
+          {!isNew && (
+            <Button
+              onClick={() => updateQuiz.mutate()}
+              disabled={updateQuiz.isPending}
+              className="gradient-purple border-0"
+              data-testid="button-save-quiz-top"
+            >
+              <Save className="w-4 h-4 mr-1" /> Saqlash
+            </Button>
+          )}
+          {!isNew && quiz?.status === "draft" && (
+            <Button onClick={() => publishQuiz.mutate()} className="gradient-teal border-0" data-testid="button-publish">
+              <CheckCircle className="w-4 h-4 mr-1" /> Nashr qilish
+            </Button>
+          )}
+        </div>
       </motion.div>
 
       <Card className="p-6 space-y-4">

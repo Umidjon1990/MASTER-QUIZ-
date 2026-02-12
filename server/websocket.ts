@@ -49,20 +49,26 @@ export function setupWebSocket(httpServer: HttpServer) {
       }
     });
 
-    socket.on("host:start-quiz", async (data) => {
+    socket.on("host:start-quiz", async (data, callback) => {
       try {
         const { sessionId } = data;
+        const session = await storage.getLiveSession(sessionId);
+        if (!session) {
+          callback?.({ success: false, error: "Sessiya topilmadi" });
+          return;
+        }
+
+        const questionsList = await storage.getQuestionsByQuiz(session.quizId);
+        if (questionsList.length === 0) {
+          callback?.({ success: false, error: "Quizda savollar yo'q. Avval savollar qo'shing" });
+          return;
+        }
+
         await storage.updateLiveSession(sessionId, {
           status: "active",
           startedAt: new Date(),
           currentQuestionIndex: 0,
         } as any);
-
-        const session = await storage.getLiveSession(sessionId);
-        if (!session) return;
-
-        const questionsList = await storage.getQuestionsByQuiz(session.quizId);
-        if (questionsList.length === 0) return;
 
         await storage.incrementQuizPlays(session.quizId);
 
