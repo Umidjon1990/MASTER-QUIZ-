@@ -26,7 +26,7 @@ export async function registerRoutes(
 
   const requireRole = (roles: string[]) => {
     return async (req: any, res: any, next: any) => {
-      const userId = req.user?.claims?.sub;
+      const userId = req.userId;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const profile = await storage.getUserProfile(userId);
       if (!profile || !roles.includes(profile.role)) {
@@ -39,17 +39,15 @@ export async function registerRoutes(
 
   app.get("/api/profile", requireAuth, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.userId;
       let profile = await storage.getUserProfile(userId);
       if (!profile) {
-        const stats = await storage.getDashboardStats();
-        const role = stats.totalUsers === 0 ? "admin" : "student";
         profile = await storage.createUserProfile({
           userId,
-          role,
-          displayName: req.user.claims.first_name || req.user.claims.email || "User",
+          role: "student",
+          displayName: req.userFirstName || req.userEmail || "User",
           plan: "free",
-          quizLimit: role === "admin" ? 999 : 5,
+          quizLimit: 5,
         });
       }
       res.json(profile);
@@ -61,7 +59,7 @@ export async function registerRoutes(
 
   app.patch("/api/profile", requireAuth, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.userId;
       const updated = await storage.updateUserProfile(userId, req.body);
       res.json(updated);
     } catch (error) {
@@ -111,7 +109,7 @@ export async function registerRoutes(
 
   app.get("/api/quizzes", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.userId;
       const profile = req.userProfile;
       const myQuizzes = profile.role === "admin"
         ? await storage.getAllQuizzes()
@@ -124,7 +122,7 @@ export async function registerRoutes(
 
   app.post("/api/quizzes", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.userId;
       const quiz = await storage.createQuiz({
         ...req.body,
         creatorId: userId,
@@ -238,7 +236,7 @@ export async function registerRoutes(
 
   app.post("/api/sessions", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.userId;
       const joinCode = generateJoinCode();
       const session = await storage.createLiveSession({
         quizId: req.body.quizId,
@@ -301,7 +299,7 @@ export async function registerRoutes(
 
   app.get("/api/my-results", requireAuth, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.userId;
       const results = await storage.getResultsByUser(userId);
       res.json(results);
     } catch (error) {
