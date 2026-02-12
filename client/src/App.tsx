@@ -22,6 +22,7 @@ import TeacherResults from "@/pages/teacher/results";
 import StudentDashboard from "@/pages/student/index";
 import StudentResults from "@/pages/student/results";
 import JoinPlay from "@/pages/play/join";
+import AuthPage from "@/pages/auth";
 
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
@@ -135,6 +136,7 @@ function AppRouter() {
   return (
     <Switch>
       <Route path="/" component={Landing} />
+      <Route path="/auth" component={AuthPage} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/play/join" component={JoinPlay} />
       <Route path="/admin/:rest*" component={AdminLayout} />

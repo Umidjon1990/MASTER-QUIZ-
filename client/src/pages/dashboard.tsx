@@ -25,7 +25,7 @@ export default function Dashboard() {
   }
 
   if (!user) {
-    window.location.href = "/api/login";
+    navigate("/auth");
     return null;
   }
 

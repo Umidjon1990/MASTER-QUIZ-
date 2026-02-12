@@ -60,7 +60,7 @@ export default function Landing() {
                 Dashboard
               </Button>
             ) : (
-              <Button onClick={() => (window.location.href = "/api/login")} data-testid="button-login">
+              <Button onClick={() => navigate("/auth")} data-testid="button-login">
                 Kirish
               </Button>
             )}
