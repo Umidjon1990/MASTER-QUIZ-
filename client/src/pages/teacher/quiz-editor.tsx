@@ -13,7 +13,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, Send } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, Send, ListChecks, ToggleLeft, MessageSquare } from "lucide-react";
 import type { Quiz, Question, UserProfile } from "@shared/schema";
 
 function MediaPreview({ mediaUrl, mediaType, className }: { mediaUrl: string; mediaType: string; className?: string }) {
@@ -269,6 +270,8 @@ export default function QuizEditor() {
     timeLimit: 30,
     mediaUrl: "",
     mediaType: "",
+    type: "multiple_choice" as "multiple_choice" | "true_false" | "open_ended",
+    openAnswer: "",
   });
 
   const [uploading, setUploading] = useState(false);
@@ -302,27 +305,48 @@ export default function QuizEditor() {
       toast({ title: "Savol matnini kiriting", variant: "destructive" });
       return;
     }
-    const filledOptions = newQ.options.filter((o) => o.trim());
-    if (filledOptions.length < 2) {
-      toast({ title: "Kamida 2 ta variant kiriting", variant: "destructive" });
-      return;
+    let correctAnswer = "";
+    let options: string[] | null = null;
+
+    if (newQ.type === "multiple_choice") {
+      const filledOptions = newQ.options.filter((o) => o.trim());
+      if (filledOptions.length < 2) {
+        toast({ title: "Kamida 2 ta variant kiriting", variant: "destructive" });
+        return;
+      }
+      if (newQ.correctIndex < 0 || newQ.correctIndex >= newQ.options.length || !newQ.options[newQ.correctIndex]?.trim()) {
+        toast({ title: "To'g'ri javobni tanlang", variant: "destructive" });
+        return;
+      }
+      options = filledOptions;
+      correctAnswer = newQ.options[newQ.correctIndex].trim();
+    } else if (newQ.type === "true_false") {
+      if (newQ.correctIndex < 0) {
+        toast({ title: "To'g'ri yoki Noto'g'ri tanlang", variant: "destructive" });
+        return;
+      }
+      correctAnswer = newQ.correctIndex === 0 ? "true" : "false";
+      options = ["To'g'ri", "Noto'g'ri"];
+    } else if (newQ.type === "open_ended") {
+      if (!newQ.openAnswer.trim()) {
+        toast({ title: "To'g'ri javobni kiriting", variant: "destructive" });
+        return;
+      }
+      correctAnswer = newQ.openAnswer.trim();
     }
-    if (newQ.correctIndex < 0 || newQ.correctIndex >= newQ.options.length || !newQ.options[newQ.correctIndex]?.trim()) {
-      toast({ title: "To'g'ri javobni tanlang", variant: "destructive" });
-      return;
-    }
+
     addQuestion.mutate({
-      type: "multiple_choice",
+      type: newQ.type,
       questionText: newQ.questionText,
-      options: filledOptions,
-      correctAnswer: newQ.options[newQ.correctIndex].trim(),
+      options,
+      correctAnswer,
       points: newQ.points,
       timeLimit: newQ.timeLimit,
       mediaUrl: newQ.mediaUrl || null,
       mediaType: newQ.mediaType || null,
       orderIndex: (questionsList?.length || 0),
     });
-    setNewQ({ questionText: "", options: ["", "", "", ""], correctIndex: -1, points: 100, timeLimit: 30, mediaUrl: "", mediaType: "" });
+    setNewQ({ questionText: "", options: ["", "", "", ""], correctIndex: -1, points: 100, timeLimit: 30, mediaUrl: "", mediaType: "", type: newQ.type, openAnswer: "" });
   };
 
   if (quizLoading) {
@@ -479,8 +503,22 @@ export default function QuizEditor() {
                         data-testid="input-tg-chat-id"
                       />
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      Yuboriladi: <span className="font-medium text-foreground">{questionsList?.length || 0}</span> ta savol anonim quiz shaklida
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <p>Yuboriladi: <span className="font-medium text-foreground">{questionsList?.length || 0}</span> ta savol</p>
+                      {questionsList && questionsList.length > 0 && (
+                        <p className="text-xs">
+                          {(() => {
+                            const mc = questionsList.filter(q => q.type === "multiple_choice" || !q.type).length;
+                            const tf = questionsList.filter(q => q.type === "true_false").length;
+                            const oe = questionsList.filter(q => q.type === "open_ended").length;
+                            const parts = [];
+                            if (mc > 0) parts.push(`${mc} variantli`);
+                            if (tf > 0) parts.push(`${tf} to'g'ri/noto'g'ri`);
+                            if (oe > 0) parts.push(`${oe} yozma (matn sifatida)`);
+                            return parts.join(", ");
+                          })()}
+                        </p>
+                      )}
                     </div>
                     <Button
                       onClick={handleTelegramSend}
@@ -510,17 +548,28 @@ export default function QuizEditor() {
                       <div className="flex-1 space-y-2">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <Badge variant="secondary" className="text-xs">{idx + 1}</Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {q.type === "true_false" ? "To'g'ri/Noto'g'ri" : q.type === "open_ended" ? "Yozma" : "Variantli"}
+                          </Badge>
                           <span className="text-xs text-muted-foreground">{q.points} ball | {q.timeLimit}s</span>
                         </div>
                         <p className="font-medium">{q.questionText}</p>
                         {q.mediaUrl && q.mediaType && (
                           <MediaPreview mediaUrl={q.mediaUrl} mediaType={q.mediaType} />
                         )}
-                        {q.options && (
+                        {q.type === "open_ended" ? (
+                          <div className="mt-2">
+                            <span className="text-xs px-2 py-1 rounded-sm gradient-teal text-white">Javob: {q.correctAnswer}</span>
+                          </div>
+                        ) : q.options && (
                           <div className="flex gap-2 mt-2 flex-wrap">
                             {(q.options as string[]).map((opt, oi) => (
-                              <span key={oi} className={`text-xs px-2 py-1 rounded-sm ${opt === q.correctAnswer ? "gradient-teal text-white" : "bg-muted"}`}>
-                                {String.fromCharCode(65 + oi)}) {opt}
+                              <span key={oi} className={`text-xs px-2 py-1 rounded-sm ${
+                                q.type === "true_false"
+                                  ? ((opt === "To'g'ri" && q.correctAnswer === "true") || (opt === "Noto'g'ri" && q.correctAnswer === "false") ? "gradient-teal text-white" : "bg-muted")
+                                  : (opt === q.correctAnswer ? "gradient-teal text-white" : "bg-muted")
+                              }`}>
+                                {q.type === "true_false" ? opt : `${String.fromCharCode(65 + oi)}) ${opt}`}
                               </span>
                             ))}
                           </div>
@@ -538,6 +587,27 @@ export default function QuizEditor() {
 
           <Card className="p-6 space-y-4 border-dashed">
             <h3 className="font-semibold">Yangi savol qo'shish</h3>
+
+            <div>
+              <Label>Savol turi</Label>
+              <Select value={newQ.type} onValueChange={(v: "multiple_choice" | "true_false" | "open_ended") => setNewQ({ ...newQ, type: v, correctIndex: -1, openAnswer: "" })}>
+                <SelectTrigger data-testid="select-question-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="multiple_choice">
+                    <span className="flex items-center gap-2"><ListChecks className="w-4 h-4" /> Variantli (A/B/C/D)</span>
+                  </SelectItem>
+                  <SelectItem value="true_false">
+                    <span className="flex items-center gap-2"><ToggleLeft className="w-4 h-4" /> To'g'ri / Noto'g'ri</span>
+                  </SelectItem>
+                  <SelectItem value="open_ended">
+                    <span className="flex items-center gap-2"><MessageSquare className="w-4 h-4" /> Yozma javob</span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div>
               <Label>Savol matni</Label>
               <Textarea value={newQ.questionText} onChange={(e) => setNewQ({ ...newQ, questionText: e.target.value })} placeholder="Savolingizni yozing..." data-testid="input-question-text" />
@@ -580,41 +650,96 @@ export default function QuizEditor() {
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label>Javob variantlari (to'g'ri javobni tanlang)</Label>
-              {newQ.options.map((opt, i) => (
-                <label
-                  key={i}
-                  className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${
-                    newQ.correctIndex === i ? "border-green-500 bg-green-500/10" : "hover-elevate"
-                  }`}
-                  data-testid={`label-option-${i}`}
-                >
-                  <input
-                    type="radio"
-                    name="correctAnswer"
-                    checked={newQ.correctIndex === i}
-                    onChange={() => setNewQ({ ...newQ, correctIndex: i })}
-                    className="w-4 h-4 accent-green-500"
-                    data-testid={`radio-option-${i}`}
-                  />
-                  <div className={`w-8 h-8 rounded-md flex items-center justify-center text-white text-sm font-bold shrink-0 ${["quiz-option-a", "quiz-option-b", "quiz-option-c", "quiz-option-d"][i]}`}>
-                    {String.fromCharCode(65 + i)}
-                  </div>
-                  <Input
-                    value={opt}
-                    onChange={(e) => {
-                      const opts = [...newQ.options];
-                      opts[i] = e.target.value;
-                      setNewQ({ ...newQ, options: opts });
-                    }}
-                    placeholder={`Variant ${String.fromCharCode(65 + i)}`}
-                    className="flex-1"
-                    data-testid={`input-option-${i}`}
-                  />
-                </label>
-              ))}
-            </div>
+            {newQ.type === "multiple_choice" && (
+              <div className="space-y-2">
+                <Label>Javob variantlari (to'g'ri javobni tanlang)</Label>
+                {newQ.options.map((opt, i) => (
+                  <label
+                    key={i}
+                    className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${
+                      newQ.correctIndex === i ? "border-green-500 bg-green-500/10" : "hover-elevate"
+                    }`}
+                    data-testid={`label-option-${i}`}
+                  >
+                    <input
+                      type="radio"
+                      name="correctAnswer"
+                      checked={newQ.correctIndex === i}
+                      onChange={() => setNewQ({ ...newQ, correctIndex: i })}
+                      className="w-4 h-4 accent-green-500"
+                      data-testid={`radio-option-${i}`}
+                    />
+                    <div className={`w-8 h-8 rounded-md flex items-center justify-center text-white text-sm font-bold shrink-0 ${["quiz-option-a", "quiz-option-b", "quiz-option-c", "quiz-option-d"][i]}`}>
+                      {String.fromCharCode(65 + i)}
+                    </div>
+                    <Input
+                      value={opt}
+                      onChange={(e) => {
+                        const opts = [...newQ.options];
+                        opts[i] = e.target.value;
+                        setNewQ({ ...newQ, options: opts });
+                      }}
+                      placeholder={`Variant ${String.fromCharCode(65 + i)}`}
+                      className="flex-1"
+                      data-testid={`input-option-${i}`}
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {newQ.type === "true_false" && (
+              <div className="space-y-2">
+                <Label>To'g'ri javobni tanlang</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label
+                    className={`flex items-center justify-center gap-2 p-4 rounded-md border cursor-pointer transition-colors text-lg font-semibold ${
+                      newQ.correctIndex === 0 ? "border-green-500 bg-green-500/10" : "hover-elevate"
+                    }`}
+                    data-testid="label-tf-true"
+                  >
+                    <input
+                      type="radio"
+                      name="correctAnswer"
+                      checked={newQ.correctIndex === 0}
+                      onChange={() => setNewQ({ ...newQ, correctIndex: 0 })}
+                      className="w-4 h-4 accent-green-500"
+                      data-testid="radio-tf-true"
+                    />
+                    <CheckCircle className="w-5 h-5 text-green-500" /> To'g'ri
+                  </label>
+                  <label
+                    className={`flex items-center justify-center gap-2 p-4 rounded-md border cursor-pointer transition-colors text-lg font-semibold ${
+                      newQ.correctIndex === 1 ? "border-red-500 bg-red-500/10" : "hover-elevate"
+                    }`}
+                    data-testid="label-tf-false"
+                  >
+                    <input
+                      type="radio"
+                      name="correctAnswer"
+                      checked={newQ.correctIndex === 1}
+                      onChange={() => setNewQ({ ...newQ, correctIndex: 1 })}
+                      className="w-4 h-4 accent-red-500"
+                      data-testid="radio-tf-false"
+                    />
+                    <X className="w-5 h-5 text-red-500" /> Noto'g'ri
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {newQ.type === "open_ended" && (
+              <div className="space-y-2">
+                <Label>To'g'ri javob (talaba kiritishi kerak bo'lgan javob)</Label>
+                <Input
+                  value={newQ.openAnswer}
+                  onChange={(e) => setNewQ({ ...newQ, openAnswer: e.target.value })}
+                  placeholder="To'g'ri javobni yozing..."
+                  data-testid="input-open-correct"
+                />
+                <p className="text-xs text-muted-foreground">Talabaning javobi shu matnga mos kelsa, to'g'ri hisoblanadi (katta-kichik harfga e'tibor berilmaydi)</p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div>

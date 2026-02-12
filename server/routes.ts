@@ -277,21 +277,32 @@ export async function registerRoutes(
   app.post("/api/quizzes/:quizId/questions", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const { questionText, options, correctAnswer, points, timeLimit, mediaUrl, mediaType, orderIndex } = req.body;
+      const type = req.body.type || "multiple_choice";
       if (!questionText || !correctAnswer) {
         return res.status(400).json({ message: "Savol matni va to'g'ri javob kerak" });
       }
-      if (!options || !Array.isArray(options) || options.length < 2) {
-        return res.status(400).json({ message: "Kamida 2 ta variant kerak" });
+      if (type === "multiple_choice") {
+        if (!options || !Array.isArray(options) || options.length < 2) {
+          return res.status(400).json({ message: "Kamida 2 ta variant kerak" });
+        }
+        if (!options.includes(correctAnswer)) {
+          return res.status(400).json({ message: "To'g'ri javob variantlar ichida bo'lishi kerak" });
+        }
       }
-      if (!options.includes(correctAnswer)) {
-        return res.status(400).json({ message: "To'g'ri javob variantlar ichida bo'lishi kerak" });
+      if (type === "true_false") {
+        if (!["true", "false"].includes(correctAnswer)) {
+          return res.status(400).json({ message: "To'g'ri/Noto'g'ri javob 'true' yoki 'false' bo'lishi kerak" });
+        }
       }
+      const questionOptions = type === "multiple_choice" ? options
+        : type === "true_false" ? ["To'g'ri", "Noto'g'ri"]
+        : null;
       const question = await storage.createQuestion({
         quizId: req.params.quizId,
         questionText,
-        options,
+        options: questionOptions,
         correctAnswer,
-        type: req.body.type || "multiple_choice",
+        type,
         points: points || 100,
         timeLimit: timeLimit || 30,
         mediaUrl: mediaUrl || null,
@@ -591,8 +602,22 @@ export async function registerRoutes(
 
       await bot.sendMessage(targetChat, `📝 *${quiz.title}*\n${quiz.description || ""}\n\n_${questionsList.length} ta savol_`, { parse_mode: "Markdown" });
 
-      for (const q of questionsList) {
-        if (q.options && q.options.length >= 2) {
+      for (let i = 0; i < questionsList.length; i++) {
+        const q = questionsList[i];
+        if (q.type === "open_ended") {
+          const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          await bot.sendMessage(targetChat, `<b>${i + 1}. ${escHtml(q.questionText)}</b>\n\n<i>Yozma javob talab qilinadi</i>\nTo'g'ri javob: <tg-spoiler>${escHtml(q.correctAnswer)}</tg-spoiler>`, { parse_mode: "HTML" });
+          sent++;
+        } else if (q.type === "true_false") {
+          const tfOptions = ["To'g'ri", "Noto'g'ri"];
+          const correctIndex = q.correctAnswer === "true" ? 0 : 1;
+          await bot.sendPoll(targetChat, q.questionText, tfOptions, {
+            type: "quiz",
+            correct_option_id: correctIndex,
+            is_anonymous: true,
+          } as any);
+          sent++;
+        } else if (q.options && q.options.length >= 2) {
           const correctIndex = q.options.indexOf(q.correctAnswer);
           await bot.sendPoll(targetChat, q.questionText, q.options, {
             type: "quiz",
@@ -600,9 +625,9 @@ export async function registerRoutes(
             is_anonymous: true,
           } as any);
           sent++;
-          if (sent < questionsList.length) {
-            await new Promise(r => setTimeout(r, 500));
-          }
+        }
+        if (i < questionsList.length - 1) {
+          await new Promise(r => setTimeout(r, 500));
         }
       }
 
