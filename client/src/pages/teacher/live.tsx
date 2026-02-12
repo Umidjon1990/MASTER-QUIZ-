@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { io, Socket } from "socket.io-client";
 import confetti from "canvas-confetti";
-import { Play, SkipForward, Users, Trophy, Copy, Send, Music, Lock, Link2, Check, Crown, Medal, Award, Flame, BarChart3 } from "lucide-react";
+import { Play, SkipForward, Users, Trophy, Copy, Send, Music, Lock, Link2, Check, Crown, Medal, Award, Flame, BarChart3, Timer, Zap } from "lucide-react";
 import type { Quiz, LiveSession } from "@shared/schema";
 
 let socket: Socket | null = null;
@@ -43,6 +44,11 @@ export default function TeacherLive() {
   const [answersReceived, setAnswersReceived] = useState(0);
   const [telegramChatId, setTelegramChatId] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
+  const [autoAdvance, setAutoAdvance] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [questionTimeLimit, setQuestionTimeLimit] = useState(0);
+  const [leaderboardCountdown, setLeaderboardCountdown] = useState(0);
+  const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: quizzes } = useQuery<Quiz[]>({ queryKey: ["/api/quizzes"] });
 
@@ -52,8 +58,34 @@ export default function TeacherLive() {
         socket.disconnect();
         socket = null;
       }
+      if (autoTimerRef.current) clearTimeout(autoTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (phase === "question" && timeLeft > 0) {
+      const timer = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+    if (phase === "question" && timeLeft === 0 && questionTimeLimit > 0 && autoAdvance && socket && session) {
+      socket.emit("host:show-leaderboard", { sessionId: session.id });
+    }
+  }, [timeLeft, phase, questionTimeLimit, autoAdvance]);
+
+  useEffect(() => {
+    if (phase === "leaderboard" && autoAdvance && leaderboardCountdown > 0) {
+      const timer = setTimeout(() => setLeaderboardCountdown((t) => t - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+    if (phase === "leaderboard" && autoAdvance && leaderboardCountdown === 0 && leaderboard.length > 0) {
+      autoTimerRef.current = setTimeout(() => {
+        if (socket && session) {
+          socket.emit("host:next-question", { sessionId: session.id });
+        }
+      }, 500);
+      return () => { if (autoTimerRef.current) clearTimeout(autoTimerRef.current); };
+    }
+  }, [leaderboardCountdown, phase, autoAdvance, leaderboard]);
 
   const connectSocket = useCallback(() => {
     if (socket) return socket;
@@ -78,6 +110,9 @@ export default function TeacherLive() {
       setTotalQuestions(data.total);
       setPhase("question");
       setAnswersReceived(0);
+      const tl = data.timerEnabled !== false && data.question.timeLimit > 0 ? data.question.timeLimit : 0;
+      setTimeLeft(tl);
+      setQuestionTimeLimit(tl);
     });
 
     socket.on("answer:received", () => {
@@ -88,6 +123,7 @@ export default function TeacherLive() {
       const sorted = [...data.leaderboard].sort((a: any, b: any) => b.score - a.score).map((e: any, i: number) => ({ ...e, rank: i + 1 }));
       setLeaderboard(sorted);
       setPhase("leaderboard");
+      setLeaderboardCountdown(5);
     });
 
     socket.on("quiz:finished", (data) => {
@@ -216,6 +252,21 @@ export default function TeacherLive() {
                   data-testid="input-session-password"
                 />
               </div>
+              <div className="flex items-center justify-between gap-2 p-3 rounded-md bg-muted/50">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <Label htmlFor="auto-advance" className="text-sm font-medium cursor-pointer">Avtomatik rejim</Label>
+                    <p className="text-xs text-muted-foreground">Vaqt tugaganda keyingi savolga avtomatik o'tadi</p>
+                  </div>
+                </div>
+                <Switch
+                  id="auto-advance"
+                  checked={autoAdvance}
+                  onCheckedChange={setAutoAdvance}
+                  data-testid="switch-auto-advance"
+                />
+              </div>
               <Button className="w-full gradient-purple border-0" onClick={createSession} disabled={!selectedQuizId} data-testid="button-create-session">
                 <Play className="w-4 h-4 mr-1" /> Sessiya boshlash
               </Button>
@@ -296,12 +347,29 @@ export default function TeacherLive() {
         {phase === "question" && currentQuestion && (
           <motion.div key={`q-${questionIndex}`} initial={{ opacity: 0, x: 100 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -100 }} className="space-y-6">
             <div className="flex items-center justify-between gap-4 flex-wrap">
-              <Badge variant="secondary" className="text-lg px-4 py-1">
-                {questionIndex + 1} / {totalQuestions}
-              </Badge>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Users className="w-4 h-4" />
-                <span>{answersReceived} / {participants.length} javob</span>
+              <div className="flex items-center gap-3 flex-wrap">
+                <Badge variant="secondary" className="text-lg px-4 py-1">
+                  {questionIndex + 1} / {totalQuestions}
+                </Badge>
+                {autoAdvance && (
+                  <Badge variant="outline" data-testid="badge-auto-mode">
+                    <Zap className="w-3 h-3 mr-1" /> Avtomatik
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-4 flex-wrap">
+                {questionTimeLimit > 0 && (
+                  <div className="flex items-center gap-2" data-testid="text-question-timer">
+                    <Timer className={`w-5 h-5 ${timeLeft <= 5 ? "text-red-500" : "text-muted-foreground"}`} />
+                    <span className={`text-2xl font-bold tabular-nums ${timeLeft <= 5 ? "text-red-500" : ""}`}>
+                      {timeLeft}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Users className="w-4 h-4" />
+                  <span>{answersReceived} / {participants.length} javob</span>
+                </div>
               </div>
             </div>
 
@@ -379,9 +447,16 @@ export default function TeacherLive() {
                 </motion.div>
               );
             })}
-            <Button className="w-full gradient-purple border-0" onClick={nextQuestion} data-testid="button-continue">
-              <SkipForward className="w-4 h-4 mr-1" /> Keyingi savol
-            </Button>
+            {autoAdvance ? (
+              <div className="text-center text-sm text-muted-foreground" data-testid="text-auto-countdown">
+                <Zap className="w-4 h-4 inline mr-1" />
+                Keyingi savol {leaderboardCountdown} soniyada...
+              </div>
+            ) : (
+              <Button className="w-full gradient-purple border-0" onClick={nextQuestion} data-testid="button-continue">
+                <SkipForward className="w-4 h-4 mr-1" /> Keyingi savol
+              </Button>
+            )}
           </motion.div>
         )}
 
