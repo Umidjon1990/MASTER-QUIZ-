@@ -22,9 +22,15 @@ import TeacherQuizzes from "@/pages/teacher/quizzes";
 import QuizEditor from "@/pages/teacher/quiz-editor";
 import TeacherLive from "@/pages/teacher/live";
 import TeacherResults from "@/pages/teacher/results";
+import TeacherAssignments from "@/pages/teacher/assignments";
+import TeacherClasses from "@/pages/teacher/classes";
+import TeacherQuestionBank from "@/pages/teacher/question-bank";
 import StudentDashboard from "@/pages/student/index";
 import StudentResults from "@/pages/student/results";
+import StudentAssignments from "@/pages/student/assignments";
+import StudentClasses from "@/pages/student/classes";
 import JoinPlay from "@/pages/play/join";
+import DiscoverPage from "@/pages/discover";
 import AuthPage from "@/pages/auth";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -136,6 +142,15 @@ function App() {
             <Route path="/teacher/results">
               {() => <ProtectedPage component={TeacherResults} />}
             </Route>
+            <Route path="/teacher/assignments">
+              {() => <ProtectedPage component={TeacherAssignments} />}
+            </Route>
+            <Route path="/teacher/classes">
+              {() => <ProtectedPage component={TeacherClasses} />}
+            </Route>
+            <Route path="/teacher/question-bank">
+              {() => <ProtectedPage component={TeacherQuestionBank} />}
+            </Route>
 
             <Route path="/student">
               {() => <ProtectedPage component={StudentDashboard} />}
@@ -143,6 +158,14 @@ function App() {
             <Route path="/student/results">
               {() => <ProtectedPage component={StudentResults} />}
             </Route>
+            <Route path="/student/assignments">
+              {() => <ProtectedPage component={StudentAssignments} />}
+            </Route>
+            <Route path="/student/classes">
+              {() => <ProtectedPage component={StudentClasses} />}
+            </Route>
+
+            <Route path="/discover" component={DiscoverPage} />
 
             <Route component={NotFound} />
           </Switch>

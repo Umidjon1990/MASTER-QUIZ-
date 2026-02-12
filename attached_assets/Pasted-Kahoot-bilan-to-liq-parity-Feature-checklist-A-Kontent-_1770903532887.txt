@@ -1,0 +1,271 @@
+Kahoot bilan to‘liq parity: “Feature checklist”
+A) Kontent yaratish (Creator/Teacher)
+
+Quiz/Kahoot builder (drag & drop, preview, template)
+
+Savol turlari (Kahoot-level):
+
+Multiple choice (1 to‘g‘ri), Multiple select (ko‘p to‘g‘ri)
+
+True/False
+
+Puzzle / Ordering (tartiblash)
+
+Type answer (short answer, numeric)
+
+Poll / Survey (ball yo‘q)
+
+Word cloud
+
+Slider / Scale (agar xohlasangiz)
+
+Matching (keyingi bosqich, lekin parity uchun qo‘shiladi)
+
+Media: rasm, GIF, video (YouTube embed yoki upload), audio (ixtiyoriy)
+
+Har savol uchun: timer, points, double points, answer reveal, randomize options
+
+Question bank: kategoriya/tag, qidiruv, import/clone
+
+Collaboration: bir quizni bir nechta o‘qituvchi tahrirlay olishi
+
+Folders/Collections, draft/publish, versioning (history)
+
+B) Live o‘yin (Host panel) — “Kahoot experience”
+
+PIN/room code bilan join (guest nick yoki login)
+
+Lobby: nickname generator/moderation, lock room, kick, max players
+
+Host flow: start, next, pause, skip, extend time
+
+Live charts: real-time javoblar taqsimoti
+
+Leaderboard: har savoldan keyin + yakunda (animatsiya)
+
+Team mode (ixtiyoriy): guruhlar bilan o‘ynash
+
+Music/sfx/theme (brendga mos, lekin o‘zingizniki)
+
+C) Assignments (Self-paced, “uyga vazifa”)
+
+Quizni muddat bilan berish (deadline)
+
+Har o‘quvchi mustaqil ishlaydi
+
+Attempts limit (1/2/unlimited)
+
+Randomization (savol/variant aralashtirish)
+
+Natijani sinf/klass kesimida ko‘rish
+
+D) Discover & Sharing (Kahoot library)
+
+Public/private/unlisted
+
+Qidiruv (title, tag, subject, grade)
+
+Rating/likes, plays count
+
+Share link, copy/duplicate, remix (fork)
+
+Content moderation (report, takedown)
+
+E) Reports & Analytics (teacher/admin uchun “must-have”)
+
+Session report (live game) + assignment report
+
+Savol kesimida: to‘g‘ri %, eng ko‘p xato variant, o‘rtacha vaqt
+
+O‘quvchi kesimida: progress, trend
+
+Export: CSV, PDF (keyinroq), Google Sheets (integratsiya)
+
+Dashboard: activity, engagement, top kahoots
+
+F) Classroom/Organizations (Admin level)
+
+Schools/Organizations (multi-tenant)
+
+Sinflar, guruhlar, enrollment (kod yoki import)
+
+Roles: Org Admin, Teacher, Student, Moderator
+
+Branding (logo, ranglar, domen) — enterprise
+
+Audit log (kim nima qildi), ruxsatlar (RBAC)
+
+G) Integratsiyalar (Kahoot-level yo‘l)
+
+SSO: Google/Microsoft (OAuth), optional SAML (enterprise)
+
+LMS: Google Classroom / MS Teams / Moodle (bosqichma-bosqich)
+
+Webhooks/API (keyinroq): report pull, user sync
+
+H) Trust & Safety / Anti-cheat (professional daraja)
+
+Rate limit (PIN brute-force va spam join)
+
+Nickname filter (profanity, blacklist)
+
+Tab switch / focus loss flags (assignment)
+
+Time anomaly detection (bot/cheat)
+
+Device/session fingerprint, duplicate join detection
+
+GDPR-style: data retention, delete/export
+
+2) Platforma modullari (katta loyihani boshqarish uchun “to‘g‘ri bo‘lishi shart”)
+
+Auth & Accounts
+
+RBAC + Organizations
+
+Content Service (quiz, questions, media, bank, collaboration)
+
+Game Engine (session state machine: lobby → Q1 → results → … → end)
+
+Realtime Gateway (WebSocket/Socket.IO)
+
+Reporting & Analytics
+
+Search & Discovery
+
+Moderation & Safety
+
+Billing/Plans (agar monetizatsiya qilmoqchi bo‘lsangiz)
+
+Notifications (email/push)
+
+3) Tavsiya etiladigan arxitektura (Kahootga o‘xshash scale uchun)
+
+Frontend
+
+Web App (Next.js + TS) — teacher/admin/host
+
+Player App (mobile-first web/PWA) — o‘quvchi
+
+(Keyinroq) React Native — mobil ilova
+
+Backend
+
+NestJS (Node.js) yoki Django/FastAPI (ikkinchisi analytics uchun yaxshi)
+
+PostgreSQL (asosiy)
+
+Redis (room state/cache/rate limit)
+
+Object storage (S3/MinIO) media uchun
+
+Search (OpenSearch/Meilisearch) — discover uchun
+
+Event bus (Kafka/RabbitMQ) — katta scale bo‘lsa (reporting, audit)
+
+Realtime
+
+WebSocket + Redis Pub/Sub (multi-instance scaling)
+
+“Sticky session” yoki gateway cluster
+
+Deploy
+
+Docker + CI/CD
+
+Monitoring: metrics/logs/traces (Sentry + Prometheus/Grafana)
+
+4) “Kahoot”ga o‘xshash eng muhim joy: Game Engine (state machine)
+
+Har bir o‘yin sessiyasi quyidagi aniq holatlar bilan ishlaydi:
+
+CREATED → LOBBY_OPEN → LOCKED
+
+QUESTION_ACTIVE (timer running)
+
+QUESTION_CLOSED (answer stop)
+
+REVEAL (correct answer + stats)
+
+LEADERBOARD
+
+NEXT / END
+
+Realtime eventlar (namuna):
+
+room.created, player.joined, player.kicked
+
+question.started, answer.submitted, question.ended
+
+stats.updated, leaderboard.updated, game.ended
+
+Bu design bo‘lmasa, platforma “jonli” sezilmaydi.
+
+5) UI/UX (zamonaviy ko‘rinish uchun minimal standartlar)
+
+3 ta alohida tajriba: Host panel (big screen), Player UI (telefon), Teacher dashboard
+
+Animatsiyalar: leaderboard, countdown, result reveal
+
+Accessibility: font scaling, contrast, keyboard navigation
+
+Localization: uz/ru/en (i18n tayyor)
+
+Design system: component library (shadcn/ui), tokenlar (spacing, radius, typography)
+
+6) Bosqichma-bosqich yetkazish (parity uchun eng to‘g‘ri yo‘l)
+Milestone 1 — “Kahoot Core” (live game)
+
+MCQ + True/False + Puzzle
+
+PIN join (guest), lobby + host panel
+
+Real-time charts + leaderboard
+
+Session report basic
+
+Milestone 2 — “Kahoot Pro” (assignments + library)
+
+Assignments (deadline, attempts)
+
+Public/private/unlisted + search
+
+Question bank + folders + duplicate/remix
+
+Export CSV
+
+Milestone 3 — “Enterprise” (org, SSO, moderation, analytics)
+
+Organizations, classes, imports
+
+SSO (Google/Microsoft), audit log
+
+Advanced analytics, moderation center
+
+Billing/plans (ixtiyoriy)
+
+Shu ketma-ketlik “hammasi bo‘lsin” talabini buzmaydi — shunchaki to‘g‘ri tartib bilan chiqaradi.
+
+7) Sizga hozir tayyorlab beradigan “ishchi hujjatlar”
+
+Agar xohlasangiz, keyingi xabarimda sizga tayyor implementatsiya paketini yozib beraman:
+
+PRD (Product Requirements Doc) — “Kahoot parity” talablar bilan
+
+Ekranlar ro‘yxati + user flow (Host/Teacher/Student/Admin)
+
+DB schema (Postgres) + indekslar
+
+API endpointlar (REST) + socket event spec
+
+Dev task breakdown (epic → stories)
+
+Men default qilib shuni qabul qilaman:
+
+PIN bilan guest join bor
+
+Platforma multi-tenant (maktablar/markazlar alohida)
+
+Uzbek tilidan boshlaymiz, keyin i18n
+
+Agar siz “ha, shu paketni yoz” desangiz — men darhol PRD + API + socket specni birga chiqarib beraman.

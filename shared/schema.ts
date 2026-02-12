@@ -30,11 +30,74 @@ export const quizzes = pgTable("quizzes", {
   isPublic: boolean("is_public").notNull().default(false),
   creatorId: varchar("creator_id").notNull(),
   timePerQuestion: integer("time_per_question").notNull().default(30),
+  shuffleQuestions: boolean("shuffle_questions").notNull().default(false),
+  shuffleOptions: boolean("shuffle_options").notNull().default(false),
   totalQuestions: integer("total_questions").notNull().default(0),
   totalPlays: integer("total_plays").notNull().default(0),
+  totalLikes: integer("total_likes").notNull().default(0),
   status: varchar("status", { length: 20 }).notNull().default("draft"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const assignments = pgTable("assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  quizId: varchar("quiz_id").notNull(),
+  creatorId: varchar("creator_id").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  classId: varchar("class_id"),
+  deadline: timestamp("deadline"),
+  attemptsLimit: integer("attempts_limit").notNull().default(1),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const assignmentAttempts = pgTable("assignment_attempts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  assignmentId: varchar("assignment_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  score: integer("score").notNull().default(0),
+  correctAnswers: integer("correct_answers").notNull().default(0),
+  totalQuestions: integer("total_questions").notNull().default(0),
+  answers: jsonb("answers").$type<Record<string, { answer: string; isCorrect: boolean; points: number }>>(),
+  completedAt: timestamp("completed_at").defaultNow(),
+});
+
+export const classes = pgTable("classes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  teacherId: varchar("teacher_id").notNull(),
+  joinCode: varchar("join_code", { length: 8 }).notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const classMembers = pgTable("class_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  classId: varchar("class_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  joinedAt: timestamp("joined_at").defaultNow(),
+});
+
+export const quizLikes = pgTable("quiz_likes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  quizId: varchar("quiz_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const questionBank = pgTable("question_bank", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  creatorId: varchar("creator_id").notNull(),
+  category: varchar("category", { length: 100 }),
+  tags: text("tags"),
+  type: varchar("type", { length: 30 }).notNull().default("multiple_choice"),
+  questionText: text("question_text").notNull(),
+  options: jsonb("options").$type<string[]>(),
+  correctAnswer: text("correct_answer").notNull(),
+  points: integer("points").notNull().default(100),
+  timeLimit: integer("time_limit").notNull().default(30),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const questions = pgTable("questions", {
@@ -103,12 +166,18 @@ export const quizResults = pgTable("quiz_results", {
 });
 
 export const insertUserProfileSchema = createInsertSchema(userProfiles).omit({ id: true, createdAt: true });
-export const insertQuizSchema = createInsertSchema(quizzes).omit({ id: true, createdAt: true, updatedAt: true, totalQuestions: true, totalPlays: true });
+export const insertQuizSchema = createInsertSchema(quizzes).omit({ id: true, createdAt: true, updatedAt: true, totalQuestions: true, totalPlays: true, totalLikes: true });
 export const insertQuestionSchema = createInsertSchema(questions).omit({ id: true });
 export const insertLiveSessionSchema = createInsertSchema(liveSessions).omit({ id: true, createdAt: true, participantCount: true, currentQuestionIndex: true });
 export const insertSessionParticipantSchema = createInsertSchema(sessionParticipants).omit({ id: true, joinedAt: true, score: true, correctAnswers: true, totalAnswered: true });
 export const insertSessionAnswerSchema = createInsertSchema(sessionAnswers).omit({ id: true, answeredAt: true });
 export const insertQuizResultSchema = createInsertSchema(quizResults).omit({ id: true, completedAt: true });
+export const insertAssignmentSchema = createInsertSchema(assignments).omit({ id: true, createdAt: true });
+export const insertAssignmentAttemptSchema = createInsertSchema(assignmentAttempts).omit({ id: true, completedAt: true });
+export const insertClassSchema = createInsertSchema(classes).omit({ id: true, createdAt: true });
+export const insertClassMemberSchema = createInsertSchema(classMembers).omit({ id: true, joinedAt: true });
+export const insertQuestionBankSchema = createInsertSchema(questionBank).omit({ id: true, createdAt: true });
+export const insertQuizLikeSchema = createInsertSchema(quizLikes).omit({ id: true, createdAt: true });
 
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type UserProfile = typeof userProfiles.$inferSelect;
@@ -124,3 +193,15 @@ export type InsertSessionAnswer = z.infer<typeof insertSessionAnswerSchema>;
 export type SessionAnswer = typeof sessionAnswers.$inferSelect;
 export type InsertQuizResult = z.infer<typeof insertQuizResultSchema>;
 export type QuizResult = typeof quizResults.$inferSelect;
+export type InsertAssignment = z.infer<typeof insertAssignmentSchema>;
+export type Assignment = typeof assignments.$inferSelect;
+export type InsertAssignmentAttempt = z.infer<typeof insertAssignmentAttemptSchema>;
+export type AssignmentAttempt = typeof assignmentAttempts.$inferSelect;
+export type InsertClass = z.infer<typeof insertClassSchema>;
+export type Class = typeof classes.$inferSelect;
+export type InsertClassMember = z.infer<typeof insertClassMemberSchema>;
+export type ClassMember = typeof classMembers.$inferSelect;
+export type InsertQuestionBank = z.infer<typeof insertQuestionBankSchema>;
+export type QuestionBankItem = typeof questionBank.$inferSelect;
+export type InsertQuizLike = z.infer<typeof insertQuizLikeSchema>;
+export type QuizLike = typeof quizLikes.$inferSelect;

@@ -278,7 +278,7 @@ export async function registerRoutes(
     try {
       const { questionText, options, correctAnswer, points, timeLimit, mediaUrl, mediaType, orderIndex } = req.body;
       const type = req.body.type || "multiple_choice";
-      if (!questionText || !correctAnswer) {
+      if (!questionText || (!correctAnswer && type !== "poll")) {
         return res.status(400).json({ message: "Savol matni va to'g'ri javob kerak" });
       }
       if (type === "multiple_choice") {
@@ -294,16 +294,33 @@ export async function registerRoutes(
           return res.status(400).json({ message: "To'g'ri/Noto'g'ri javob 'true' yoki 'false' bo'lishi kerak" });
         }
       }
+      if (type === "poll") {
+        if (!options || !Array.isArray(options) || options.length < 2) {
+          return res.status(400).json({ message: "Kamida 2 ta variant kerak" });
+        }
+      }
+      if (type === "multiple_select") {
+        if (!options || !Array.isArray(options) || options.length < 2) {
+          return res.status(400).json({ message: "Kamida 2 ta variant kerak" });
+        }
+        if (!correctAnswer || typeof correctAnswer !== "string") {
+          return res.status(400).json({ message: "To'g'ri javoblarni tanlang" });
+        }
+      }
       const questionOptions = type === "multiple_choice" ? options
         : type === "true_false" ? ["To'g'ri", "Noto'g'ri"]
+        : type === "poll" ? options
+        : type === "multiple_select" ? options
         : null;
+      const finalCorrectAnswer = type === "poll" ? (correctAnswer || "poll") : correctAnswer;
+      const finalPoints = type === "poll" ? 0 : (points || 100);
       const question = await storage.createQuestion({
         quizId: req.params.quizId,
         questionText,
         options: questionOptions,
-        correctAnswer,
+        correctAnswer: finalCorrectAnswer,
         type,
-        points: points || 100,
+        points: finalPoints,
         timeLimit: timeLimit || 30,
         mediaUrl: mediaUrl || null,
         mediaType: mediaType || null,
@@ -617,6 +634,19 @@ export async function registerRoutes(
             is_anonymous: true,
           } as any);
           sent++;
+        } else if (q.type === "poll" && q.options && q.options.length >= 2) {
+          await bot.sendPoll(targetChat, q.questionText, q.options, {
+            type: "regular",
+            is_anonymous: true,
+          } as any);
+          sent++;
+        } else if (q.type === "multiple_select" && q.options && q.options.length >= 2) {
+          await bot.sendPoll(targetChat, q.questionText, q.options, {
+            type: "regular",
+            allows_multiple_answers: true,
+            is_anonymous: true,
+          } as any);
+          sent++;
         } else if (q.options && q.options.length >= 2) {
           const correctIndex = q.options.indexOf(q.correctAnswer);
           await bot.sendPoll(targetChat, q.questionText, q.options, {
@@ -639,6 +669,486 @@ export async function registerRoutes(
         : error?.message?.includes("bot was blocked") ? "Bot bloklangan yoki guruhdan chiqarilgan"
         : "Telegramga yuborishda xatolik yuz berdi";
       res.status(500).json({ message: msg });
+    }
+  });
+
+  // === Shuffled Questions Route ===
+  app.get("/api/quizzes/:quizId/questions/shuffled", requireAuth, async (req: any, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.quizId);
+      if (!quiz) return res.status(404).json({ message: "Quiz not found" });
+      let questionsList = await storage.getQuestionsByQuiz(req.params.quizId);
+
+      if (quiz.shuffleQuestions) {
+        for (let i = questionsList.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [questionsList[i], questionsList[j]] = [questionsList[j], questionsList[i]];
+        }
+      }
+
+      if (quiz.shuffleOptions) {
+        questionsList = questionsList.map(q => {
+          if (!q.options || q.options.length < 2) return q;
+          const opts = [...q.options];
+          for (let i = opts.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [opts[i], opts[j]] = [opts[j], opts[i]];
+          }
+          return { ...q, options: opts };
+        });
+      }
+
+      res.json(questionsList);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // === Assignment Routes ===
+  app.post("/api/assignments", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const assignment = await storage.createAssignment({
+        ...req.body,
+        creatorId: req.userId,
+      });
+      res.json(assignment);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/assignments", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const list = await storage.getAssignmentsByCreator(req.userId);
+      res.json(list);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/assignments/student", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.userId;
+      const myClasses = await storage.getClassesByStudent(userId);
+      const classIds = myClasses.map(c => c.id);
+      const allActive = await storage.getAssignmentsByStudent(userId);
+      const filtered = allActive.filter(a => !a.classId || classIds.includes(a.classId));
+      res.json(filtered);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/assignments/:id", requireAuth, async (req: any, res) => {
+    try {
+      const assignment = await storage.getAssignment(req.params.id);
+      if (!assignment) return res.status(404).json({ message: "Assignment not found" });
+      res.json(assignment);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.patch("/api/assignments/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const updated = await storage.updateAssignment(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ message: "Assignment not found" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/assignments/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      await storage.deleteAssignment(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/assignments/:id/attempt", requireAuth, async (req: any, res) => {
+    try {
+      const assignment = await storage.getAssignment(req.params.id);
+      if (!assignment) return res.status(404).json({ message: "Assignment not found" });
+      if (assignment.status !== "active") return res.status(400).json({ message: "Assignment is not active" });
+
+      if (assignment.deadline && new Date(assignment.deadline) < new Date()) {
+        return res.status(400).json({ message: "Deadline has passed" });
+      }
+
+      const existingAttempts = await storage.getAttemptsByUser(assignment.id, req.userId);
+      if (existingAttempts.length >= assignment.attemptsLimit) {
+        return res.status(400).json({ message: "Attempts limit reached" });
+      }
+
+      const quiz = await storage.getQuiz(assignment.quizId);
+      if (!quiz) return res.status(404).json({ message: "Quiz not found" });
+
+      let questionsList = await storage.getQuestionsByQuiz(assignment.quizId);
+
+      if (quiz.shuffleQuestions) {
+        for (let i = questionsList.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [questionsList[i], questionsList[j]] = [questionsList[j], questionsList[i]];
+        }
+      }
+
+      const userAnswers: Record<string, string | string[]> = req.body.answers || {};
+      let score = 0;
+      let correctCount = 0;
+      const answersDetail: Record<string, { answer: string | string[]; isCorrect: boolean; points: number }> = {};
+
+      for (const q of questionsList) {
+        const userAnswer = userAnswers[q.id];
+
+        if (q.type === "poll") {
+          answersDetail[q.id] = { answer: userAnswer || "", isCorrect: true, points: 0 };
+          correctCount++;
+          continue;
+        }
+
+        if (q.type === "multiple_select") {
+          const selected = Array.isArray(userAnswer) ? userAnswer : [];
+          const correctAnswers = q.correctAnswer ? q.correctAnswer.split(",").map((s: string) => s.trim()) : [];
+          if (correctAnswers.length === 0) {
+            answersDetail[q.id] = { answer: selected, isCorrect: true, points: 0 };
+            correctCount++;
+            continue;
+          }
+          let correctSelections = 0;
+          let wrongSelections = 0;
+          for (const s of selected) {
+            if (correctAnswers.includes(s)) correctSelections++;
+            else wrongSelections++;
+          }
+          const ratio = Math.max(0, (correctSelections - wrongSelections) / correctAnswers.length);
+          const pts = Math.round(q.points * ratio);
+          const isCorrect = ratio >= 1;
+          if (isCorrect) correctCount++;
+          score += pts;
+          answersDetail[q.id] = { answer: selected, isCorrect, points: pts };
+          continue;
+        }
+
+        const singleAnswer = typeof userAnswer === "string" ? userAnswer : "";
+        const isCorrect = singleAnswer === q.correctAnswer;
+        const pts = isCorrect ? q.points : 0;
+        if (isCorrect) correctCount++;
+        score += pts;
+        answersDetail[q.id] = { answer: singleAnswer, isCorrect, points: pts };
+      }
+
+      const attempt = await storage.createAssignmentAttempt({
+        assignmentId: assignment.id,
+        userId: req.userId,
+        score,
+        correctAnswers: correctCount,
+        totalQuestions: questionsList.length,
+        answers: answersDetail,
+      });
+
+      res.json(attempt);
+    } catch (error) {
+      console.error("Assignment attempt error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/assignments/:id/attempts", requireAuth, async (req: any, res) => {
+    try {
+      const attempts = await storage.getAttemptsByAssignment(req.params.id);
+      res.json(attempts);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/assignments/:id/my-attempts", requireAuth, async (req: any, res) => {
+    try {
+      const attempts = await storage.getAttemptsByUser(req.params.id, req.userId);
+      res.json(attempts);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // === Class Routes ===
+  app.post("/api/classes", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const cls = await storage.createClass({
+        ...req.body,
+        teacherId: req.userId,
+        joinCode,
+      });
+      res.json(cls);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/classes", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.userId;
+      const profile = await storage.getUserProfile(userId);
+      if (!profile) return res.status(401).json({ message: "Unauthorized" });
+
+      if (profile.role === "teacher" || profile.role === "admin") {
+        const classList = await storage.getClassesByTeacher(userId);
+        res.json(classList);
+      } else {
+        const classList = await storage.getClassesByStudent(userId);
+        res.json(classList);
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/classes/:id", requireAuth, async (req: any, res) => {
+    try {
+      const cls = await storage.getClass(req.params.id);
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      res.json(cls);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/classes/join", requireAuth, async (req: any, res) => {
+    try {
+      const { code } = req.body;
+      if (!code) return res.status(400).json({ message: "Code is required" });
+      const cls = await storage.getClassByCode(code.toUpperCase());
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+
+      const members = await storage.getClassMembers(cls.id);
+      const alreadyMember = members.some(m => m.userId === req.userId);
+      if (alreadyMember) return res.status(400).json({ message: "Already a member" });
+
+      const member = await storage.addClassMember({ classId: cls.id, userId: req.userId });
+      res.json({ class: cls, member });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/classes/:id/members", requireAuth, async (req: any, res) => {
+    try {
+      const members = await storage.getClassMembers(req.params.id);
+      const membersWithProfiles = await Promise.all(
+        members.map(async (m) => {
+          const profile = await storage.getUserProfile(m.userId);
+          return { ...m, displayName: profile?.displayName || "Unknown" };
+        })
+      );
+      res.json(membersWithProfiles);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/classes/:id/members/:userId", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      await storage.removeClassMember(req.params.id, req.params.userId);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/classes/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const cls = await storage.getClass(req.params.id);
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      if (cls.teacherId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.deleteClass(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // === Question Bank Routes ===
+  app.get("/api/question-bank", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const bankQuestions = await storage.getBankQuestionsByCreator(req.userId);
+      res.json(bankQuestions);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/question-bank", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const item = await storage.createBankQuestion({
+        ...req.body,
+        creatorId: req.userId,
+      });
+      res.json(item);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/question-bank/from-quiz/:quizId", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const questionsList = await storage.getQuestionsByQuiz(req.params.quizId);
+      const created = [];
+      for (const q of questionsList) {
+        const item = await storage.createBankQuestion({
+          creatorId: req.userId,
+          type: q.type,
+          questionText: q.questionText,
+          options: q.options,
+          correctAnswer: q.correctAnswer,
+          points: q.points,
+          timeLimit: q.timeLimit,
+          category: null,
+          tags: null,
+        });
+        created.push(item);
+      }
+      res.json({ imported: created.length, questions: created });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/question-bank/to-quiz/:quizId", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { questionIds } = req.body;
+      if (!questionIds || !Array.isArray(questionIds)) {
+        return res.status(400).json({ message: "questionIds array required" });
+      }
+      const existingQuestions = await storage.getQuestionsByQuiz(req.params.quizId);
+      let orderIndex = existingQuestions.length;
+      const created = [];
+      for (const bankId of questionIds) {
+        const bankQ = await storage.getBankQuestion(bankId);
+        if (bankQ) {
+          const q = await storage.createQuestion({
+            quizId: req.params.quizId,
+            orderIndex: orderIndex++,
+            type: bankQ.type,
+            questionText: bankQ.questionText,
+            options: bankQ.options,
+            correctAnswer: bankQ.correctAnswer,
+            points: bankQ.points,
+            timeLimit: bankQ.timeLimit,
+            mediaUrl: null,
+            mediaType: null,
+          });
+          created.push(q);
+        }
+      }
+      res.json({ added: created.length, questions: created });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/question-bank/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      await storage.deleteBankQuestion(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // === Discover / Likes Routes ===
+  app.get("/api/discover", async (req, res) => {
+    try {
+      const { q, category, sort } = req.query as { q?: string; category?: string; sort?: string };
+      let publicQuizzes = await storage.getPublicQuizzes();
+
+      if (q) {
+        const search = q.toLowerCase();
+        publicQuizzes = publicQuizzes.filter(quiz =>
+          quiz.title.toLowerCase().includes(search) ||
+          (quiz.description && quiz.description.toLowerCase().includes(search))
+        );
+      }
+
+      if (category) {
+        publicQuizzes = publicQuizzes.filter(quiz => quiz.category === category);
+      }
+
+      if (sort === "popular") {
+        publicQuizzes.sort((a, b) => b.totalPlays - a.totalPlays);
+      } else if (sort === "likes") {
+        publicQuizzes.sort((a, b) => b.totalLikes - a.totalLikes);
+      }
+
+      res.json(publicQuizzes);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/quizzes/:id/like", requireAuth, async (req: any, res) => {
+    try {
+      const result = await storage.toggleQuizLike(req.params.id, req.userId);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/quizzes/:id/liked", requireAuth, async (req: any, res) => {
+    try {
+      const liked = await storage.isQuizLiked(req.params.id, req.userId);
+      res.json({ liked });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // === CSV Export Routes ===
+  app.get("/api/sessions/:id/export-csv", requireAuth, async (req: any, res) => {
+    try {
+      const results = await storage.getResultsBySession(req.params.id);
+      const session = await storage.getLiveSession(req.params.id);
+      if (!session) return res.status(404).json({ message: "Session not found" });
+
+      let csv = "Name,Score,Correct,Total,Rank,CompletedAt\n";
+      for (const r of results) {
+        const name = (r.guestName || r.userId || "Unknown").replace(/,/g, " ");
+        csv += `${name},${r.totalScore},${r.correctAnswers},${r.totalQuestions},${r.rank || ""},${r.completedAt ? new Date(r.completedAt).toISOString() : ""}\n`;
+      }
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=session_${req.params.id}_results.csv`);
+      res.send(csv);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/assignments/:id/export-csv", requireAuth, async (req: any, res) => {
+    try {
+      const assignment = await storage.getAssignment(req.params.id);
+      if (!assignment) return res.status(404).json({ message: "Assignment not found" });
+
+      const attempts = await storage.getAttemptsByAssignment(req.params.id);
+
+      let csv = "UserId,Score,Correct,Total,CompletedAt\n";
+      for (const a of attempts) {
+        const profile = await storage.getUserProfile(a.userId);
+        const name = (profile?.displayName || a.userId).replace(/,/g, " ");
+        csv += `${name},${a.score},${a.correctAnswers},${a.totalQuestions},${a.completedAt ? new Date(a.completedAt).toISOString() : ""}\n`;
+      }
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=assignment_${req.params.id}_results.csv`);
+      res.send(csv);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
     }
   });
 

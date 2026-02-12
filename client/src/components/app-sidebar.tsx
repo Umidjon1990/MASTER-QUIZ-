@@ -15,7 +15,7 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Zap, LayoutDashboard, BookOpen, Users, Trophy, Settings, LogOut, Play, Upload, Send } from "lucide-react";
+import { Zap, LayoutDashboard, BookOpen, Users, Trophy, Settings, LogOut, Play, Upload, Send, ClipboardList, GraduationCap, Library, Search } from "lucide-react";
 import type { UserProfile } from "@shared/schema";
 
 const adminMenu = [
@@ -28,12 +28,19 @@ const teacherMenu = [
   { title: "Dashboard", url: "/teacher", icon: LayoutDashboard },
   { title: "Quizlarim", url: "/teacher/quizzes", icon: BookOpen },
   { title: "Jonli Quiz", url: "/teacher/live", icon: Play },
+  { title: "Vazifalar", url: "/teacher/assignments", icon: ClipboardList },
+  { title: "Sinflarim", url: "/teacher/classes", icon: GraduationCap },
+  { title: "Savol Banki", url: "/teacher/question-bank", icon: Library },
   { title: "Natijalar", url: "/teacher/results", icon: Trophy },
+  { title: "Discover", url: "/discover", icon: Search },
 ];
 
 const studentMenu = [
   { title: "Dashboard", url: "/student", icon: LayoutDashboard },
   { title: "Quizga Qo'shilish", url: "/play/join", icon: Play },
+  { title: "Vazifalar", url: "/student/assignments", icon: ClipboardList },
+  { title: "Sinflarim", url: "/student/classes", icon: GraduationCap },
+  { title: "Discover", url: "/discover", icon: Search },
   { title: "Natijalarim", url: "/student/results", icon: Trophy },
 ];
 

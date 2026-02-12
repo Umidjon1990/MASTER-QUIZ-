@@ -64,6 +64,8 @@ export function setupWebSocket(httpServer: HttpServer) {
           return;
         }
 
+        const quiz = await storage.getQuiz(session.quizId);
+
         await storage.updateLiveSession(sessionId, {
           status: "active",
           startedAt: new Date(),
@@ -73,6 +75,14 @@ export function setupWebSocket(httpServer: HttpServer) {
         await storage.incrementQuizPlays(session.quizId);
 
         const q = questionsList[0];
+        let questionOptions = q.options ? [...(q.options as string[])] : null;
+        if (quiz?.shuffleOptions && questionOptions) {
+          for (let i = questionOptions.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [questionOptions[i], questionOptions[j]] = [questionOptions[j], questionOptions[i]];
+          }
+        }
+
         io.to(`session:${sessionId}`).emit("quiz:started", {
           totalQuestions: questionsList.length,
         });
@@ -86,7 +96,7 @@ export function setupWebSocket(httpServer: HttpServer) {
             questionText: q.questionText,
             mediaType: q.mediaType,
             mediaUrl: q.mediaUrl,
-            options: q.options,
+            options: questionOptions,
             timeLimit: q.timeLimit,
             points: q.points,
           },
@@ -103,6 +113,7 @@ export function setupWebSocket(httpServer: HttpServer) {
         if (!session) return;
 
         const questionsList = await storage.getQuestionsByQuiz(session.quizId);
+        const quiz = await storage.getQuiz(session.quizId);
         const nextIndex = session.currentQuestionIndex + 1;
 
         if (nextIndex >= questionsList.length) {
@@ -144,6 +155,14 @@ export function setupWebSocket(httpServer: HttpServer) {
         } as any);
 
         const q = questionsList[nextIndex];
+        let questionOptions = q.options ? [...(q.options as string[])] : null;
+        if (quiz?.shuffleOptions && questionOptions) {
+          for (let i = questionOptions.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [questionOptions[i], questionOptions[j]] = [questionOptions[j], questionOptions[i]];
+          }
+        }
+
         io.to(`session:${sessionId}`).emit("question:show", {
           index: nextIndex,
           total: questionsList.length,
@@ -153,7 +172,7 @@ export function setupWebSocket(httpServer: HttpServer) {
             questionText: q.questionText,
             mediaType: q.mediaType,
             mediaUrl: q.mediaUrl,
-            options: q.options,
+            options: questionOptions,
             timeLimit: q.timeLimit,
             points: q.points,
           },
@@ -187,9 +206,29 @@ export function setupWebSocket(httpServer: HttpServer) {
         const question = await storage.getQuestion(questionId);
         if (!question) return;
 
-        const isCorrect = question.correctAnswer.toLowerCase().trim() === String(answer).toLowerCase().trim();
-        const timeBonus = Math.max(0, question.timeLimit - timeSpent);
-        const points = isCorrect ? question.points + Math.floor(timeBonus * 2) : 0;
+        let isCorrect = false;
+        let points = 0;
+
+        if (question.type === "poll") {
+          isCorrect = true;
+          points = 0;
+        } else if (question.type === "multiple_select") {
+          const correctSet = new Set(question.correctAnswer.split(",").map(s => s.trim().toLowerCase()));
+          const answerSet = new Set(String(answer).split(",").map(s => s.trim().toLowerCase()));
+          const correctCount = [...answerSet].filter(a => correctSet.has(a)).length;
+          const wrongCount = [...answerSet].filter(a => !correctSet.has(a)).length;
+          const totalCorrect = correctSet.size;
+          if (wrongCount === 0 && correctCount > 0) {
+            const ratio = correctCount / totalCorrect;
+            const timeBonus = Math.max(0, question.timeLimit - timeSpent);
+            points = Math.floor((question.points + Math.floor(timeBonus * 2)) * ratio);
+            isCorrect = correctCount === totalCorrect;
+          }
+        } else {
+          isCorrect = question.correctAnswer.toLowerCase().trim() === String(answer).toLowerCase().trim();
+          const timeBonus = Math.max(0, question.timeLimit - timeSpent);
+          points = isCorrect ? question.points + Math.floor(timeBonus * 2) : 0;
+        }
 
         await storage.saveAnswer({
           sessionId,
@@ -201,12 +240,12 @@ export function setupWebSocket(httpServer: HttpServer) {
           timeSpent,
         });
 
-        if (isCorrect) {
+        if (points > 0 || question.type === "poll") {
           const participant = await storage.getParticipant(participantId);
           if (participant) {
             await storage.updateParticipant(participantId, {
               score: participant.score + points,
-              correctAnswers: participant.correctAnswers + 1,
+              correctAnswers: participant.correctAnswers + (isCorrect ? 1 : 0),
               totalAnswered: participant.totalAnswered + 1,
             } as any);
           }

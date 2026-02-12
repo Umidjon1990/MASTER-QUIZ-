@@ -6,11 +6,18 @@ import {
   type SessionParticipant, type InsertSessionParticipant,
   type SessionAnswer, type InsertSessionAnswer,
   type QuizResult, type InsertQuizResult,
+  type Assignment, type InsertAssignment,
+  type AssignmentAttempt, type InsertAssignmentAttempt,
+  type Class as ClassType, type InsertClass,
+  type ClassMember, type InsertClassMember,
+  type QuestionBankItem, type InsertQuestionBank,
+  type QuizLike, type InsertQuizLike,
   userProfiles, quizzes, questions, liveSessions,
   sessionParticipants, sessionAnswers, quizResults,
+  assignments, assignmentAttempts, classes, classMembers, questionBank, quizLikes,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql, ilike } from "drizzle-orm";
+import { eq, desc, and, sql, ilike, isNull, or, inArray } from "drizzle-orm";
 
 export interface IStorage {
   getUserProfile(userId: string): Promise<UserProfile | undefined>;
@@ -53,6 +60,37 @@ export interface IStorage {
   getResultsByUser(userId: string): Promise<QuizResult[]>;
 
   getDashboardStats(): Promise<{ totalUsers: number; totalQuizzes: number; totalSessions: number; totalPlays: number }>;
+
+  createAssignment(data: InsertAssignment): Promise<Assignment>;
+  getAssignment(id: string): Promise<Assignment | undefined>;
+  getAssignmentsByCreator(creatorId: string): Promise<Assignment[]>;
+  getAssignmentsByClass(classId: string): Promise<Assignment[]>;
+  getAssignmentsByStudent(userId: string): Promise<Assignment[]>;
+  updateAssignment(id: string, data: Partial<InsertAssignment>): Promise<Assignment | undefined>;
+  deleteAssignment(id: string): Promise<void>;
+  createAssignmentAttempt(data: InsertAssignmentAttempt): Promise<AssignmentAttempt>;
+  getAttemptsByAssignment(assignmentId: string): Promise<AssignmentAttempt[]>;
+  getAttemptsByUser(assignmentId: string, userId: string): Promise<AssignmentAttempt[]>;
+
+  createClass(data: InsertClass): Promise<ClassType>;
+  getClass(id: string): Promise<ClassType | undefined>;
+  getClassByCode(code: string): Promise<ClassType | undefined>;
+  getClassesByTeacher(teacherId: string): Promise<ClassType[]>;
+  getClassesByStudent(userId: string): Promise<ClassType[]>;
+  addClassMember(data: InsertClassMember): Promise<ClassMember>;
+  getClassMembers(classId: string): Promise<ClassMember[]>;
+  removeClassMember(classId: string, userId: string): Promise<void>;
+  deleteClass(id: string): Promise<void>;
+
+  createBankQuestion(data: InsertQuestionBank): Promise<QuestionBankItem>;
+  getBankQuestionsByCreator(creatorId: string): Promise<QuestionBankItem[]>;
+  getBankQuestion(id: string): Promise<QuestionBankItem | undefined>;
+  updateBankQuestion(id: string, data: Partial<InsertQuestionBank>): Promise<QuestionBankItem | undefined>;
+  deleteBankQuestion(id: string): Promise<void>;
+
+  toggleQuizLike(quizId: string, userId: string): Promise<{ liked: boolean }>;
+  getQuizLikes(quizId: string): Promise<number>;
+  isQuizLiked(quizId: string, userId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -226,6 +264,141 @@ export class DatabaseStorage implements IStorage {
       totalSessions: Number(sessionsCount.count),
       totalPlays: Number(playsSum.total),
     };
+  }
+
+  async createAssignment(data: InsertAssignment): Promise<Assignment> {
+    const [created] = await db.insert(assignments).values(data).returning();
+    return created;
+  }
+
+  async getAssignment(id: string): Promise<Assignment | undefined> {
+    const [a] = await db.select().from(assignments).where(eq(assignments.id, id));
+    return a;
+  }
+
+  async getAssignmentsByCreator(creatorId: string): Promise<Assignment[]> {
+    return db.select().from(assignments).where(eq(assignments.creatorId, creatorId)).orderBy(desc(assignments.createdAt));
+  }
+
+  async getAssignmentsByClass(classId: string): Promise<Assignment[]> {
+    return db.select().from(assignments).where(eq(assignments.classId, classId)).orderBy(desc(assignments.createdAt));
+  }
+
+  async getAssignmentsByStudent(userId: string): Promise<Assignment[]> {
+    return db.select().from(assignments).where(eq(assignments.status, "active")).orderBy(desc(assignments.createdAt));
+  }
+
+  async updateAssignment(id: string, data: Partial<InsertAssignment>): Promise<Assignment | undefined> {
+    const [updated] = await db.update(assignments).set(data).where(eq(assignments.id, id)).returning();
+    return updated;
+  }
+
+  async deleteAssignment(id: string): Promise<void> {
+    await db.delete(assignmentAttempts).where(eq(assignmentAttempts.assignmentId, id));
+    await db.delete(assignments).where(eq(assignments.id, id));
+  }
+
+  async createAssignmentAttempt(data: InsertAssignmentAttempt): Promise<AssignmentAttempt> {
+    const [created] = await db.insert(assignmentAttempts).values(data as any).returning();
+    return created;
+  }
+
+  async getAttemptsByAssignment(assignmentId: string): Promise<AssignmentAttempt[]> {
+    return db.select().from(assignmentAttempts).where(eq(assignmentAttempts.assignmentId, assignmentId)).orderBy(desc(assignmentAttempts.completedAt));
+  }
+
+  async getAttemptsByUser(assignmentId: string, userId: string): Promise<AssignmentAttempt[]> {
+    return db.select().from(assignmentAttempts).where(and(eq(assignmentAttempts.assignmentId, assignmentId), eq(assignmentAttempts.userId, userId))).orderBy(desc(assignmentAttempts.completedAt));
+  }
+
+  async createClass(data: InsertClass): Promise<ClassType> {
+    const [created] = await db.insert(classes).values(data).returning();
+    return created;
+  }
+
+  async getClass(id: string): Promise<ClassType | undefined> {
+    const [c] = await db.select().from(classes).where(eq(classes.id, id));
+    return c;
+  }
+
+  async getClassByCode(code: string): Promise<ClassType | undefined> {
+    const [c] = await db.select().from(classes).where(eq(classes.joinCode, code));
+    return c;
+  }
+
+  async getClassesByTeacher(teacherId: string): Promise<ClassType[]> {
+    return db.select().from(classes).where(eq(classes.teacherId, teacherId)).orderBy(desc(classes.createdAt));
+  }
+
+  async getClassesByStudent(userId: string): Promise<ClassType[]> {
+    const members = await db.select({ classId: classMembers.classId }).from(classMembers).where(eq(classMembers.userId, userId));
+    if (members.length === 0) return [];
+    const classIds = members.map(m => m.classId);
+    return db.select().from(classes).where(inArray(classes.id, classIds)).orderBy(desc(classes.createdAt));
+  }
+
+  async addClassMember(data: InsertClassMember): Promise<ClassMember> {
+    const [created] = await db.insert(classMembers).values(data).returning();
+    return created;
+  }
+
+  async getClassMembers(classId: string): Promise<ClassMember[]> {
+    return db.select().from(classMembers).where(eq(classMembers.classId, classId)).orderBy(classMembers.joinedAt);
+  }
+
+  async removeClassMember(classId: string, userId: string): Promise<void> {
+    await db.delete(classMembers).where(and(eq(classMembers.classId, classId), eq(classMembers.userId, userId)));
+  }
+
+  async deleteClass(id: string): Promise<void> {
+    await db.delete(classMembers).where(eq(classMembers.classId, id));
+    await db.delete(classes).where(eq(classes.id, id));
+  }
+
+  async createBankQuestion(data: InsertQuestionBank): Promise<QuestionBankItem> {
+    const [created] = await db.insert(questionBank).values(data as any).returning();
+    return created;
+  }
+
+  async getBankQuestionsByCreator(creatorId: string): Promise<QuestionBankItem[]> {
+    return db.select().from(questionBank).where(eq(questionBank.creatorId, creatorId)).orderBy(desc(questionBank.createdAt));
+  }
+
+  async getBankQuestion(id: string): Promise<QuestionBankItem | undefined> {
+    const [q] = await db.select().from(questionBank).where(eq(questionBank.id, id));
+    return q;
+  }
+
+  async updateBankQuestion(id: string, data: Partial<InsertQuestionBank>): Promise<QuestionBankItem | undefined> {
+    const [updated] = await db.update(questionBank).set(data as any).where(eq(questionBank.id, id)).returning();
+    return updated;
+  }
+
+  async deleteBankQuestion(id: string): Promise<void> {
+    await db.delete(questionBank).where(eq(questionBank.id, id));
+  }
+
+  async toggleQuizLike(quizId: string, userId: string): Promise<{ liked: boolean }> {
+    const [existing] = await db.select().from(quizLikes).where(and(eq(quizLikes.quizId, quizId), eq(quizLikes.userId, userId)));
+    if (existing) {
+      await db.delete(quizLikes).where(eq(quizLikes.id, existing.id));
+      await db.update(quizzes).set({ totalLikes: sql`GREATEST(${quizzes.totalLikes} - 1, 0)` }).where(eq(quizzes.id, quizId));
+      return { liked: false };
+    } else {
+      await db.insert(quizLikes).values({ quizId, userId });
+      await db.update(quizzes).set({ totalLikes: sql`${quizzes.totalLikes} + 1` }).where(eq(quizzes.id, quizId));
+      return { liked: true };
+    }
+  }
+
+  async getQuizLikes(quizId: string): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)` }).from(quizLikes).where(eq(quizLikes.quizId, quizId));
+    return Number(result.count);
+  }
+
+  async isQuizLiked(quizId: string, userId: string): Promise<boolean> {
+    const [existing] = await db.select().from(quizLikes).where(and(eq(quizLikes.quizId, quizId), eq(quizLikes.userId, userId)));
+    return !!existing;
   }
 }
 

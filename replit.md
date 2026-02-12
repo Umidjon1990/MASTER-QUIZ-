@@ -32,8 +32,14 @@ Preferred communication style: Simple, everyday language.
 - `/auth` — Email/password login and registration
 - `/dashboard` — Redirects to role-specific dashboard (admin/teacher/student)
 - `/admin/*` — Admin pages (user management, quiz oversight)
-- `/teacher/*` — Teacher pages (quiz CRUD, live session hosting, results)
-- `/student/*` — Student pages (join quiz, view results)
+- `/teacher/*` — Teacher pages (quiz CRUD, live session hosting, results, assignments, classes, question bank)
+- `/teacher/assignments` — Assignment management (create/delete/view attempts/CSV export)
+- `/teacher/classes` — Class management (create/delete/view members/join codes)
+- `/teacher/question-bank` — Question bank (add/copy from quiz/copy to quiz)
+- `/student/*` — Student pages (join quiz, view results, assignments, classes)
+- `/student/assignments` — Student assignment list and self-paced quiz solving
+- `/student/classes` — Student class membership and join-by-code
+- `/discover` — Public quiz discovery with search, category filter, likes
 - `/play/join` — Quiz join page (by 6-digit code)
 
 ### Backend (`server/`)
@@ -54,12 +60,18 @@ Preferred communication style: Simple, everyday language.
   - `users` — Authentication credentials (id, email, password, name, profile image)
   - `sessions` — Express session store (sid, sess JSON, expire)
   - `user_profiles` — Role, plan, quiz limits, subscription info (linked to users via userId)
-  - `quizzes` — Quiz metadata (title, description, category, visibility, creator)
-  - `questions` — Quiz questions (multiple choice, with media support, points, time limits, JSONB options)
+  - `quizzes` — Quiz metadata (title, description, category, visibility, creator, shuffleQuestions, shuffleOptions, totalLikes)
+  - `questions` — Quiz questions (multiple types: multiple_choice, true_false, open_ended, poll, multiple_select; with media support, points, time limits, JSONB options)
   - `live_sessions` — Active live quiz game sessions
   - `session_participants` — Players in a live session
   - `session_answers` — Individual answers submitted during live play
   - `quiz_results` — Aggregated quiz results
+  - `assignments` — Homework assignments (quizId, deadline, attemptsLimit, classId)
+  - `assignment_attempts` — Student assignment attempt results (answers JSONB, score)
+  - `classes` — Teacher classes/groups with join codes
+  - `class_members` — Class membership (classId, userId)
+  - `question_bank` — Reusable question bank with category/tags
+  - `quiz_likes` — Quiz like tracking (quizId, userId)
 
 ### Storage Layer
 - `server/storage.ts` defines an `IStorage` interface with a concrete implementation using Drizzle queries

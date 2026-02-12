@@ -14,7 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, Send, ListChecks, ToggleLeft, MessageSquare, Pencil } from "lucide-react";
+import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, Send, ListChecks, ToggleLeft, MessageSquare, Pencil, BarChart3, CheckSquare } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { Quiz, Question, UserProfile } from "@shared/schema";
 
 function MediaPreview({ mediaUrl, mediaType, className }: { mediaUrl: string; mediaType: string; className?: string }) {
@@ -49,6 +50,8 @@ export default function QuizEditor() {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [isPublic, setIsPublic] = useState(false);
+  const [shuffleQuestions, setShuffleQuestions] = useState(false);
+  const [shuffleOptions, setShuffleOptions] = useState(false);
   const [timePerQuestion, setTimePerQuestion] = useState(30);
   const [initialized, setInitialized] = useState(false);
   const [textImportOpen, setTextImportOpen] = useState(false);
@@ -85,6 +88,8 @@ export default function QuizEditor() {
     setDescription(quiz.description || "");
     setCategory(quiz.category || "");
     setIsPublic(quiz.isPublic);
+    setShuffleQuestions(quiz.shuffleQuestions ?? false);
+    setShuffleOptions(quiz.shuffleOptions ?? false);
     setTimePerQuestion(quiz.timePerQuestion);
     setInitialized(true);
   }
@@ -94,7 +99,7 @@ export default function QuizEditor() {
       const res = await fetch("/api/quizzes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, category, isPublic, timePerQuestion, status: "draft" }),
+        body: JSON.stringify({ title, description, category, isPublic, shuffleQuestions, shuffleOptions, timePerQuestion, status: "draft" }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed");
@@ -119,7 +124,7 @@ export default function QuizEditor() {
       const res = await fetch(`/api/quizzes/${quizId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, category, isPublic, timePerQuestion }),
+        body: JSON.stringify({ title, description, category, isPublic, shuffleQuestions, shuffleOptions, timePerQuestion }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed");
@@ -214,6 +219,7 @@ export default function QuizEditor() {
     questionText: "",
     options: ["", "", "", ""],
     correctIndex: -1,
+    correctIndices: [] as number[],
     points: 100,
     timeLimit: 30,
     type: "multiple_choice" as string,
@@ -225,15 +231,20 @@ export default function QuizEditor() {
     const opts = (q.options as string[]) || ["", "", "", ""];
     while (opts.length < 4) opts.push("");
     let correctIdx = -1;
+    let correctIdxs: number[] = [];
     if (q.type === "multiple_choice" || !q.type) {
       correctIdx = opts.indexOf(q.correctAnswer);
     } else if (q.type === "true_false") {
       correctIdx = q.correctAnswer === "true" ? 0 : 1;
+    } else if (q.type === "multiple_select") {
+      const correctAnswers = q.correctAnswer.split(",").map(s => s.trim());
+      correctIdxs = correctAnswers.map(ca => opts.findIndex(o => o.trim() === ca)).filter(i => i >= 0);
     }
     setEditQ({
       questionText: q.questionText,
       options: opts,
       correctIndex: correctIdx,
+      correctIndices: correctIdxs,
       points: q.points,
       timeLimit: q.timeLimit,
       type: q.type || "multiple_choice",
@@ -274,6 +285,26 @@ export default function QuizEditor() {
         return;
       }
       correctAnswer = editQ.openAnswer.trim();
+    } else if (editQ.type === "poll") {
+      const filledOptions = editQ.options.filter((o) => o.trim());
+      if (filledOptions.length < 2) {
+        toast({ title: "Kamida 2 ta variant kiriting", variant: "destructive" });
+        return;
+      }
+      options = filledOptions;
+      correctAnswer = "poll";
+    } else if (editQ.type === "multiple_select") {
+      const filledOptions = editQ.options.filter((o) => o.trim());
+      if (filledOptions.length < 2) {
+        toast({ title: "Kamida 2 ta variant kiriting", variant: "destructive" });
+        return;
+      }
+      if (editQ.correctIndices.length === 0) {
+        toast({ title: "Kamida 1 ta to'g'ri javob tanlang", variant: "destructive" });
+        return;
+      }
+      options = filledOptions;
+      correctAnswer = editQ.correctIndices.filter(i => editQ.options[i]?.trim()).map(i => editQ.options[i].trim()).join(",");
     }
 
     updateQuestion.mutate({
@@ -283,7 +314,7 @@ export default function QuizEditor() {
         options,
         correctAnswer,
         type: editQ.type,
-        points: editQ.points,
+        points: editQ.type === "poll" ? 0 : editQ.points,
         timeLimit: editQ.timeLimit,
       },
     });
@@ -378,11 +409,12 @@ export default function QuizEditor() {
     questionText: "",
     options: ["", "", "", ""],
     correctIndex: -1,
+    correctIndices: [] as number[],
     points: 100,
     timeLimit: 30,
     mediaUrl: "",
     mediaType: "",
-    type: "multiple_choice" as "multiple_choice" | "true_false" | "open_ended",
+    type: "multiple_choice" as "multiple_choice" | "true_false" | "open_ended" | "poll" | "multiple_select",
     openAnswer: "",
   });
 
@@ -445,6 +477,26 @@ export default function QuizEditor() {
         return;
       }
       correctAnswer = newQ.openAnswer.trim();
+    } else if (newQ.type === "poll") {
+      const filledOptions = newQ.options.filter((o) => o.trim());
+      if (filledOptions.length < 2) {
+        toast({ title: "Kamida 2 ta variant kiriting", variant: "destructive" });
+        return;
+      }
+      options = filledOptions;
+      correctAnswer = "poll";
+    } else if (newQ.type === "multiple_select") {
+      const filledOptions = newQ.options.filter((o) => o.trim());
+      if (filledOptions.length < 2) {
+        toast({ title: "Kamida 2 ta variant kiriting", variant: "destructive" });
+        return;
+      }
+      if (newQ.correctIndices.length === 0) {
+        toast({ title: "Kamida 1 ta to'g'ri javob tanlang", variant: "destructive" });
+        return;
+      }
+      options = filledOptions;
+      correctAnswer = newQ.correctIndices.filter(i => newQ.options[i]?.trim()).map(i => newQ.options[i].trim()).join(",");
     }
 
     addQuestion.mutate({
@@ -452,13 +504,13 @@ export default function QuizEditor() {
       questionText: newQ.questionText,
       options,
       correctAnswer,
-      points: newQ.points,
+      points: newQ.type === "poll" ? 0 : newQ.points,
       timeLimit: newQ.timeLimit,
       mediaUrl: newQ.mediaUrl || null,
       mediaType: newQ.mediaType || null,
       orderIndex: (questionsList?.length || 0),
     });
-    setNewQ({ questionText: "", options: ["", "", "", ""], correctIndex: -1, points: 100, timeLimit: 30, mediaUrl: "", mediaType: "", type: newQ.type, openAnswer: "" });
+    setNewQ({ questionText: "", options: ["", "", "", ""], correctIndex: -1, correctIndices: [], points: 100, timeLimit: 30, mediaUrl: "", mediaType: "", type: newQ.type, openAnswer: "" });
   };
 
   if (quizLoading) {
@@ -520,6 +572,14 @@ export default function QuizEditor() {
         <div className="flex items-center gap-3">
           <Switch checked={isPublic} onCheckedChange={setIsPublic} data-testid="switch-is-public" />
           <Label>Ommaviy quiz (bepul)</Label>
+        </div>
+        <div className="flex items-center gap-3">
+          <Switch checked={shuffleQuestions} onCheckedChange={setShuffleQuestions} data-testid="switch-shuffle-questions" />
+          <Label>Savollar tartibini aralashtirish</Label>
+        </div>
+        <div className="flex items-center gap-3">
+          <Switch checked={shuffleOptions} onCheckedChange={setShuffleOptions} data-testid="switch-shuffle-options" />
+          <Label>Variant javoblarni aralashtirish</Label>
         </div>
         <Button
           onClick={() => isNew ? createQuiz.mutate() : handleSaveQuiz()}
@@ -623,10 +683,14 @@ export default function QuizEditor() {
                             const mc = questionsList.filter(q => q.type === "multiple_choice" || !q.type).length;
                             const tf = questionsList.filter(q => q.type === "true_false").length;
                             const oe = questionsList.filter(q => q.type === "open_ended").length;
+                            const pl = questionsList.filter(q => q.type === "poll").length;
+                            const ms = questionsList.filter(q => q.type === "multiple_select").length;
                             const parts = [];
                             if (mc > 0) parts.push(`${mc} variantli`);
                             if (tf > 0) parts.push(`${tf} to'g'ri/noto'g'ri`);
                             if (oe > 0) parts.push(`${oe} yozma (matn sifatida)`);
+                            if (pl > 0) parts.push(`${pl} so'rovnoma`);
+                            if (ms > 0) parts.push(`${ms} ko'p tanlov`);
                             return parts.join(", ");
                           })()}
                         </p>
@@ -661,7 +725,7 @@ export default function QuizEditor() {
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <Badge variant="secondary" className="text-xs">{idx + 1}</Badge>
                           <Badge variant="outline" className="text-xs">
-                            {q.type === "true_false" ? "To'g'ri/Noto'g'ri" : q.type === "open_ended" ? "Yozma" : "Variantli"}
+                            {q.type === "true_false" ? "To'g'ri/Noto'g'ri" : q.type === "open_ended" ? "Yozma" : q.type === "poll" ? "So'rovnoma" : q.type === "multiple_select" ? "Ko'p tanlov" : "Variantli"}
                           </Badge>
                           <span className="text-xs text-muted-foreground">{q.points} ball | {q.timeLimit}s</span>
                         </div>
@@ -675,15 +739,24 @@ export default function QuizEditor() {
                           </div>
                         ) : q.options && (
                           <div className="flex gap-2 mt-2 flex-wrap">
-                            {(q.options as string[]).map((opt, oi) => (
-                              <span key={oi} className={`text-xs px-2 py-1 rounded-sm ${
-                                q.type === "true_false"
-                                  ? ((opt === "To'g'ri" && q.correctAnswer === "true") || (opt === "Noto'g'ri" && q.correctAnswer === "false") ? "gradient-teal text-white" : "bg-muted")
-                                  : (opt === q.correctAnswer ? "gradient-teal text-white" : "bg-muted")
-                              }`}>
-                                {q.type === "true_false" ? opt : `${String.fromCharCode(65 + oi)}) ${opt}`}
-                              </span>
-                            ))}
+                            {(q.options as string[]).map((opt, oi) => {
+                              let isHighlighted = false;
+                              if (q.type === "poll") {
+                                isHighlighted = false;
+                              } else if (q.type === "multiple_select") {
+                                const correctAnswers = q.correctAnswer.split(",").map(s => s.trim());
+                                isHighlighted = correctAnswers.includes(opt);
+                              } else if (q.type === "true_false") {
+                                isHighlighted = (opt === "To'g'ri" && q.correctAnswer === "true") || (opt === "Noto'g'ri" && q.correctAnswer === "false");
+                              } else {
+                                isHighlighted = opt === q.correctAnswer;
+                              }
+                              return (
+                                <span key={oi} className={`text-xs px-2 py-1 rounded-sm ${isHighlighted ? "gradient-teal text-white" : "bg-muted"}`}>
+                                  {q.type === "true_false" ? opt : `${String.fromCharCode(65 + oi)}) ${opt}`}
+                                </span>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -707,7 +780,7 @@ export default function QuizEditor() {
 
             <div>
               <Label>Savol turi</Label>
-              <Select value={newQ.type} onValueChange={(v: "multiple_choice" | "true_false" | "open_ended") => setNewQ({ ...newQ, type: v, correctIndex: -1, openAnswer: "" })}>
+              <Select value={newQ.type} onValueChange={(v: "multiple_choice" | "true_false" | "open_ended" | "poll" | "multiple_select") => setNewQ({ ...newQ, type: v, correctIndex: -1, correctIndices: [], openAnswer: "" })}>
                 <SelectTrigger data-testid="select-question-type">
                   <SelectValue />
                 </SelectTrigger>
@@ -720,6 +793,12 @@ export default function QuizEditor() {
                   </SelectItem>
                   <SelectItem value="open_ended">
                     <span className="flex items-center gap-2"><MessageSquare className="w-4 h-4" /> Yozma javob</span>
+                  </SelectItem>
+                  <SelectItem value="poll">
+                    <span className="flex items-center gap-2"><BarChart3 className="w-4 h-4" /> So'rovnoma (ball yo'q)</span>
+                  </SelectItem>
+                  <SelectItem value="multiple_select">
+                    <span className="flex items-center gap-2"><CheckSquare className="w-4 h-4" /> Ko'p tanlov (bir nechta to'g'ri)</span>
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -858,6 +937,76 @@ export default function QuizEditor() {
               </div>
             )}
 
+            {newQ.type === "poll" && (
+              <div className="space-y-2">
+                <Label>Javob variantlari</Label>
+                <p className="text-xs text-muted-foreground">So'rovnomada to'g'ri javob yo'q. Ball berilmaydi.</p>
+                {newQ.options.map((opt, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 p-3 rounded-md border"
+                    data-testid={`label-poll-option-${i}`}
+                  >
+                    <div className={`w-8 h-8 rounded-md flex items-center justify-center text-white text-sm font-bold shrink-0 ${["quiz-option-a", "quiz-option-b", "quiz-option-c", "quiz-option-d"][i]}`}>
+                      {String.fromCharCode(65 + i)}
+                    </div>
+                    <Input
+                      value={opt}
+                      onChange={(e) => {
+                        const opts = [...newQ.options];
+                        opts[i] = e.target.value;
+                        setNewQ({ ...newQ, options: opts });
+                      }}
+                      placeholder={`Variant ${String.fromCharCode(65 + i)}`}
+                      className="flex-1"
+                      data-testid={`input-poll-option-${i}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {newQ.type === "multiple_select" && (
+              <div className="space-y-2">
+                <Label>Javob variantlari (to'g'ri javoblarni belgilang)</Label>
+                {newQ.options.map((opt, i) => (
+                  <label
+                    key={i}
+                    className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${
+                      newQ.correctIndices.includes(i) ? "border-green-500 bg-green-500/10" : "hover-elevate"
+                    }`}
+                    data-testid={`label-ms-option-${i}`}
+                  >
+                    <Checkbox
+                      checked={newQ.correctIndices.includes(i)}
+                      onCheckedChange={(checked) => {
+                        const newIndices = checked
+                          ? [...newQ.correctIndices, i]
+                          : newQ.correctIndices.filter(idx => idx !== i);
+                        setNewQ({ ...newQ, correctIndices: newIndices });
+                      }}
+                      className="data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
+                      data-testid={`checkbox-ms-option-${i}`}
+                    />
+                    <div className={`w-8 h-8 rounded-md flex items-center justify-center text-white text-sm font-bold shrink-0 ${["quiz-option-a", "quiz-option-b", "quiz-option-c", "quiz-option-d"][i]}`}>
+                      {String.fromCharCode(65 + i)}
+                    </div>
+                    <Input
+                      value={opt}
+                      onChange={(e) => {
+                        const opts = [...newQ.options];
+                        opts[i] = e.target.value;
+                        setNewQ({ ...newQ, options: opts });
+                      }}
+                      placeholder={`Variant ${String.fromCharCode(65 + i)}`}
+                      className="flex-1"
+                      data-testid={`input-ms-option-${i}`}
+                    />
+                  </label>
+                ))}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Ball</Label>
@@ -883,7 +1032,7 @@ export default function QuizEditor() {
           <div className="space-y-4">
             <div>
               <Label>Savol turi</Label>
-              <Select value={editQ.type} onValueChange={(v) => setEditQ({ ...editQ, type: v, correctIndex: -1, openAnswer: "" })}>
+              <Select value={editQ.type} onValueChange={(v) => setEditQ({ ...editQ, type: v, correctIndex: -1, correctIndices: [], openAnswer: "" })}>
                 <SelectTrigger data-testid="edit-select-question-type">
                   <SelectValue />
                 </SelectTrigger>
@@ -896,6 +1045,12 @@ export default function QuizEditor() {
                   </SelectItem>
                   <SelectItem value="open_ended">
                     <span className="flex items-center gap-2"><MessageSquare className="w-4 h-4" /> Yozma javob</span>
+                  </SelectItem>
+                  <SelectItem value="poll">
+                    <span className="flex items-center gap-2"><BarChart3 className="w-4 h-4" /> So'rovnoma (ball yo'q)</span>
+                  </SelectItem>
+                  <SelectItem value="multiple_select">
+                    <span className="flex items-center gap-2"><CheckSquare className="w-4 h-4" /> Ko'p tanlov (bir nechta to'g'ri)</span>
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -962,6 +1117,76 @@ export default function QuizEditor() {
               <div className="space-y-2">
                 <Label>To'g'ri javob</Label>
                 <Input value={editQ.openAnswer} onChange={(e) => setEditQ({ ...editQ, openAnswer: e.target.value })} placeholder="To'g'ri javobni yozing..." data-testid="edit-input-open-correct" />
+              </div>
+            )}
+
+            {editQ.type === "poll" && (
+              <div className="space-y-2">
+                <Label>Javob variantlari</Label>
+                <p className="text-xs text-muted-foreground">So'rovnomada to'g'ri javob yo'q. Ball berilmaydi.</p>
+                {editQ.options.map((opt, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 p-3 rounded-md border"
+                    data-testid={`edit-label-poll-option-${i}`}
+                  >
+                    <div className={`w-8 h-8 rounded-md flex items-center justify-center text-white text-sm font-bold shrink-0 ${["quiz-option-a", "quiz-option-b", "quiz-option-c", "quiz-option-d"][i]}`}>
+                      {String.fromCharCode(65 + i)}
+                    </div>
+                    <Input
+                      value={opt}
+                      onChange={(e) => {
+                        const opts = [...editQ.options];
+                        opts[i] = e.target.value;
+                        setEditQ({ ...editQ, options: opts });
+                      }}
+                      placeholder={`Variant ${String.fromCharCode(65 + i)}`}
+                      className="flex-1"
+                      data-testid={`edit-input-poll-option-${i}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {editQ.type === "multiple_select" && (
+              <div className="space-y-2">
+                <Label>Javob variantlari (to'g'ri javoblarni belgilang)</Label>
+                {editQ.options.map((opt, i) => (
+                  <label
+                    key={i}
+                    className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${
+                      editQ.correctIndices.includes(i) ? "border-green-500 bg-green-500/10" : "hover-elevate"
+                    }`}
+                    data-testid={`edit-label-ms-option-${i}`}
+                  >
+                    <Checkbox
+                      checked={editQ.correctIndices.includes(i)}
+                      onCheckedChange={(checked) => {
+                        const newIndices = checked
+                          ? [...editQ.correctIndices, i]
+                          : editQ.correctIndices.filter(idx => idx !== i);
+                        setEditQ({ ...editQ, correctIndices: newIndices });
+                      }}
+                      className="data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
+                      data-testid={`edit-checkbox-ms-option-${i}`}
+                    />
+                    <div className={`w-8 h-8 rounded-md flex items-center justify-center text-white text-sm font-bold shrink-0 ${["quiz-option-a", "quiz-option-b", "quiz-option-c", "quiz-option-d"][i]}`}>
+                      {String.fromCharCode(65 + i)}
+                    </div>
+                    <Input
+                      value={opt}
+                      onChange={(e) => {
+                        const opts = [...editQ.options];
+                        opts[i] = e.target.value;
+                        setEditQ({ ...editQ, options: opts });
+                      }}
+                      placeholder={`Variant ${String.fromCharCode(65 + i)}`}
+                      className="flex-1"
+                      data-testid={`edit-input-ms-option-${i}`}
+                    />
+                  </label>
+                ))}
               </div>
             )}
 
