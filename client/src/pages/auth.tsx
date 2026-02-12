@@ -52,8 +52,16 @@ export default function AuthPage() {
       }
 
       await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      const profileRes = await fetch("/api/profile", { credentials: "include" });
+      const profileData = await profileRes.json();
       toast({ title: mode === "login" ? "Muvaffaqiyatli kirdingiz!" : "Ro'yxatdan o'tdingiz!" });
-      navigate("/dashboard");
+      if (profileData?.role === "admin") {
+        navigate("/admin");
+      } else if (profileData?.role === "teacher") {
+        navigate("/teacher");
+      } else {
+        navigate("/student");
+      }
     } catch {
       toast({ title: "Xatolik yuz berdi", variant: "destructive" });
     } finally {

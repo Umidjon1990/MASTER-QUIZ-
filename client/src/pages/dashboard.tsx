@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -13,35 +14,34 @@ export default function Dashboard() {
     enabled: !!user,
   });
 
-  if (authLoading || profileLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center space-y-4">
-          <div className="w-12 h-12 rounded-md gradient-purple mx-auto animate-pulse" />
-          <Skeleton className="h-5 w-40 mx-auto" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    navigate("/auth");
-    return null;
-  }
-
-  if (profile) {
-    switch (profile.role) {
-      case "admin":
-        navigate("/admin");
-        break;
-      case "teacher":
-        navigate("/teacher");
-        break;
-      default:
-        navigate("/student");
-        break;
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate("/auth");
     }
-  }
+  }, [authLoading, user, navigate]);
 
-  return null;
+  useEffect(() => {
+    if (profile) {
+      switch (profile.role) {
+        case "admin":
+          navigate("/admin");
+          break;
+        case "teacher":
+          navigate("/teacher");
+          break;
+        default:
+          navigate("/student");
+          break;
+      }
+    }
+  }, [profile, navigate]);
+
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="text-center space-y-4">
+        <div className="w-12 h-12 rounded-md gradient-purple mx-auto animate-pulse" />
+        <Skeleton className="h-5 w-40 mx-auto" />
+      </div>
+    </div>
+  );
 }
