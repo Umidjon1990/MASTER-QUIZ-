@@ -48,7 +48,10 @@ export default function TeacherLive() {
   const [timeLeft, setTimeLeft] = useState(0);
   const [questionTimeLimit, setQuestionTimeLimit] = useState(0);
   const [leaderboardCountdown, setLeaderboardCountdown] = useState(0);
+  const [autoTriggered, setAutoTriggered] = useState(false);
   const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionRef = useRef<LiveSession | null>(null);
+  sessionRef.current = session;
 
   const { data: quizzes } = useQuery<Quiz[]>({ queryKey: ["/api/quizzes"] });
 
@@ -67,20 +70,22 @@ export default function TeacherLive() {
       const timer = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
       return () => clearTimeout(timer);
     }
-    if (phase === "question" && timeLeft === 0 && questionTimeLimit > 0 && autoAdvance && socket && session) {
-      socket.emit("host:show-leaderboard", { sessionId: session.id });
+    if (phase === "question" && timeLeft === 0 && questionTimeLimit > 0 && autoAdvance && !autoTriggered && socket && sessionRef.current) {
+      setAutoTriggered(true);
+      socket.emit("host:show-leaderboard", { sessionId: sessionRef.current.id });
     }
-  }, [timeLeft, phase, questionTimeLimit, autoAdvance]);
+  }, [timeLeft, phase, questionTimeLimit, autoAdvance, autoTriggered]);
 
   useEffect(() => {
-    if (phase === "leaderboard" && autoAdvance && leaderboardCountdown > 0) {
+    if (phase !== "leaderboard" || !autoAdvance) return;
+    if (leaderboardCountdown > 0) {
       const timer = setTimeout(() => setLeaderboardCountdown((t) => t - 1), 1000);
       return () => clearTimeout(timer);
     }
-    if (phase === "leaderboard" && autoAdvance && leaderboardCountdown === 0 && leaderboard.length > 0) {
+    if (leaderboardCountdown === 0 && leaderboard.length > 0) {
       autoTimerRef.current = setTimeout(() => {
-        if (socket && session) {
-          socket.emit("host:next-question", { sessionId: session.id });
+        if (socket && sessionRef.current) {
+          socket.emit("host:next-question", { sessionId: sessionRef.current.id });
         }
       }, 500);
       return () => { if (autoTimerRef.current) clearTimeout(autoTimerRef.current); };
@@ -110,6 +115,7 @@ export default function TeacherLive() {
       setTotalQuestions(data.total);
       setPhase("question");
       setAnswersReceived(0);
+      setAutoTriggered(false);
       const tl = data.timerEnabled !== false && data.question.timeLimit > 0 ? data.question.timeLimit : 0;
       setTimeLeft(tl);
       setQuestionTimeLimit(tl);
@@ -129,6 +135,7 @@ export default function TeacherLive() {
     socket.on("quiz:finished", (data) => {
       const sorted = [...data.leaderboard].sort((a: any, b: any) => b.score - a.score).map((e: any, i: number) => ({ ...e, rank: i + 1 }));
       setLeaderboard(sorted);
+      setLeaderboardCountdown(0);
       setPhase("finished");
       setTimeout(() => {
         confetti({ particleCount: 300, spread: 120, origin: { y: 0.4 }, colors: ["#FFD700", "#C0C0C0", "#CD7F32"] });
