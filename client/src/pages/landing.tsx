@@ -1,15 +1,16 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnimatedCounter } from "@/components/animated-counter";
 import { useLocation } from "wouter";
-import { Zap, Users, Trophy, Play, BookOpen, ArrowRight, Moon, Sun, Sparkles, Globe } from "lucide-react";
+import {
+  Zap, Users, Trophy, BookOpen, ArrowRight, Moon, Sun, Sparkles, Globe,
+  Monitor, Mic, FileText, Radio, BarChart3, MessageSquare, Video, Presentation
+} from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import type { Quiz } from "@shared/schema";
 
@@ -23,21 +24,25 @@ const item = {
   show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
 };
 
+interface PlatformStats {
+  totalUsers: number;
+  totalQuizzes: number;
+  totalSessions: number;
+  totalPlays: number;
+}
+
 export default function Landing() {
   const { user, isLoading: authLoading } = useAuth();
   const [, navigate] = useLocation();
   const { theme, toggleTheme } = useTheme();
-  const [joinCode, setJoinCode] = useState("");
 
   const { data: publicQuizzes, isLoading: quizzesLoading } = useQuery<Quiz[]>({
     queryKey: ["/api/quizzes/public"],
   });
 
-  const handleJoinQuiz = () => {
-    if (joinCode.trim().length === 6) {
-      navigate(`/play/join?code=${joinCode.trim()}`);
-    }
-  };
+  const { data: platformStats } = useQuery<PlatformStats>({
+    queryKey: ["/api/public-stats"],
+  });
 
   return (
     <div className="min-h-screen">
@@ -88,7 +93,7 @@ export default function Landing() {
             </h1>
 
             <p className="text-lg md:text-xl text-white/70 max-w-2xl mx-auto mb-10">
-              Jonli quizlar, real vaqt natijalari va zamonaviy interfeys bilan ta'lim jarayonini yangi darajaga olib chiqing
+              Jonli quizlar, real vaqt natijalari, jonli darslar va zamonaviy interfeys bilan ta'lim jarayonini yangi darajaga olib chiqing
             </p>
           </motion.div>
 
@@ -96,21 +101,22 @@ export default function Landing() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.3 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12"
+            className="flex items-center justify-center gap-4 mb-12 flex-wrap"
           >
-            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-md p-1.5 border border-white/20">
-              <Input
-                placeholder="6-raqamli kod"
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                className="w-40 bg-transparent border-0 text-white placeholder:text-white/40 text-center text-lg font-mono tracking-widest focus-visible:ring-0"
-                maxLength={6}
-                data-testid="input-join-code"
-              />
-              <Button onClick={handleJoinQuiz} disabled={joinCode.length !== 6} className="gradient-purple border-0" data-testid="button-join-quiz">
-                <Play className="w-4 h-4 mr-1" /> Qo'shilish
+            {user ? (
+              <Button size="lg" onClick={() => navigate("/dashboard")} className="gradient-purple border-0" data-testid="button-hero-dashboard">
+                Dashboardga o'tish <ArrowRight className="w-4 h-4 ml-1" />
               </Button>
-            </div>
+            ) : (
+              <>
+                <Button size="lg" onClick={() => navigate("/auth")} className="gradient-purple border-0" data-testid="button-hero-register">
+                  Boshlash <ArrowRight className="w-4 h-4 ml-1" />
+                </Button>
+                <Button size="lg" variant="outline" onClick={() => navigate("/discover")} className="bg-white/5 backdrop-blur-sm border-white/20 text-white" data-testid="button-hero-discover">
+                  <Globe className="w-4 h-4 mr-1" /> Quizlarni ko'rish
+                </Button>
+              </>
+            )}
           </motion.div>
 
           <motion.div
@@ -120,10 +126,10 @@ export default function Landing() {
             className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto"
           >
             {[
-              { icon: Users, label: "Foydalanuvchilar", value: 500 },
-              { icon: BookOpen, label: "Quizlar", value: 120 },
-              { icon: Zap, label: "Jonli o'yinlar", value: 1000 },
-              { icon: Trophy, label: "Natijalar", value: 5000 },
+              { icon: Users, label: "Foydalanuvchilar", value: platformStats?.totalUsers || 0 },
+              { icon: BookOpen, label: "Quizlar", value: platformStats?.totalQuizzes || 0 },
+              { icon: Zap, label: "Jonli sessiyalar", value: platformStats?.totalSessions || 0 },
+              { icon: Trophy, label: "O'ynalgan", value: platformStats?.totalPlays || 0 },
             ].map((stat, i) => (
               <div key={i} className="glass-card rounded-md p-4 text-center">
                 <stat.icon className="w-5 h-5 text-purple-400 mx-auto mb-2" />
@@ -145,23 +151,28 @@ export default function Landing() {
           transition={{ duration: 0.6 }}
           className="text-center mb-12"
         >
-          <h2 className="text-3xl md:text-4xl font-bold mb-4" data-testid="text-features-title">Nima uchun QuizLive?</h2>
-          <p className="text-muted-foreground max-w-xl mx-auto">Eng zamonaviy texnologiyalar bilan qurilgan interaktiv ta'lim platformasi</p>
+          <h2 className="text-3xl md:text-4xl font-bold mb-4" data-testid="text-features-title">Platforma imkoniyatlari</h2>
+          <p className="text-muted-foreground max-w-xl mx-auto">O'qituvchilar va o'quvchilar uchun barcha zarur vositalar</p>
         </motion.div>
 
-        <motion.div variants={container} initial="hidden" whileInView="show" viewport={{ once: true }} className="grid md:grid-cols-3 gap-6">
+        <motion.div variants={container} initial="hidden" whileInView="show" viewport={{ once: true }} className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {[
-            { icon: Zap, color: "gradient-purple", title: "Jonli Quizlar", desc: "Real vaqtda o'quvchilar bilan interaktiv quiz o'tkazing" },
-            { icon: Globe, color: "gradient-teal", title: "Har Qayerdan", desc: "Telefon, planshet yoki kompyuterdan foydalaning" },
-            { icon: Trophy, color: "gradient-orange", title: "Reyting Tizimi", desc: "Natijalar va leaderboard bilan motivatsiyani oshiring" },
+            { icon: Zap, color: "gradient-purple", title: "Jonli Quizlar", desc: "Real vaqtda o'quvchilar bilan interaktiv quiz o'tkazing, leaderboard bilan" },
+            { icon: Presentation, color: "gradient-teal", title: "Jonli Darslar", desc: "PDF taqdimotlar, ekran almashish va ovozli darslar" },
+            { icon: Video, color: "gradient-orange", title: "Video va Audio", desc: "WebRTC orqali yuqori sifatli video/audio uzatish va yozib olish" },
+            { icon: Monitor, color: "gradient-purple", title: "Ekran Almashish", desc: "Ekranni to'liq ko'rsatish va yozib olish imkoniyati" },
+            { icon: FileText, color: "gradient-teal", title: "Vazifalar", desc: "Uy vazifalarini tayinlash, muddat va urinishlar limiti bilan" },
+            { icon: Users, color: "gradient-orange", title: "Sinflar", desc: "Sinf yaratish, o'quvchilarni qo'shish va boshqarish" },
+            { icon: MessageSquare, color: "gradient-purple", title: "Jonli Chat", desc: "Dars davomida o'quvchilar bilan real vaqt muloqot" },
+            { icon: BarChart3, color: "gradient-teal", title: "Statistika", desc: "Batafsil natijalar, tahlil va o'quvchi faolligi" },
           ].map((feature, i) => (
             <motion.div key={i} variants={item}>
-              <Card className="p-6 h-full hover-elevate">
-                <div className={`w-12 h-12 rounded-md ${feature.color} flex items-center justify-center mb-4`}>
-                  <feature.icon className="w-6 h-6 text-white" />
+              <Card className="p-5 h-full hover-elevate">
+                <div className={`w-10 h-10 rounded-md ${feature.color} flex items-center justify-center mb-3`}>
+                  <feature.icon className="w-5 h-5 text-white" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
-                <p className="text-muted-foreground text-sm">{feature.desc}</p>
+                <h3 className="text-sm font-semibold mb-1">{feature.title}</h3>
+                <p className="text-muted-foreground text-xs">{feature.desc}</p>
               </Card>
             </motion.div>
           ))}

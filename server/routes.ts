@@ -203,6 +203,15 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/public-stats", async (_req, res) => {
+    try {
+      const stats = await storage.getDashboardStats();
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.get("/api/quizzes/public", async (req, res) => {
     try {
       const publicQuizzes = await storage.getPublicQuizzes();
@@ -1000,7 +1009,7 @@ export async function registerRoutes(
 
           if (!studentScores[attempt.userId]) {
             const user = await authStorage.getUser(attempt.userId);
-            studentScores[attempt.userId] = { attempts: 0, totalScore: 0, name: user?.name || "Noma'lum" };
+            studentScores[attempt.userId] = { attempts: 0, totalScore: 0, name: user?.firstName || user?.email || "Noma'lum" };
           }
           studentScores[attempt.userId].attempts += 1;
           studentScores[attempt.userId].totalScore += attempt.score;
@@ -1009,7 +1018,7 @@ export async function registerRoutes(
             for (const [qId, detail] of Object.entries(attempt.answers)) {
               if (!questionCorrectness[qId]) {
                 const q = questionMap.get(qId);
-                questionCorrectness[qId] = { correct: 0, total: 0, text: q?.question?.slice(0, 40) || qId };
+                questionCorrectness[qId] = { correct: 0, total: 0, text: q?.questionText?.slice(0, 40) || qId };
               }
               questionCorrectness[qId].total += 1;
               if (detail.isCorrect) questionCorrectness[qId].correct += 1;
