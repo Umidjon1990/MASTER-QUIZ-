@@ -69,7 +69,6 @@ export default function TeacherLessonLive() {
   const [showDeviceSettings, setShowDeviceSettings] = useState(false);
 
   const [lessonMode, setLessonMode] = useState<"pdf" | "screen" | "voice">("pdf");
-  const [showRecordOptions, setShowRecordOptions] = useState(false);
   const recordOptionsRef = useRef<HTMLDivElement>(null);
   const [showControls, setShowControls] = useState(true);
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -97,9 +96,9 @@ export default function TeacherLessonLive() {
     setShowControls(true);
     if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
     controlsTimerRef.current = setTimeout(() => {
-      if (!showRecordOptions && !showDeviceSettings) setShowControls(false);
+      if (!showDeviceSettings) setShowControls(false);
     }, 4000);
-  }, [showRecordOptions, showDeviceSettings]);
+  }, [showDeviceSettings]);
 
   useEffect(() => {
     resetControlsTimer();
@@ -113,16 +112,6 @@ export default function TeacherLessonLive() {
     };
   }, [resetControlsTimer]);
 
-  useEffect(() => {
-    if (!showRecordOptions) return;
-    const handler = (e: MouseEvent) => {
-      if (recordOptionsRef.current && !recordOptionsRef.current.contains(e.target as Node)) {
-        setShowRecordOptions(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showRecordOptions]);
 
   useEffect(() => {
     const loadDevices = async () => {
@@ -598,12 +587,11 @@ export default function TeacherLessonLive() {
     return { mime: "audio/webm", ext: "webm" };
   };
 
-  const startRecording = async (surface?: "monitor" | "window" | "browser") => {
-    setShowRecordOptions(false);
+  const startRecording = async () => {
     try {
-      const isVoiceMode = lesson?.lessonType === "voice" && !isScreenSharing && !surface;
+      const isVoiceOnly = lesson?.lessonType === "voice" && !isScreenSharing;
 
-      if (isVoiceMode) {
+      if (isVoiceOnly) {
         const combinedStream = new MediaStream();
         if (localStreamRef.current) {
           localStreamRef.current.getAudioTracks().forEach(t => combinedStream.addTrack(t));
@@ -647,12 +635,10 @@ export default function TeacherLessonLive() {
         return;
       }
 
-      const displayMediaOptions: any = {
-        video: surface ? { displaySurface: surface } : true,
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
         audio: true,
-      };
-
-      const screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+      });
 
       const combinedStream = new MediaStream();
       screenStream.getVideoTracks().forEach(t => combinedStream.addTrack(t));
@@ -692,12 +678,7 @@ export default function TeacherLessonLive() {
       setIsRecording(true);
       setRecordingTime(0);
       recordingTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
-      const surfaceLabels: Record<string, string> = {
-        monitor: "Butun ekran",
-        window: "Oyna",
-        browser: "Brauzer tab",
-      };
-      toast({ title: `${surfaceLabels[surface || "monitor"] || "Ekran"} yozib olish boshlandi` });
+      toast({ title: "Yozib olish boshlandi" });
     } catch (err: any) {
       if (err?.name !== "NotAllowedError") {
         toast({ title: "Yozib olishni boshlab bo'lmadi", variant: "destructive" });
@@ -1067,35 +1048,15 @@ export default function TeacherLessonLive() {
           <Button size="icon" variant="ghost" className={`toggle-elevate ${showDeviceSettings ? "toggle-elevated bg-white/20 text-white" : "text-white/60"}`} onClick={() => setShowDeviceSettings(v => !v)} data-testid="button-device-settings">
             <Settings2 className="w-4 h-4" />
           </Button>
-          <div className="relative" ref={recordOptionsRef}>
-            {!isRecording ? (
-              <Button size="icon" variant="ghost" className="text-red-400" onClick={() => setShowRecordOptions(v => !v)} data-testid="button-start-recording">
-                <Circle className="w-4 h-4 fill-red-500" />
-              </Button>
-            ) : (
-              <Button size="icon" variant="destructive" onClick={stopRecording} data-testid="button-stop-recording">
-                <StopCircle className="w-4 h-4" />
-              </Button>
-            )}
-            {showRecordOptions && (
-              <div className="absolute top-full right-0 mt-2 bg-card border rounded-md shadow-lg p-1 z-[9999] min-w-[180px]">
-                <button className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left" onClick={() => startRecording("browser")} data-testid="button-record-tab">
-                  <Presentation className="w-4 h-4 shrink-0" /> Brauzer tab
-                </button>
-                <button className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left" onClick={() => startRecording("window")} data-testid="button-record-window">
-                  <Square className="w-4 h-4 shrink-0" /> Oyna
-                </button>
-                <button className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left" onClick={() => startRecording("monitor")} data-testid="button-record-screen">
-                  <Monitor className="w-4 h-4 shrink-0" /> Butun ekran
-                </button>
-                {lesson?.lessonType === "voice" && (
-                  <button className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left" onClick={() => startRecording()} data-testid="button-record-audio">
-                    <Mic className="w-4 h-4 shrink-0" /> Faqat ovoz
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+          {!isRecording ? (
+            <Button size="icon" variant="ghost" className="text-red-400" onClick={() => startRecording()} data-testid="button-start-recording">
+              <Circle className="w-4 h-4 fill-red-500" />
+            </Button>
+          ) : (
+            <Button size="icon" variant="destructive" onClick={stopRecording} data-testid="button-stop-recording">
+              <StopCircle className="w-4 h-4" />
+            </Button>
+          )}
           {isRecording && (
             <Badge variant="destructive" className="gap-1 animate-pulse" data-testid="badge-recording-time">
               <span className="w-2 h-2 rounded-full bg-white" /> {formatRecTime(recordingTime)}
