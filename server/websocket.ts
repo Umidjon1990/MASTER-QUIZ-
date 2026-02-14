@@ -321,15 +321,27 @@ export function setupWebSocket(httpServer: HttpServer) {
         });
 
         let currentMode = "pdf";
+        let hostCurrentPage = lesson.currentPage || 1;
+        let hostZoomLevel = 0;
+        let hostIsScreenSharing = false;
         const roomSockets = await io.in(`lesson:${lessonId}`).fetchSockets();
         for (const s of roomSockets) {
-          if (s.data.lessonRole === "host" && s.data.lessonMode) {
-            currentMode = s.data.lessonMode;
+          if (s.data.lessonRole === "host") {
+            if (s.data.lessonMode) currentMode = s.data.lessonMode;
+            if (s.data.currentPage) hostCurrentPage = s.data.currentPage;
+            if (s.data.zoomLevel !== undefined) hostZoomLevel = s.data.zoomLevel;
+            if (s.data.isScreenSharing) hostIsScreenSharing = true;
             break;
           }
         }
 
-        callback?.({ success: true, mode: currentMode });
+        callback?.({
+          success: true,
+          mode: currentMode,
+          currentPage: hostCurrentPage,
+          zoomLevel: hostZoomLevel,
+          isScreenSharing: hostIsScreenSharing,
+        });
       } catch (err) {
         callback?.({ success: false, error: "Failed to join lesson" });
       }
@@ -338,6 +350,7 @@ export function setupWebSocket(httpServer: HttpServer) {
     socket.on("lesson:change-page", async (data) => {
       if (socket.data.lessonRole !== "host") return;
       const { lessonId, page } = data;
+      socket.data.currentPage = page;
       socket.to(`lesson:${lessonId}`).emit("lesson:page-changed", { page });
       try { await storage.updateLiveLesson(lessonId, { currentPage: page }); } catch {}
     });
@@ -351,6 +364,7 @@ export function setupWebSocket(httpServer: HttpServer) {
     socket.on("lesson:zoom-change", (data) => {
       if (socket.data.lessonRole !== "host") return;
       const { lessonId, zoomLevel } = data;
+      socket.data.zoomLevel = zoomLevel;
       socket.to(`lesson:${lessonId}`).emit("lesson:zoom-changed", { zoomLevel });
     });
 
@@ -359,6 +373,11 @@ export function setupWebSocket(httpServer: HttpServer) {
       const { lessonId, mode } = data;
       socket.data.lessonMode = mode;
       socket.to(`lesson:${lessonId}`).emit("lesson:mode-changed", { mode });
+    });
+
+    socket.on("lesson:screen-sharing-status", (data) => {
+      if (socket.data.lessonRole !== "host") return;
+      socket.data.isScreenSharing = data.isScreenSharing;
     });
 
     socket.on("lesson:screen-offer", (data) => {

@@ -61,6 +61,8 @@ export default function TeacherLessonLive() {
   const [showDeviceSettings, setShowDeviceSettings] = useState(false);
 
   const [lessonMode, setLessonMode] = useState<"pdf" | "screen" | "voice">("pdf");
+  const [showRecordOptions, setShowRecordOptions] = useState(false);
+  const recordOptionsRef = useRef<HTMLDivElement>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const screenPeerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const screenVideoRef = useRef<HTMLVideoElement>(null);
@@ -70,6 +72,17 @@ export default function TeacherLessonLive() {
     queryKey: ["/api/live-lessons", lessonId],
     enabled: !!lessonId,
   });
+
+  useEffect(() => {
+    if (!showRecordOptions) return;
+    const handler = (e: MouseEvent) => {
+      if (recordOptionsRef.current && !recordOptionsRef.current.contains(e.target as Node)) {
+        setShowRecordOptions(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showRecordOptions]);
 
   useEffect(() => {
     const loadDevices = async () => {
@@ -241,6 +254,7 @@ export default function TeacherLessonLive() {
       setIsScreenSharing(false);
       setLessonMode("pdf");
       socketRef.current?.emit("lesson:mode-change", { lessonId, mode: "pdf" });
+      socketRef.current?.emit("lesson:screen-sharing-status", { isScreenSharing: false });
     } else {
       try {
         const stream = await navigator.mediaDevices.getDisplayMedia({
@@ -251,6 +265,7 @@ export default function TeacherLessonLive() {
         setIsScreenSharing(true);
         setLessonMode("screen");
         socketRef.current?.emit("lesson:mode-change", { lessonId, mode: "screen" });
+        socketRef.current?.emit("lesson:screen-sharing-status", { isScreenSharing: true });
 
         stream.getVideoTracks()[0].onended = () => {
           screenStreamRef.current = null;
@@ -259,6 +274,7 @@ export default function TeacherLessonLive() {
           setIsScreenSharing(false);
           setLessonMode("pdf");
           socketRef.current?.emit("lesson:mode-change", { lessonId, mode: "pdf" });
+          socketRef.current?.emit("lesson:screen-sharing-status", { isScreenSharing: false });
         };
 
         if (screenVideoRef.current) {
@@ -421,9 +437,10 @@ export default function TeacherLessonLive() {
     return { mime: "audio/webm", ext: "webm" };
   };
 
-  const startRecording = async () => {
+  const startRecording = async (surface?: "monitor" | "window" | "browser") => {
+    setShowRecordOptions(false);
     try {
-      const isVoiceMode = lesson?.lessonType === "voice" && !isScreenSharing;
+      const isVoiceMode = lesson?.lessonType === "voice" && !isScreenSharing && !surface;
 
       if (isVoiceMode) {
         const combinedStream = new MediaStream();
@@ -469,10 +486,12 @@ export default function TeacherLessonLive() {
         return;
       }
 
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: "browser" } as any,
+      const displayMediaOptions: any = {
+        video: surface ? { displaySurface: surface } : true,
         audio: true,
-      });
+      };
+
+      const screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
 
       const combinedStream = new MediaStream();
       screenStream.getVideoTracks().forEach(t => combinedStream.addTrack(t));
@@ -512,7 +531,12 @@ export default function TeacherLessonLive() {
       setIsRecording(true);
       setRecordingTime(0);
       recordingTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
-      toast({ title: "Yozib olish boshlandi" });
+      const surfaceLabels: Record<string, string> = {
+        monitor: "Butun ekran",
+        window: "Oyna",
+        browser: "Brauzer tab",
+      };
+      toast({ title: `${surfaceLabels[surface || "monitor"] || "Ekran"} yozib olish boshlandi` });
     } catch (err: any) {
       if (err?.name !== "NotAllowedError") {
         toast({ title: "Yozib olishni boshlab bo'lmadi", variant: "destructive" });
@@ -704,9 +728,49 @@ export default function TeacherLessonLive() {
             <Settings2 className="w-4 h-4" />
           </Button>
           {!isRecording ? (
-            <Button size="icon" variant="ghost" onClick={startRecording} data-testid="button-start-recording">
-              <Download className="w-4 h-4" />
-            </Button>
+            <div className="relative" ref={recordOptionsRef}>
+              <Button size="icon" variant="ghost" onClick={() => setShowRecordOptions(v => !v)} data-testid="button-start-recording">
+                <Download className="w-4 h-4" />
+              </Button>
+              {showRecordOptions && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-card border rounded-md shadow-lg p-1 z-50 min-w-[160px]">
+                  <button
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
+                    onClick={() => startRecording("browser")}
+                    data-testid="button-record-tab"
+                  >
+                    <Presentation className="w-4 h-4" />
+                    Brauzer tab
+                  </button>
+                  <button
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
+                    onClick={() => startRecording("window")}
+                    data-testid="button-record-window"
+                  >
+                    <Square className="w-4 h-4" />
+                    Oyna
+                  </button>
+                  <button
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
+                    onClick={() => startRecording("monitor")}
+                    data-testid="button-record-screen"
+                  >
+                    <Monitor className="w-4 h-4" />
+                    Butun ekran
+                  </button>
+                  {lesson?.lessonType === "voice" && (
+                    <button
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
+                      onClick={() => startRecording()}
+                      data-testid="button-record-audio"
+                    >
+                      <Mic className="w-4 h-4" />
+                      Faqat ovoz
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           ) : (
             <Button size="icon" variant="destructive" onClick={stopRecording} data-testid="button-stop-recording">
               <StopCircle className="w-4 h-4" />

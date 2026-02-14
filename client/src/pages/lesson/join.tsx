@@ -119,10 +119,14 @@ export default function LessonJoin() {
     }, (res: any) => {
       if (res.success) {
         setJoined(true);
+        if (res.currentPage) setCurrentPage(res.currentPage);
+        if (res.zoomLevel !== undefined) setExternalZoom(res.zoomLevel);
         socket.emit("lesson:request-stream", { lessonId: lesson.id });
-        if (res.mode === "screen") {
+        if (res.mode === "screen" || res.isScreenSharing) {
           setLessonMode("screen");
           socket.emit("lesson:request-screen-stream", { lessonId: lesson.id });
+        } else if (res.mode && res.mode !== "pdf") {
+          setLessonMode(res.mode);
         }
       }
     });
