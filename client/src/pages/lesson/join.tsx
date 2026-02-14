@@ -59,6 +59,7 @@ export default function LessonJoin() {
   const resizeStartRef = useRef<{ x: number; y: number; startW: number } | null>(null);
   const [showPipToolbar, setShowPipToolbar] = useState(false);
   const pipTapRef = useRef<{ time: number; moved: boolean }>({ time: 0, moved: false });
+  const lastPipStateRef = useRef<{ posRatioX: number; posRatioY: number; sizeRatio: number; shape: "circle" | "rectangle" } | null>(null);
 
   const [lessonMode, setLessonMode] = useState<"pdf" | "screen" | "voice">("pdf");
   const [hasScreenStream, setHasScreenStream] = useState(false);
@@ -107,6 +108,19 @@ export default function LessonJoin() {
     setLoading(false);
   };
 
+  const applyPipState = useCallback((pip: { posRatioX: number; posRatioY: number; sizeRatio: number; shape: "circle" | "rectangle" }) => {
+    lastPipStateRef.current = pip;
+    const newSize = Math.max(60, Math.min(
+      Math.min(window.innerWidth / 2, window.innerHeight / 2),
+      pip.sizeRatio * Math.min(window.innerWidth, window.innerHeight)
+    ));
+    setVideoSize(newSize);
+    setVideoShape(pip.shape);
+    const newLeft = Math.max(0, Math.min(window.innerWidth - newSize - 10, pip.posRatioX * window.innerWidth));
+    const newTop = Math.max(0, Math.min(window.innerHeight - newSize - 10, pip.posRatioY * window.innerHeight));
+    setVideoPos({ left: newLeft, top: newTop });
+  }, []);
+
   const joinLesson = (info?: LessonInfo) => {
     const lesson = info || lessonInfo;
     if (!lesson) return;
@@ -132,6 +146,9 @@ export default function LessonJoin() {
         if (res.viewport) {
           setExternalViewport(res.viewport);
         }
+        if (res.pipState) {
+          applyPipState(res.pipState);
+        }
         socket.emit("lesson:request-stream", { lessonId: lesson.id });
         if (res.mode === "screen" || res.isScreenSharing) {
           setLessonMode("screen");
@@ -154,6 +171,10 @@ export default function LessonJoin() {
       if (viewport) {
         setExternalViewport(viewport);
       }
+    });
+
+    socket.on("lesson:pip-changed", (pip: { posRatioX: number; posRatioY: number; sizeRatio: number; shape: "circle" | "rectangle" }) => {
+      applyPipState(pip);
     });
 
     socket.on("lesson:mode-changed", ({ mode }) => {
@@ -380,14 +401,18 @@ export default function LessonJoin() {
 
   useEffect(() => {
     const handleResize = () => {
-      setVideoPos(prev => ({
-        left: Math.max(0, Math.min(window.innerWidth - videoSize - 10, prev.left)),
-        top: Math.max(0, Math.min(window.innerHeight - videoSize - 10, prev.top)),
-      }));
+      if (lastPipStateRef.current) {
+        applyPipState(lastPipStateRef.current);
+      } else {
+        setVideoPos(prev => ({
+          left: Math.max(0, Math.min(window.innerWidth - videoSize - 10, prev.left)),
+          top: Math.max(0, Math.min(window.innerHeight - videoSize - 10, prev.top)),
+        }));
+      }
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [videoSize]);
+  }, [videoSize, applyPipState]);
 
   useEffect(() => {
     return () => {

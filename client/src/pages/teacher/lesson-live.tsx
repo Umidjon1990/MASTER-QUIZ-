@@ -767,6 +767,20 @@ export default function TeacherLessonLive() {
     return () => window.removeEventListener("resize", handleResize);
   }, [videoSize]);
 
+  useEffect(() => {
+    if (!socketRef.current || !videoEnabled) return;
+    const ratioX = videoPos.left / window.innerWidth;
+    const ratioY = videoPos.top / window.innerHeight;
+    const sizeRatio = videoSize / Math.min(window.innerWidth, window.innerHeight);
+    socketRef.current.emit("lesson:pip-change", {
+      lessonId,
+      posRatioX: ratioX,
+      posRatioY: ratioY,
+      sizeRatio,
+      shape: videoShape,
+    });
+  }, [videoPos.left, videoPos.top, videoSize, videoShape, videoEnabled, lessonId]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">

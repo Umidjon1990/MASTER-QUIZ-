@@ -325,6 +325,7 @@ export function setupWebSocket(httpServer: HttpServer) {
         let hostZoomLevel = 0;
         let hostIsScreenSharing = false;
         const roomSockets = await io.in(`lesson:${lessonId}`).fetchSockets();
+        let hostPipState: any = null;
         for (const s of roomSockets) {
           if (s.data.lessonRole === "host") {
             if (s.data.lessonMode) currentMode = s.data.lessonMode;
@@ -332,6 +333,7 @@ export function setupWebSocket(httpServer: HttpServer) {
             if (s.data.zoomLevel !== undefined) hostZoomLevel = s.data.zoomLevel;
             if (s.data.isScreenSharing) hostIsScreenSharing = true;
             if (s.data.viewport) (socket.data as any).hostViewport = s.data.viewport;
+            if (s.data.pipState) hostPipState = s.data.pipState;
             break;
           }
         }
@@ -344,6 +346,7 @@ export function setupWebSocket(httpServer: HttpServer) {
           zoomLevel: hostZoomLevel,
           viewport: hostViewport,
           isScreenSharing: hostIsScreenSharing,
+          pipState: hostPipState,
         });
       } catch (err) {
         callback?.({ success: false, error: "Failed to join lesson" });
@@ -370,6 +373,13 @@ export function setupWebSocket(httpServer: HttpServer) {
       socket.data.zoomLevel = zoomLevel;
       if (viewport) socket.data.viewport = viewport;
       socket.to(`lesson:${lessonId}`).emit("lesson:zoom-changed", { zoomLevel, viewport });
+    });
+
+    socket.on("lesson:pip-change", (data) => {
+      if (socket.data.lessonRole !== "host") return;
+      const { lessonId, posRatioX, posRatioY, sizeRatio, shape } = data;
+      socket.data.pipState = { posRatioX, posRatioY, sizeRatio, shape };
+      socket.to(`lesson:${lessonId}`).emit("lesson:pip-changed", { posRatioX, posRatioY, sizeRatio, shape });
     });
 
     socket.on("lesson:mode-change", (data) => {
