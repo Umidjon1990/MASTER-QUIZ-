@@ -5,6 +5,7 @@ import { useRoute, useLocation } from "wouter";
 import { io, Socket } from "socket.io-client";
 import PDFViewer from "@/components/pdf-viewer";
 import LessonChat from "@/components/lesson-chat";
+import RecordCropSelector, { type CropRegion } from "@/components/record-crop-selector";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -60,6 +61,10 @@ export default function TeacherLessonLive() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [showRecordCropSelector, setShowRecordCropSelector] = useState(false);
+  const recordScreenStreamRef = useRef<MediaStream | null>(null);
+  const recordCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const recordAnimFrameRef = useRef<number>(0);
 
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
@@ -516,16 +521,79 @@ export default function TeacherLessonLive() {
         audio: true,
       });
 
-      const combinedStream = new MediaStream();
-      screenStream.getVideoTracks().forEach(t => combinedStream.addTrack(t));
+      recordScreenStreamRef.current = screenStream;
+
+      screenStream.getVideoTracks()[0].onended = () => {
+        if (showRecordCropSelector) {
+          setShowRecordCropSelector(false);
+          recordScreenStreamRef.current = null;
+        } else {
+          stopRecording();
+        }
+      };
+
+      setShowRecordCropSelector(true);
+    } catch (err: any) {
+      if (err?.name !== "NotAllowedError") {
+        toast({ title: "Yozib olishni boshlab bo'lmadi", variant: "destructive" });
+      }
+    }
+  };
+
+  const handleRecordCropConfirm = (crop: CropRegion | null) => {
+    setShowRecordCropSelector(false);
+    const screenStream = recordScreenStreamRef.current;
+    if (!screenStream) return;
+
+    try {
+      const videoTrack = screenStream.getVideoTracks()[0];
+      if (!videoTrack) return;
+
+      const settings = videoTrack.getSettings();
+      const srcW = settings.width || 1920;
+      const srcH = settings.height || 1080;
+
+      let recordStream: MediaStream;
+
+      if (crop) {
+        const cropX = Math.round(crop.x * srcW);
+        const cropY = Math.round(crop.y * srcH);
+        const cropW = Math.round(crop.w * srcW);
+        const cropH = Math.round(crop.h * srcH);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = cropW;
+        canvas.height = cropH;
+        recordCanvasRef.current = canvas;
+
+        const ctx = canvas.getContext("2d")!;
+        const video = document.createElement("video");
+        video.srcObject = screenStream;
+        video.muted = true;
+        video.playsInline = true;
+        video.play();
+
+        const drawFrame = () => {
+          ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+          recordAnimFrameRef.current = requestAnimationFrame(drawFrame);
+        };
+        drawFrame();
+
+        const canvasStream = canvas.captureStream(30);
+        recordStream = new MediaStream();
+        canvasStream.getVideoTracks().forEach(t => recordStream.addTrack(t));
+      } else {
+        recordStream = new MediaStream();
+        screenStream.getVideoTracks().forEach(t => recordStream.addTrack(t));
+      }
 
       if (localStreamRef.current) {
-        localStreamRef.current.getAudioTracks().forEach(t => combinedStream.addTrack(t));
+        localStreamRef.current.getAudioTracks().forEach(t => recordStream.addTrack(t));
       }
-      screenStream.getAudioTracks().forEach(t => combinedStream.addTrack(t));
+      screenStream.getAudioTracks().forEach(t => recordStream.addTrack(t));
 
       const { mime, ext } = getRecordingMimeType();
-      const recorder = new MediaRecorder(combinedStream, { mimeType: mime, videoBitsPerSecond: 2_500_000 });
+      const recorder = new MediaRecorder(recordStream, { mimeType: mime, videoBitsPerSecond: 2_500_000 });
       recordedChunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
@@ -543,9 +611,13 @@ export default function TeacherLessonLive() {
         setIsRecording(false);
         setRecordingTime(0);
         if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        if (recordAnimFrameRef.current) cancelAnimationFrame(recordAnimFrameRef.current);
+        recordCanvasRef.current = null;
+        recordScreenStreamRef.current?.getTracks().forEach(t => t.stop());
+        recordScreenStreamRef.current = null;
       };
 
-      screenStream.getVideoTracks()[0].onended = () => {
+      videoTrack.onended = () => {
         stopRecording();
       };
 
@@ -555,10 +627,18 @@ export default function TeacherLessonLive() {
       setRecordingTime(0);
       recordingTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
       toast({ title: "Yozib olish boshlandi" });
-    } catch (err: any) {
-      if (err?.name !== "NotAllowedError") {
-        toast({ title: "Yozib olishni boshlab bo'lmadi", variant: "destructive" });
-      }
+    } catch (err) {
+      toast({ title: "Yozib olishni boshlab bo'lmadi", variant: "destructive" });
+      screenStream.getTracks().forEach(t => t.stop());
+      recordScreenStreamRef.current = null;
+    }
+  };
+
+  const handleRecordCropCancel = () => {
+    setShowRecordCropSelector(false);
+    if (recordScreenStreamRef.current) {
+      recordScreenStreamRef.current.getTracks().forEach(t => t.stop());
+      recordScreenStreamRef.current = null;
     }
   };
 
@@ -568,6 +648,12 @@ export default function TeacherLessonLive() {
       mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
     }
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (recordAnimFrameRef.current) cancelAnimationFrame(recordAnimFrameRef.current);
+    recordCanvasRef.current = null;
+    if (recordScreenStreamRef.current) {
+      recordScreenStreamRef.current.getTracks().forEach(t => t.stop());
+      recordScreenStreamRef.current = null;
+    }
   };
 
   const formatRecTime = (s: number) => {
@@ -1072,6 +1158,14 @@ export default function TeacherLessonLive() {
       )}
 
       <LessonChat socket={socketState} isHost />
+
+      {showRecordCropSelector && recordScreenStreamRef.current && (
+        <RecordCropSelector
+          videoStream={recordScreenStreamRef.current}
+          onConfirm={handleRecordCropConfirm}
+          onCancel={handleRecordCropCancel}
+        />
+      )}
     </div>
   );
 }
