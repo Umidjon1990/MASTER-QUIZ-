@@ -672,6 +672,82 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/telegram/save-token", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { botToken } = req.body;
+      if (!botToken || !botToken.trim()) {
+        return res.status(400).json({ message: "Bot token kerak" });
+      }
+      const TelegramBot = (await import("node-telegram-bot-api")).default;
+      const bot = new TelegramBot(botToken.trim());
+      const me = await bot.getMe();
+      await storage.updateUserProfile(req.userId, { telegramBotToken: botToken.trim() });
+      res.json({ success: true, botName: me.username, botFirstName: me.first_name });
+    } catch (error: any) {
+      const msg = error?.message?.includes("Unauthorized") || error?.message?.includes("401")
+        ? "Bot tokeni noto'g'ri. @BotFather dan to'g'ri tokenni oling"
+        : "Bot tokenni tekshirishda xatolik";
+      res.status(400).json({ message: msg });
+    }
+  });
+
+  app.delete("/api/telegram/token", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      await storage.updateUserProfile(req.userId, { telegramBotToken: null, telegramChats: [] });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Tokenni o'chirishda xatolik" });
+    }
+  });
+
+  app.post("/api/telegram/add-chat", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { chatId } = req.body;
+      if (!chatId || !chatId.trim()) {
+        return res.status(400).json({ message: "Chat ID yoki kanal username kerak" });
+      }
+      const profile = await storage.getUserProfile(req.userId);
+      if (!profile?.telegramBotToken) {
+        return res.status(400).json({ message: "Avval bot tokenni saqlang" });
+      }
+      const TelegramBot = (await import("node-telegram-bot-api")).default;
+      const bot = new TelegramBot(profile.telegramBotToken);
+      const targetChat = chatId.trim().startsWith("@") || chatId.trim().startsWith("-") ? chatId.trim() : (isNaN(Number(chatId.trim())) ? `@${chatId.trim()}` : Number(chatId.trim()));
+      const chatInfo = await bot.getChat(targetChat);
+      const newChat = {
+        chatId: String(chatInfo.id),
+        title: chatInfo.title || chatInfo.username || String(chatInfo.id),
+        type: chatInfo.type as "group" | "supergroup" | "channel",
+        username: chatInfo.username || undefined,
+      };
+      const currentChats = (profile.telegramChats as any[]) || [];
+      if (currentChats.some((c: any) => c.chatId === newChat.chatId)) {
+        return res.status(400).json({ message: "Bu chat allaqachon qo'shilgan" });
+      }
+      const updatedChats = [...currentChats, newChat];
+      await storage.updateUserProfile(req.userId, { telegramChats: updatedChats });
+      res.json({ success: true, chat: newChat });
+    } catch (error: any) {
+      const msg = error?.message?.includes("chat not found") ? "Chat topilmadi. Botni guruhga admin qilib qo'shing"
+        : error?.message?.includes("Unauthorized") ? "Bot tokeni noto'g'ri"
+        : "Chatni qo'shishda xatolik";
+      res.status(400).json({ message: msg });
+    }
+  });
+
+  app.delete("/api/telegram/chats/:chatId", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.userId);
+      if (!profile) return res.status(404).json({ message: "Profil topilmadi" });
+      const currentChats = (profile.telegramChats as any[]) || [];
+      const updatedChats = currentChats.filter((c: any) => c.chatId !== req.params.chatId);
+      await storage.updateUserProfile(req.userId, { telegramChats: updatedChats });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Chatni o'chirishda xatolik" });
+    }
+  });
+
   // === Shuffled Questions Route ===
   app.get("/api/quizzes/:quizId/questions/shuffled", requireAuth, async (req: any, res) => {
     try {

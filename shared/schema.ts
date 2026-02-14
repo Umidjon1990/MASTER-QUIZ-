@@ -6,6 +6,13 @@ import { z } from "zod";
 export { users, sessions } from "./models/auth";
 export type { User, UpsertUser } from "./models/auth";
 
+export type TelegramChat = {
+  chatId: string;
+  title: string;
+  type: "group" | "supergroup" | "channel";
+  username?: string;
+};
+
 export const userProfiles = pgTable("user_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().unique(),
@@ -16,6 +23,7 @@ export const userProfiles = pgTable("user_profiles", {
   bio: text("bio"),
   telegramBotToken: text("telegram_bot_token"),
   telegramChatId: text("telegram_chat_id"),
+  telegramChats: jsonb("telegram_chats").$type<TelegramChat[]>().default([]),
   subscriptionExpiresAt: timestamp("subscription_expires_at"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
