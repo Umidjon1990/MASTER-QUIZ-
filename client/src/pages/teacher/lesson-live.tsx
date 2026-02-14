@@ -1058,7 +1058,7 @@ export default function TeacherLessonLive() {
             {isScreenSharing ? <Monitor className="w-4 h-4" /> : <MonitorOff className="w-4 h-4" />}
           </Button>
           {isScreenSharing && (
-            <Button size="icon" variant="ghost" className="text-white/60" onClick={() => { if (rawScreenStreamRef.current) setShowCropSelector(true); }} data-testid="button-recrop-screen">
+            <Button size="icon" variant="ghost" className="text-red-400 ring-1 ring-red-400/60" onClick={() => { if (rawScreenStreamRef.current) setShowCropSelector(true); }} data-testid="button-recrop-screen" title="Ekranni qirqish">
               <Crop className="w-4 h-4" />
             </Button>
           )}
