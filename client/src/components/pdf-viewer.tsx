@@ -42,6 +42,7 @@ export default function PDFViewer({
   const pageCacheRef = useRef<Map<string, ImageBitmap>>(new Map());
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [wrapperPadding, setWrapperPadding] = useState({ top: 0, left: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
 
@@ -202,6 +203,10 @@ export default function PDFViewer({
       canvas.style.width = `${scaledViewport.width}px`;
       canvas.style.height = `${scaledViewport.height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const padLeft = Math.max(0, (containerWidth - scaledViewport.width) / 2);
+      const padTop = Math.max(0, (containerHeight - scaledViewport.height) / 2);
+      setWrapperPadding({ top: padTop, left: padLeft });
 
       const cacheKey = `${currentPage}_${containerWidth}_${containerHeight}_${zoomLevel}`;
       const cachedBitmap = pageCacheRef.current.get(cacheKey);
@@ -406,8 +411,8 @@ export default function PDFViewer({
     <div className={`h-full w-full relative ${className}`}>
       <div
         ref={containerRef}
-        className={`w-full h-full relative ${isZoomed ? "overflow-auto cursor-grab" : "overflow-hidden flex items-center justify-center"} ${isDragging ? "cursor-grabbing" : ""}`}
-        style={isZoomed ? { scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.3) transparent" } : undefined}
+        className={`w-full h-full relative overflow-auto ${isZoomed ? "cursor-grab" : ""} ${isDragging ? "cursor-grabbing" : ""}`}
+        style={{ scrollbarWidth: isZoomed ? "thin" : "none", scrollbarColor: isZoomed ? "rgba(255,255,255,0.3) transparent" : "transparent transparent" }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -427,7 +432,7 @@ export default function PDFViewer({
             <p>{error}</p>
           </div>
         ) : (
-          <div className="relative inline-block">
+          <div className="relative" style={{ width: "fit-content", paddingTop: `${wrapperPadding.top}px`, paddingLeft: `${wrapperPadding.left}px`, paddingRight: `${wrapperPadding.left}px` }}>
             <canvas ref={canvasRef} className="block" data-testid="pdf-canvas" />
             {isPageRendering && (
               <div className="absolute inset-0 flex items-center justify-center z-40 pointer-events-none" data-testid="page-render-spinner">
