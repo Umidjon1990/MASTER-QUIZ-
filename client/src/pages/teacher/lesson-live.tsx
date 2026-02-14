@@ -594,9 +594,11 @@ export default function TeacherLessonLive() {
         activeRecordCropRef.current = crop;
         setActiveRecordCrop(crop);
 
+        const initW = Math.round(crop.w * srcW);
+        const initH = Math.round(crop.h * srcH);
         const canvas = document.createElement("canvas");
-        canvas.width = srcW;
-        canvas.height = srcH;
+        canvas.width = initW;
+        canvas.height = initH;
         recordCanvasRef.current = canvas;
 
         const ctx = canvas.getContext("2d")!;
