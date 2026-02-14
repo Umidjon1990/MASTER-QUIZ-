@@ -1211,13 +1211,6 @@ export default function TeacherLessonLive() {
 
       <LessonChat socket={socketState} isHost />
 
-      {isRecording && activeRecordCrop && (
-        <RecordingCropOverlay
-          crop={activeRecordCrop}
-          onChange={handleActiveRecordCropChange}
-        />
-      )}
-
       {showRecordCropSelector && recordSnapshot && (
         <RecordCropSelector
           snapshotUrl={recordSnapshot.url}
