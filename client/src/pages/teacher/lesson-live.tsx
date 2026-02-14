@@ -20,7 +20,7 @@ import {
   Video, VideoOff, Mic, MicOff, Users, Copy, Link2, Play, Square,
   Circle, RectangleHorizontal, ArrowLeft, Lock, Unlock,
   Presentation, GripVertical, Download, StopCircle, Settings2,
-  Monitor, MonitorOff,
+  Monitor, MonitorOff, ZoomIn, ZoomOut, Maximize2, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import type { LiveLesson } from "@shared/schema";
 
@@ -40,6 +40,7 @@ export default function TeacherLessonLive() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
+  const [zoomLevel, setZoomLevel] = useState(0);
   const [participantCount, setParticipantCount] = useState(0);
   const [isStarted, setIsStarted] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
@@ -586,6 +587,40 @@ export default function TeacherLessonLive() {
     }
   }, [videoEnabled]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (lessonMode !== "pdf") return;
+      switch (e.key) {
+        case "ArrowRight":
+        case "ArrowDown":
+          e.preventDefault();
+          if (currentPage < totalPages) handlePageChange(currentPage + 1);
+          break;
+        case "ArrowLeft":
+        case "ArrowUp":
+          e.preventDefault();
+          if (currentPage > 1) handlePageChange(currentPage - 1);
+          break;
+        case "+":
+        case "=":
+          e.preventDefault();
+          if (zoomLevel < 6) handleZoomChange(zoomLevel + 1);
+          break;
+        case "-":
+          e.preventDefault();
+          if (zoomLevel > 0) handleZoomChange(zoomLevel - 1);
+          break;
+        case "0":
+          e.preventDefault();
+          handleZoomChange(0);
+          break;
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [lessonMode, currentPage, totalPages, zoomLevel]);
+
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
     socketRef.current?.emit("lesson:change-page", { lessonId, page });
@@ -596,8 +631,9 @@ export default function TeacherLessonLive() {
     socketRef.current?.emit("lesson:pointer-move", { lessonId, x, y, visible });
   };
 
-  const handleZoomChange = (zoomLevel: number) => {
-    socketRef.current?.emit("lesson:zoom-change", { lessonId, zoomLevel });
+  const handleZoomChange = (newZoom: number) => {
+    setZoomLevel(newZoom);
+    socketRef.current?.emit("lesson:zoom-change", { lessonId, zoomLevel: newZoom });
   };
 
   const handleStart = async () => {
@@ -731,6 +767,7 @@ export default function TeacherLessonLive() {
             onTotalPages={setTotalPages}
             onPointerMove={handlePointerMove}
             onZoomChange={handleZoomChange}
+            externalZoom={zoomLevel}
             isHost
           />
         ) : (
@@ -772,7 +809,7 @@ export default function TeacherLessonLive() {
 
       <div className={`absolute top-0 left-0 right-0 z-30 flex items-center justify-between gap-1 p-1.5 sm:p-2 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${showControls ? "opacity-100" : "opacity-0 pointer-events-none"}`} data-testid="lesson-controls">
         <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap min-w-0">
-          <Button size="icon" variant="ghost" className="text-white hover:bg-white/20" onClick={() => navigate("/teacher/lessons")} data-testid="button-back">
+          <Button size="icon" variant="ghost" className="text-white" onClick={() => navigate("/teacher/lessons")} data-testid="button-back">
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <span className="font-semibold text-xs sm:text-sm text-white truncate max-w-[80px] sm:max-w-[180px]" data-testid="text-lesson-name">
@@ -789,26 +826,26 @@ export default function TeacherLessonLive() {
         </div>
 
         <div className="flex items-center gap-0.5 sm:gap-1 flex-wrap">
-          <Button size="icon" variant="ghost" className={audioEnabled ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/20"} onClick={toggleAudio} data-testid="button-toggle-audio">
+          <Button size="icon" variant="ghost" className={`toggle-elevate ${audioEnabled ? "toggle-elevated bg-white/20 text-white" : "text-white/60"}`} onClick={toggleAudio} data-testid="button-toggle-audio">
             {audioEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
           </Button>
-          <Button size="icon" variant="ghost" className={videoEnabled ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/20"} onClick={toggleVideo} data-testid="button-toggle-video">
+          <Button size="icon" variant="ghost" className={`toggle-elevate ${videoEnabled ? "toggle-elevated bg-white/20 text-white" : "text-white/60"}`} onClick={toggleVideo} data-testid="button-toggle-video">
             {videoEnabled ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
           </Button>
           {videoEnabled && (
-            <Button size="icon" variant="ghost" className="text-white hover:bg-white/20" onClick={() => setVideoShape(s => s === "circle" ? "rectangle" : "circle")} data-testid="button-video-shape">
+            <Button size="icon" variant="ghost" className="text-white" onClick={() => setVideoShape(s => s === "circle" ? "rectangle" : "circle")} data-testid="button-video-shape">
               {videoShape === "circle" ? <Circle className="w-4 h-4" /> : <RectangleHorizontal className="w-4 h-4" />}
             </Button>
           )}
-          <Button size="icon" variant="ghost" className={isScreenSharing ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/20"} onClick={toggleScreenShare} data-testid="button-toggle-screen-share">
+          <Button size="icon" variant="ghost" className={`toggle-elevate ${isScreenSharing ? "toggle-elevated bg-white/20 text-white" : "text-white/60"}`} onClick={toggleScreenShare} data-testid="button-toggle-screen-share">
             {isScreenSharing ? <Monitor className="w-4 h-4" /> : <MonitorOff className="w-4 h-4" />}
           </Button>
-          <Button size="icon" variant="ghost" className={showDeviceSettings ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/20"} onClick={() => setShowDeviceSettings(v => !v)} data-testid="button-device-settings">
+          <Button size="icon" variant="ghost" className={`toggle-elevate ${showDeviceSettings ? "toggle-elevated bg-white/20 text-white" : "text-white/60"}`} onClick={() => setShowDeviceSettings(v => !v)} data-testid="button-device-settings">
             <Settings2 className="w-4 h-4" />
           </Button>
           <div className="relative" ref={recordOptionsRef}>
             {!isRecording ? (
-              <Button size="icon" variant="ghost" className="text-red-400 hover:bg-white/20" onClick={() => setShowRecordOptions(v => !v)} data-testid="button-start-recording">
+              <Button size="icon" variant="ghost" className="text-red-400" onClick={() => setShowRecordOptions(v => !v)} data-testid="button-start-recording">
                 <Circle className="w-4 h-4 fill-red-500" />
               </Button>
             ) : (
@@ -840,11 +877,11 @@ export default function TeacherLessonLive() {
               <span className="w-2 h-2 rounded-full bg-white" /> {formatRecTime(recordingTime)}
             </Badge>
           )}
-          <Button size="icon" variant="ghost" className="text-white hover:bg-white/20" onClick={copyLink} data-testid="button-copy-link">
+          <Button size="icon" variant="ghost" className="text-white" onClick={copyLink} data-testid="button-copy-link">
             <Link2 className="w-4 h-4" />
           </Button>
           {!isStarted ? (
-            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white border-0" onClick={handleStart} data-testid="button-start-lesson">
+            <Button size="sm" className="bg-green-600 text-white border-green-600" onClick={handleStart} data-testid="button-start-lesson">
               <Play className="w-3 h-3 sm:mr-1" /> <span className="hidden sm:inline">Boshlash</span>
             </Button>
           ) : (
@@ -887,6 +924,35 @@ export default function TeacherLessonLive() {
               </SelectContent>
             </Select>
           </div>
+        </div>
+      )}
+
+      {lessonMode === "pdf" && totalPages > 0 && (
+        <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 px-2 py-1 rounded-md bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${showControls ? "opacity-100" : "opacity-0 pointer-events-none"}`} data-testid="pdf-controls-overlay">
+          <Button size="icon" variant="ghost" className="text-white" onClick={() => handlePageChange(Math.max(1, currentPage - 1))} disabled={currentPage <= 1} data-testid="button-prev-page">
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+          <span className="text-xs text-white min-w-[50px] text-center" data-testid="text-page-indicator">
+            {currentPage} / {totalPages}
+          </span>
+          <Button size="icon" variant="ghost" className="text-white" onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))} disabled={currentPage >= totalPages} data-testid="button-next-page">
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+          <div className="w-px h-5 bg-white/30 mx-1" />
+          <Button size="icon" variant="ghost" className="text-white" onClick={() => handleZoomChange(Math.max(0, zoomLevel - 1))} disabled={zoomLevel <= 0} data-testid="button-zoom-out">
+            <ZoomOut className="w-4 h-4" />
+          </Button>
+          <span className="text-xs text-white min-w-[40px] text-center" data-testid="text-zoom-level">
+            {Math.round(Math.pow(1.25, zoomLevel) * 100)}%
+          </span>
+          <Button size="icon" variant="ghost" className="text-white" onClick={() => handleZoomChange(Math.min(6, zoomLevel + 1))} disabled={zoomLevel >= 6} data-testid="button-zoom-in">
+            <ZoomIn className="w-4 h-4" />
+          </Button>
+          {zoomLevel > 0 && (
+            <Button size="icon" variant="ghost" className="text-white" onClick={() => handleZoomChange(0)} data-testid="button-fit-page">
+              <Maximize2 className="w-4 h-4" />
+            </Button>
+          )}
         </div>
       )}
 

@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -49,15 +47,35 @@ export default function PDFViewer({
 
   const lastTouchDistRef = useRef<number | null>(null);
   const touchDragStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
+  const prevZoomRef = useRef(0);
+  const scrollAnchorRef = useRef<{ ratioX: number; ratioY: number } | null>(null);
 
   useEffect(() => {
-    if (externalZoom !== undefined) {
+    if (externalZoom !== undefined && externalZoom !== zoomLevel) {
+      const container = containerRef.current;
+      if (container && externalZoom > 0) {
+        const scrollCenterX = container.scrollLeft + container.clientWidth / 2;
+        const scrollCenterY = container.scrollTop + container.clientHeight / 2;
+        const contentW = container.scrollWidth || 1;
+        const contentH = container.scrollHeight || 1;
+        scrollAnchorRef.current = { ratioX: scrollCenterX / contentW, ratioY: scrollCenterY / contentH };
+      }
+      prevZoomRef.current = zoomLevel;
       setZoomLevel(externalZoom);
     }
   }, [externalZoom]);
 
   const updateZoom = useCallback((newZoomOrUpdater: number | ((prev: number) => number)) => {
+    const container = containerRef.current;
+    if (container) {
+      const scrollCenterX = container.scrollLeft + container.clientWidth / 2;
+      const scrollCenterY = container.scrollTop + container.clientHeight / 2;
+      const contentW = container.scrollWidth || 1;
+      const contentH = container.scrollHeight || 1;
+      scrollAnchorRef.current = { ratioX: scrollCenterX / contentW, ratioY: scrollCenterY / contentH };
+    }
     setZoomLevel(prev => {
+      prevZoomRef.current = prev;
       const newZoom = typeof newZoomOrUpdater === "function" ? newZoomOrUpdater(prev) : newZoomOrUpdater;
       onZoomChange?.(newZoom);
       return newZoom;
@@ -99,6 +117,10 @@ export default function PDFViewer({
     return () => { cancelled = true; };
   }, [url]);
 
+  const getZoomMultiplier = useCallback((level: number) => {
+    return Math.pow(1.25, level);
+  }, []);
+
   const prefetchPage = useCallback(async (pageNum: number, containerWidth: number, containerHeight: number, currentZoom: number) => {
     if (!pdfRef.current || pageNum < 1 || pageNum > pdfRef.current.numPages) return;
 
@@ -111,7 +133,7 @@ export default function PDFViewer({
       const scaleX = containerWidth / viewport.width;
       const scaleY = containerHeight / viewport.height;
       const fitScale = Math.min(scaleX, scaleY);
-      const zoomMultiplier = 1 + (currentZoom * 0.15);
+      const zoomMultiplier = getZoomMultiplier(currentZoom);
       const finalScale = fitScale * zoomMultiplier;
 
       const scaledViewport = page.getViewport({ scale: finalScale });
@@ -134,7 +156,7 @@ export default function PDFViewer({
       const bitmap = await createImageBitmap(offscreen);
       pageCacheRef.current.set(cacheKey, bitmap);
     } catch {}
-  }, []);
+  }, [getZoomMultiplier]);
 
   const renderPage = useCallback(async () => {
     if (!pdfRef.current || !canvasRef.current || !containerRef.current) return;
@@ -151,8 +173,8 @@ export default function PDFViewer({
     try {
       const page = await pdfRef.current.getPage(currentPage);
       const container = containerRef.current;
-      const containerWidth = container.clientWidth - 16;
-      const containerHeight = container.clientHeight - 16;
+      const containerWidth = container.clientWidth;
+      const containerHeight = container.clientHeight;
 
       if (containerWidth <= 0 || containerHeight <= 0) {
         setIsPageRendering(false);
@@ -163,7 +185,7 @@ export default function PDFViewer({
       const scaleX = containerWidth / viewport.width;
       const scaleY = containerHeight / viewport.height;
       const fitScale = Math.min(scaleX, scaleY);
-      const zoomMultiplier = 1 + (zoomLevel * 0.15);
+      const zoomMultiplier = getZoomMultiplier(zoomLevel);
       const finalScale = fitScale * zoomMultiplier;
 
       const scaledViewport = page.getViewport({ scale: finalScale });
@@ -204,6 +226,18 @@ export default function PDFViewer({
         setIsPageRendering(false);
       }
 
+      requestAnimationFrame(() => {
+        if (!containerRef.current) return;
+        const c = containerRef.current;
+        if (scrollAnchorRef.current && zoomLevel > 0) {
+          const newScrollX = scrollAnchorRef.current.ratioX * c.scrollWidth - c.clientWidth / 2;
+          const newScrollY = scrollAnchorRef.current.ratioY * c.scrollHeight - c.clientHeight / 2;
+          c.scrollLeft = Math.max(0, newScrollX);
+          c.scrollTop = Math.max(0, newScrollY);
+          scrollAnchorRef.current = null;
+        }
+      });
+
       let prefetchCancelled = false;
       const currentPageNum = currentPage;
       const cw = containerWidth;
@@ -234,7 +268,7 @@ export default function PDFViewer({
       }
       setIsPageRendering(false);
     }
-  }, [currentPage, zoomLevel, totalPages, prefetchPage]);
+  }, [currentPage, zoomLevel, totalPages, prefetchPage, getZoomMultiplier]);
 
   useEffect(() => {
     renderPage();
@@ -343,7 +377,7 @@ export default function PDFViewer({
       const diff = currentDist - lastTouchDistRef.current;
       if (Math.abs(diff) > 20) {
         const direction = diff > 0 ? 1 : -1;
-        updateZoom(z => Math.max(-3, Math.min(8, z + direction)));
+        updateZoom(z => Math.max(0, Math.min(6, z + direction)));
         lastTouchDistRef.current = currentDist;
       }
     } else if (e.touches.length === 1 && touchDragStartRef.current && containerRef.current) {
@@ -360,51 +394,20 @@ export default function PDFViewer({
     touchDragStartRef.current = null;
   }, []);
 
-  return (
-    <div className={`flex flex-col h-full w-full ${className}`}>
-      <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b bg-background/80 backdrop-blur-sm flex-wrap" data-testid="pdf-toolbar">
-        <div className="flex items-center gap-1">
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => onPageChange?.(Math.max(1, currentPage - 1))}
-            disabled={currentPage <= 1 || !isHost}
-            data-testid="button-prev-page"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <span className="text-sm min-w-[60px] text-center" data-testid="text-page-indicator">
-            {currentPage} / {totalPages}
-          </span>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => onPageChange?.(Math.min(totalPages, currentPage + 1))}
-            disabled={currentPage >= totalPages || !isHost}
-            data-testid="button-next-page"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        </div>
-        <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" onClick={() => updateZoom(z => Math.max(-3, z - 1))} data-testid="button-zoom-out">
-            <ZoomOut className="w-4 h-4" />
-          </Button>
-          <span className="text-xs min-w-[40px] text-center text-muted-foreground" data-testid="text-zoom-level">
-            {Math.round((1 + zoomLevel * 0.15) * 100)}%
-          </span>
-          <Button size="icon" variant="ghost" onClick={() => updateZoom(z => Math.min(8, z + 1))} data-testid="button-zoom-in">
-            <ZoomIn className="w-4 h-4" />
-          </Button>
-          <Button size="icon" variant="ghost" onClick={() => updateZoom(0)} data-testid="button-fit-width">
-            <Maximize2 className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const direction = e.deltaY < 0 ? 1 : -1;
+      updateZoom(z => Math.max(0, Math.min(6, z + direction)));
+    }
+  }, [updateZoom]);
 
+  return (
+    <div className={`h-full w-full relative ${className}`}>
       <div
         ref={containerRef}
-        className={`flex-1 flex items-center justify-center bg-muted/30 relative min-h-0 overflow-auto ${isZoomed ? "cursor-grab" : ""} ${isDragging ? "cursor-grabbing" : ""}`}
+        className={`w-full h-full flex items-center justify-center relative ${isZoomed ? "overflow-auto cursor-grab" : "overflow-hidden"} ${isDragging ? "cursor-grabbing" : ""}`}
+        style={isZoomed ? { scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.3) transparent" } : undefined}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -412,6 +415,7 @@ export default function PDFViewer({
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onWheel={handleWheel}
         data-testid="pdf-canvas-container"
       >
         {isLoading ? (
