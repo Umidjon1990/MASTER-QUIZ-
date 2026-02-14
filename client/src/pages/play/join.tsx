@@ -594,8 +594,7 @@ export default function JoinPlay() {
           <div className="flex items-center gap-3 px-5 py-2.5 rounded-md bg-background/90 backdrop-blur-sm border shadow-lg">
             <div className="flex items-center gap-1.5">
               <Trophy className="w-4 h-4 text-yellow-500" />
-              <span className="font-bold text-lg tabular-nums">{myLiveRank}</span>
-              <span className="text-sm text-muted-foreground">/{totalPlayers}</span>
+              <span className="text-sm">Siz <span className="font-bold text-lg tabular-nums">{myLiveRank}</span>-o'rindasiz</span>
             </div>
             <div className="w-px h-5 bg-border" />
             <div className="flex items-center gap-1.5">
