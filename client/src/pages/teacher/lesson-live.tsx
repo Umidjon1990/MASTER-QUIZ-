@@ -513,7 +513,7 @@ export default function TeacherLessonLive() {
           if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
         };
 
-        recorder.start(1000);
+        recorder.start(10000);
         mediaRecorderRef.current = recorder;
         setIsRecording(true);
         setRecordingTime(0);
@@ -523,7 +523,11 @@ export default function TeacherLessonLive() {
       }
 
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
+        video: {
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 },
+        },
         audio: true,
       });
 
@@ -664,7 +668,7 @@ export default function TeacherLessonLive() {
         stopRecording();
       };
 
-      recorder.start(1000);
+      recorder.start(10000);
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
       setRecordingTime(0);
