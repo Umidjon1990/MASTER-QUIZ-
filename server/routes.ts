@@ -1413,7 +1413,7 @@ export async function registerRoutes(
     try {
       const lesson = await storage.getLiveLesson(req.params.id);
       if (!lesson || lesson.teacherId !== req.userId) return res.status(403).json({ message: "Forbidden" });
-      const allowedFields = ["title", "status", "currentPage", "requireCode", "totalPages"] as const;
+      const allowedFields = ["title", "status", "currentPage", "requireCode", "totalPages", "startedAt", "endedAt"] as const;
       const safeUpdate: Record<string, any> = {};
       for (const key of allowedFields) {
         if (req.body[key] !== undefined) safeUpdate[key] = req.body[key];
