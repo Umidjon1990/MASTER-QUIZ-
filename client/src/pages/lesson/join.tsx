@@ -90,7 +90,10 @@ export default function LessonJoin() {
       setCurrentPage(data.currentPage);
 
       if (!data.requireCode) {
-        joinLesson(data);
+        const autoName = user?.firstName || "";
+        if (autoName) {
+          setName(autoName);
+        }
       }
     } catch {
       toast({ title: "Xatolik yuz berdi", variant: "destructive" });

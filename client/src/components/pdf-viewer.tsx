@@ -406,7 +406,7 @@ export default function PDFViewer({
     <div className={`h-full w-full relative ${className}`}>
       <div
         ref={containerRef}
-        className={`w-full h-full flex items-center justify-center relative ${isZoomed ? "overflow-auto cursor-grab" : "overflow-hidden"} ${isDragging ? "cursor-grabbing" : ""}`}
+        className={`w-full h-full relative ${isZoomed ? "overflow-auto cursor-grab" : "overflow-hidden flex items-center justify-center"} ${isDragging ? "cursor-grabbing" : ""}`}
         style={isZoomed ? { scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.3) transparent" } : undefined}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
