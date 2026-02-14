@@ -55,6 +55,7 @@ export default function TeacherLessonLive() {
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartRef = useRef<{ x: number; y: number; startW: number } | null>(null);
   const [showPipToolbar, setShowPipToolbar] = useState(false);
+  const pipThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -325,10 +326,18 @@ export default function TeacherLessonLive() {
   const getMediaStream = async (audio: boolean, video: boolean) => {
     const constraints: MediaStreamConstraints = {};
     if (audio) {
-      constraints.audio = selectedAudioDevice ? { deviceId: { exact: selectedAudioDevice } } : true;
+      constraints.audio = selectedAudioDevice
+        ? { deviceId: { exact: selectedAudioDevice }, echoCancellation: true, noiseSuppression: true }
+        : { echoCancellation: true, noiseSuppression: true };
     }
     if (video) {
-      constraints.video = selectedVideoDevice ? { deviceId: { exact: selectedVideoDevice } } : true;
+      const videoConstraints: MediaTrackConstraints = {
+        width: { ideal: 320 },
+        height: { ideal: 240 },
+        frameRate: { ideal: 24, max: 30 },
+      };
+      if (selectedVideoDevice) videoConstraints.deviceId = { exact: selectedVideoDevice };
+      constraints.video = videoConstraints;
     }
     return navigator.mediaDevices.getUserMedia(constraints);
   };
@@ -769,16 +778,22 @@ export default function TeacherLessonLive() {
 
   useEffect(() => {
     if (!socketRef.current || !videoEnabled) return;
-    const ratioX = videoPos.left / window.innerWidth;
-    const ratioY = videoPos.top / window.innerHeight;
-    const sizeRatio = videoSize / Math.min(window.innerWidth, window.innerHeight);
-    socketRef.current.emit("lesson:pip-change", {
-      lessonId,
-      posRatioX: ratioX,
-      posRatioY: ratioY,
-      sizeRatio,
-      shape: videoShape,
-    });
+    if (pipThrottleRef.current) clearTimeout(pipThrottleRef.current);
+    pipThrottleRef.current = setTimeout(() => {
+      const ratioX = videoPos.left / window.innerWidth;
+      const ratioY = videoPos.top / window.innerHeight;
+      const sizeRatio = videoSize / Math.min(window.innerWidth, window.innerHeight);
+      socketRef.current?.emit("lesson:pip-change", {
+        lessonId,
+        posRatioX: ratioX,
+        posRatioY: ratioY,
+        sizeRatio,
+        shape: videoShape,
+      });
+    }, 50);
+    return () => {
+      if (pipThrottleRef.current) clearTimeout(pipThrottleRef.current);
+    };
   }, [videoPos.left, videoPos.top, videoSize, videoShape, videoEnabled, lessonId]);
 
   if (isLoading) {
