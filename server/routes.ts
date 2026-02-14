@@ -1416,7 +1416,13 @@ export async function registerRoutes(
       const allowedFields = ["title", "status", "currentPage", "requireCode", "totalPages", "startedAt", "endedAt"] as const;
       const safeUpdate: Record<string, any> = {};
       for (const key of allowedFields) {
-        if (req.body[key] !== undefined) safeUpdate[key] = req.body[key];
+        if (req.body[key] !== undefined) {
+          if ((key === "startedAt" || key === "endedAt") && typeof req.body[key] === "string") {
+            safeUpdate[key] = new Date(req.body[key]);
+          } else {
+            safeUpdate[key] = req.body[key];
+          }
+        }
       }
       const updated = await storage.updateLiveLesson(req.params.id, safeUpdate);
       res.json(updated);

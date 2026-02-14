@@ -31,23 +31,27 @@ export default function PDFViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
   const [totalPages, setTotalPages] = useState(0);
-  const [scale, setScale] = useState(1);
+  const [zoomLevel, setZoomLevel] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const renderTaskRef = useRef<any>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const loadPdf = async () => {
       try {
         setIsLoading(true);
+        setError(null);
         const pdf = await pdfjsLib.getDocument(url).promise;
         if (cancelled) return;
         pdfRef.current = pdf;
         setTotalPages(pdf.numPages);
         onTotalPages?.(pdf.numPages);
         setIsLoading(false);
-      } catch (err) {
+      } catch (err: any) {
         console.error("PDF load error:", err);
+        setError("PDF yuklanmadi");
         setIsLoading(false);
       }
     };
@@ -68,14 +72,17 @@ export default function PDFViewer({
     try {
       const page = await pdfRef.current.getPage(currentPage);
       const container = containerRef.current;
-      const containerWidth = container.clientWidth;
-      const containerHeight = container.clientHeight;
+      const containerWidth = container.clientWidth - 16;
+      const containerHeight = container.clientHeight - 16;
+
+      if (containerWidth <= 0 || containerHeight <= 0) return;
 
       const viewport = page.getViewport({ scale: 1 });
       const scaleX = containerWidth / viewport.width;
       const scaleY = containerHeight / viewport.height;
-      const baseScale = Math.min(scaleX, scaleY);
-      const finalScale = baseScale * scale;
+      const fitScale = Math.min(scaleX, scaleY);
+      const zoomMultiplier = 1 + (zoomLevel * 0.15);
+      const finalScale = fitScale * zoomMultiplier;
 
       const scaledViewport = page.getViewport({ scale: finalScale });
       const canvas = canvasRef.current;
@@ -101,16 +108,24 @@ export default function PDFViewer({
         console.error("PDF render error:", err);
       }
     }
-  }, [currentPage, scale]);
+  }, [currentPage, zoomLevel]);
 
   useEffect(() => {
     renderPage();
   }, [renderPage]);
 
   useEffect(() => {
-    const handleResize = () => renderPage();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    const container = containerRef.current;
+    if (!container) return;
+
+    resizeObserverRef.current = new ResizeObserver(() => {
+      renderPage();
+    });
+    resizeObserverRef.current.observe(container);
+
+    return () => {
+      resizeObserverRef.current?.disconnect();
+    };
   }, [renderPage]);
 
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -127,61 +142,51 @@ export default function PDFViewer({
     onPointerMove(0, 0, false);
   };
 
-  const fitToWidth = () => setScale(1);
-
   return (
-    <div className={`flex flex-col h-full ${className}`}>
-      {isHost && (
-        <div className="flex items-center justify-between gap-2 p-2 border-b bg-background/80 backdrop-blur-sm flex-wrap" data-testid="pdf-toolbar">
-          <div className="flex items-center gap-1">
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => onPageChange?.(Math.max(1, currentPage - 1))}
-              disabled={currentPage <= 1}
-              data-testid="button-prev-page"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <span className="text-sm min-w-[80px] text-center" data-testid="text-page-indicator">
-              {currentPage} / {totalPages}
-            </span>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => onPageChange?.(Math.min(totalPages, currentPage + 1))}
-              disabled={currentPage >= totalPages}
-              data-testid="button-next-page"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button size="icon" variant="ghost" onClick={() => setScale(s => Math.max(0.5, s - 0.15))} data-testid="button-zoom-out">
-              <ZoomOut className="w-4 h-4" />
-            </Button>
-            <span className="text-xs min-w-[40px] text-center text-muted-foreground">{Math.round(scale * 100)}%</span>
-            <Button size="icon" variant="ghost" onClick={() => setScale(s => Math.min(3, s + 0.15))} data-testid="button-zoom-in">
-              <ZoomIn className="w-4 h-4" />
-            </Button>
-            <Button size="icon" variant="ghost" onClick={fitToWidth} data-testid="button-fit-width">
-              <Maximize2 className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {!isHost && totalPages > 0 && (
-        <div className="flex items-center justify-center gap-2 p-1.5 border-b bg-background/80 backdrop-blur-sm">
-          <span className="text-sm text-muted-foreground" data-testid="text-page-indicator-student">
+    <div className={`flex flex-col h-full w-full ${className}`}>
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b bg-background/80 backdrop-blur-sm flex-wrap" data-testid="pdf-toolbar">
+        <div className="flex items-center gap-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => onPageChange?.(Math.max(1, currentPage - 1))}
+            disabled={currentPage <= 1 || !isHost}
+            data-testid="button-prev-page"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+          <span className="text-sm min-w-[60px] text-center" data-testid="text-page-indicator">
             {currentPage} / {totalPages}
           </span>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => onPageChange?.(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage >= totalPages || !isHost}
+            data-testid="button-next-page"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </Button>
         </div>
-      )}
+        <div className="flex items-center gap-1">
+          <Button size="icon" variant="ghost" onClick={() => setZoomLevel(z => Math.max(-3, z - 1))} data-testid="button-zoom-out">
+            <ZoomOut className="w-4 h-4" />
+          </Button>
+          <span className="text-xs min-w-[40px] text-center text-muted-foreground">
+            {Math.round((1 + zoomLevel * 0.15) * 100)}%
+          </span>
+          <Button size="icon" variant="ghost" onClick={() => setZoomLevel(z => Math.min(8, z + 1))} data-testid="button-zoom-in">
+            <ZoomIn className="w-4 h-4" />
+          </Button>
+          <Button size="icon" variant="ghost" onClick={() => setZoomLevel(0)} data-testid="button-fit-width">
+            <Maximize2 className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
 
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto flex items-center justify-center bg-muted/30 relative"
+        className="flex-1 overflow-auto flex items-center justify-center bg-muted/30 relative min-h-0"
         onMouseMove={handleCanvasMouseMove}
         onMouseLeave={handleCanvasMouseLeave}
         data-testid="pdf-canvas-container"
@@ -189,6 +194,10 @@ export default function PDFViewer({
         {isLoading ? (
           <div className="flex items-center justify-center">
             <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="text-center text-muted-foreground p-4">
+            <p>{error}</p>
           </div>
         ) : (
           <div className="relative inline-block">
