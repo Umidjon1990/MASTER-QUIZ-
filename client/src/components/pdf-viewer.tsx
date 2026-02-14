@@ -234,7 +234,7 @@ export default function PDFViewer({
       }
       setIsPageRendering(false);
     }
-  }, [currentPage, zoomLevel, prefetchPage]);
+  }, [currentPage, zoomLevel, totalPages, prefetchPage]);
 
   useEffect(() => {
     renderPage();
