@@ -332,9 +332,9 @@ export default function TeacherLessonLive() {
     }
     if (video) {
       const videoConstraints: MediaTrackConstraints = {
-        width: { ideal: 320 },
-        height: { ideal: 240 },
-        frameRate: { ideal: 24, max: 30 },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 30 },
       };
       if (selectedVideoDevice) videoConstraints.deviceId = { exact: selectedVideoDevice };
       constraints.video = videoConstraints;
@@ -427,7 +427,7 @@ export default function TeacherLessonLive() {
         localStreamRef.current!.removeTrack(t);
       });
       try {
-        const newStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId } } });
+        const newStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } });
         newStream.getVideoTracks().forEach(t => localStreamRef.current!.addTrack(t));
         if (videoRef.current) videoRef.current.srcObject = localStreamRef.current;
         peerConnectionsRef.current.forEach(pc => {
@@ -633,7 +633,7 @@ export default function TeacherLessonLive() {
       screenStream.getAudioTracks().forEach(t => recordStream.addTrack(t));
 
       const { mime, ext } = getRecordingMimeType();
-      const recorder = new MediaRecorder(recordStream, { mimeType: mime, videoBitsPerSecond: 2_500_000 });
+      const recorder = new MediaRecorder(recordStream, { mimeType: mime, videoBitsPerSecond: 5_000_000 });
       recordedChunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
