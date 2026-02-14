@@ -36,6 +36,7 @@ export default function LessonJoin() {
 
   const [code, setCode] = useState(params?.code || "");
   const [name, setName] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [lessonInfo, setLessonInfo] = useState<LessonInfo | null>(null);
   const [joined, setJoined] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -100,14 +101,15 @@ export default function LessonJoin() {
     const lesson = info || lessonInfo;
     if (!lesson) return;
 
-    const displayName = name.trim() || user?.firstName || user?.email || "O'quvchi";
+    const dn = name.trim() || user?.firstName || user?.email || "O'quvchi";
+    setDisplayName(dn);
     const socket = io({ path: "/socket.io" });
     socketRef.current = socket;
     setSocketState(socket);
 
     socket.emit("lesson:student-join", {
       lessonId: lesson.id,
-      name: displayName,
+      name: dn,
     }, (res: any) => {
       if (res.success) {
         setJoined(true);
@@ -338,7 +340,7 @@ export default function LessonJoin() {
 
   if (joined && lessonInfo) {
     return (
-      <div className="flex flex-col h-screen relative">
+      <div className="flex flex-col h-screen overflow-hidden relative">
         <div className="flex items-center justify-between gap-1.5 p-1.5 sm:p-2 border-b bg-background/80 backdrop-blur-sm z-20 flex-wrap">
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <Presentation className="w-4 h-4 text-primary shrink-0" />
@@ -462,7 +464,7 @@ export default function LessonJoin() {
           }
         }} autoPlay hidden />
 
-        <LessonChat socket={socketState} />
+        <LessonChat socket={socketState} studentName={displayName || undefined} />
       </div>
     );
   }

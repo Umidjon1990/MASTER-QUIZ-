@@ -437,16 +437,27 @@ export function setupWebSocket(httpServer: HttpServer) {
 
     socket.on("lesson:chat-send", (data) => {
       if (!socket.data.lessonId) return;
-      const { message } = data;
+      const { message, replyTo, name } = data;
       if (!message || typeof message !== "string" || message.trim().length === 0) return;
       const trimmed = message.trim().slice(0, 500);
-      const chatMsg = {
+      let senderName = "O'qituvchi";
+      if (socket.data.lessonRole !== "host") {
+        senderName = (name && typeof name === "string" && name.trim()) ? name.trim().slice(0, 30) : (socket.data.studentName || "O'quvchi");
+      }
+      const chatMsg: any = {
         id: `${socket.id}-${Date.now()}`,
-        name: socket.data.lessonRole === "host" ? "O'qituvchi" : (socket.data.studentName || "O'quvchi"),
+        name: senderName,
         message: trimmed,
         role: socket.data.lessonRole as string,
         timestamp: Date.now(),
       };
+      if (replyTo && replyTo.id && replyTo.name && replyTo.message) {
+        chatMsg.replyTo = {
+          id: String(replyTo.id).slice(0, 100),
+          name: String(replyTo.name).slice(0, 30),
+          message: String(replyTo.message).slice(0, 80),
+        };
+      }
       io.to(`lesson:${socket.data.lessonId}`).emit("lesson:chat-message", chatMsg);
     });
 
