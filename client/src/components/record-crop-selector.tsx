@@ -34,24 +34,43 @@ export default function RecordCropSelector({ videoStream, onConfirm, onCancel }:
     video.muted = true;
     video.playsInline = true;
 
+    const tryCapture = () => {
+      if (cancelled) return;
+      if (!video.videoWidth || !video.videoHeight) {
+        requestAnimationFrame(tryCapture);
+        return;
+      }
+      const c = document.createElement("canvas");
+      c.width = video.videoWidth;
+      c.height = video.videoHeight;
+      const ctx = c.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0);
+
+      const pixels = ctx.getImageData(0, 0, Math.min(10, c.width), Math.min(10, c.height)).data;
+      let hasContent = false;
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i] > 5 || pixels[i + 1] > 5 || pixels[i + 2] > 5) {
+          hasContent = true;
+          break;
+        }
+      }
+
+      if (!hasContent) {
+        requestAnimationFrame(tryCapture);
+        return;
+      }
+
+      video.pause();
+      video.srcObject = null;
+      const url = c.toDataURL("image/jpeg", 0.92);
+      setSnapshotUrl(url);
+      setImgNatural({ w: c.width, h: c.height });
+    };
+
     video.onloadedmetadata = () => {
       video.play().then(() => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            if (cancelled) return;
-            const c = document.createElement("canvas");
-            c.width = video.videoWidth;
-            c.height = video.videoHeight;
-            const ctx = c.getContext("2d");
-            if (!ctx) return;
-            ctx.drawImage(video, 0, 0);
-            video.pause();
-            video.srcObject = null;
-            const url = c.toDataURL("image/jpeg", 0.92);
-            setSnapshotUrl(url);
-            setImgNatural({ w: c.width, h: c.height });
-          });
-        });
+        setTimeout(() => tryCapture(), 500);
       });
     };
 
