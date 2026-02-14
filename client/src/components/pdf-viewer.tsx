@@ -4,6 +4,13 @@ import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
+interface ViewportData {
+  scrollRatioX: number;
+  scrollRatioY: number;
+  visibleRatioW: number;
+  visibleRatioH: number;
+}
+
 interface PDFViewerProps {
   url: string;
   currentPage: number;
@@ -15,6 +22,8 @@ interface PDFViewerProps {
   className?: string;
   onZoomChange?: (zoomLevel: number) => void;
   externalZoom?: number;
+  onViewportChange?: (viewport: ViewportData) => void;
+  externalViewport?: ViewportData | null;
 }
 
 export default function PDFViewer({
@@ -28,6 +37,8 @@ export default function PDFViewer({
   className = "",
   onZoomChange,
   externalZoom,
+  onViewportChange,
+  externalViewport,
 }: PDFViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -50,9 +61,54 @@ export default function PDFViewer({
   const touchDragStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
   const prevZoomRef = useRef(0);
   const scrollAnchorRef = useRef<{ ratioX: number; ratioY: number } | null>(null);
+  const applyingExternalViewportRef = useRef(false);
+
+  const computeViewport = useCallback((): ViewportData | null => {
+    const container = containerRef.current;
+    if (!container || container.scrollWidth <= 0 || container.scrollHeight <= 0) return null;
+    const maxScrollX = container.scrollWidth - container.clientWidth;
+    const maxScrollY = container.scrollHeight - container.clientHeight;
+    return {
+      scrollRatioX: maxScrollX > 0 ? container.scrollLeft / maxScrollX : 0,
+      scrollRatioY: maxScrollY > 0 ? container.scrollTop / maxScrollY : 0,
+      visibleRatioW: container.clientWidth / container.scrollWidth,
+      visibleRatioH: container.clientHeight / container.scrollHeight,
+    };
+  }, []);
+
+  const emitViewport = useCallback(() => {
+    if (!onViewportChange || applyingExternalViewportRef.current) return;
+    const vp = computeViewport();
+    if (vp) onViewportChange(vp);
+  }, [onViewportChange, computeViewport]);
 
   useEffect(() => {
-    if (externalZoom !== undefined && externalZoom !== zoomLevel) {
+    if (externalViewport && !isHost) {
+      applyingExternalViewportRef.current = true;
+      const multiplier = Math.max(1, 1 / (externalViewport.visibleRatioW || 1));
+      const level = Math.round(Math.log(multiplier) / Math.log(1.25));
+      const clampedLevel = Math.max(0, Math.min(6, level));
+
+      prevZoomRef.current = zoomLevel;
+      setZoomLevel(clampedLevel);
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const container = containerRef.current;
+          if (container) {
+            const maxScrollX = container.scrollWidth - container.clientWidth;
+            const maxScrollY = container.scrollHeight - container.clientHeight;
+            container.scrollLeft = externalViewport.scrollRatioX * maxScrollX;
+            container.scrollTop = externalViewport.scrollRatioY * maxScrollY;
+          }
+          applyingExternalViewportRef.current = false;
+        });
+      });
+    }
+  }, [externalViewport]);
+
+  useEffect(() => {
+    if (externalZoom !== undefined && externalZoom !== zoomLevel && !externalViewport) {
       const container = containerRef.current;
       if (container && externalZoom > 0) {
         const scrollCenterX = container.scrollLeft + container.clientWidth / 2;
@@ -241,6 +297,7 @@ export default function PDFViewer({
           c.scrollTop = Math.max(0, newScrollY);
           scrollAnchorRef.current = null;
         }
+        emitViewport();
       });
 
       let prefetchCancelled = false;
@@ -273,7 +330,7 @@ export default function PDFViewer({
       }
       setIsPageRendering(false);
     }
-  }, [currentPage, zoomLevel, totalPages, prefetchPage, getZoomMultiplier]);
+  }, [currentPage, zoomLevel, totalPages, prefetchPage, getZoomMultiplier, emitViewport]);
 
   useEffect(() => {
     renderPage();
@@ -309,6 +366,16 @@ export default function PDFViewer({
       containerRef.current.scrollTop = 0;
     }
   }, [zoomLevel]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !onViewportChange) return;
+    const handleScroll = () => {
+      emitViewport();
+    };
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [onViewportChange, emitViewport]);
 
   const isZoomed = zoomLevel > 0;
 

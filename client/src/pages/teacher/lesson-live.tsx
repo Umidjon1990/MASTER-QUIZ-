@@ -21,6 +21,7 @@ import {
   Circle, RectangleHorizontal, ArrowLeft, Lock, Unlock,
   Presentation, GripVertical, Download, StopCircle, Settings2,
   Monitor, MonitorOff, ZoomIn, ZoomOut, Maximize2, ChevronLeft, ChevronRight,
+  Minimize2,
 } from "lucide-react";
 import type { LiveLesson } from "@shared/schema";
 
@@ -47,9 +48,13 @@ export default function TeacherLessonLive() {
   const [videoEnabled, setVideoEnabled] = useState(false);
   const [videoShape, setVideoShape] = useState<"circle" | "rectangle">("circle");
   const [videoDragging, setVideoDragging] = useState(false);
-  const [videoPos, setVideoPos] = useState({ x: 20, y: 20 });
-  const [videoSize, setVideoSize] = useState(typeof window !== "undefined" && window.innerWidth < 640 ? 100 : 160);
-  const dragStart = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
+  const initVideoSize = typeof window !== "undefined" && window.innerWidth < 640 ? 100 : 160;
+  const [videoPos, setVideoPos] = useState({ left: typeof window !== "undefined" ? window.innerWidth - initVideoSize - 20 : 200, top: typeof window !== "undefined" ? window.innerHeight - initVideoSize - 20 : 200 });
+  const [videoSize, setVideoSize] = useState(initVideoSize);
+  const dragStart = useRef({ x: 0, y: 0, startLeft: 0, startTop: 0 });
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartRef = useRef<{ x: number; y: number; startW: number } | null>(null);
+  const [showPipToolbar, setShowPipToolbar] = useState(false);
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -636,6 +641,10 @@ export default function TeacherLessonLive() {
     socketRef.current?.emit("lesson:zoom-change", { lessonId, zoomLevel: newZoom });
   };
 
+  const handleViewportChange = useCallback((viewport: { scrollRatioX: number; scrollRatioY: number; visibleRatioW: number; visibleRatioH: number }) => {
+    socketRef.current?.emit("lesson:zoom-change", { lessonId, zoomLevel, viewport });
+  }, [lessonId, zoomLevel]);
+
   const handleStart = async () => {
     await apiRequest("PATCH", `/api/live-lessons/${lessonId}`, { status: "active", startedAt: new Date().toISOString() });
     socketRef.current?.emit("lesson:start", { lessonId });
@@ -670,12 +679,51 @@ export default function TeacherLessonLive() {
   };
 
   const handleVideoDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    if (isResizing) return;
     e.preventDefault();
     const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
     const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
     setVideoDragging(true);
-    dragStart.current = { x: clientX, y: clientY, startX: videoPos.x, startY: videoPos.y };
+    dragStart.current = { x: clientX, y: clientY, startLeft: videoPos.left, startTop: videoPos.top };
   };
+
+  const handleResizeStart = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    setIsResizing(true);
+    resizeStartRef.current = { x: clientX, y: clientY, startW: videoSize };
+  };
+
+  useEffect(() => {
+    if (!isResizing) return;
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      if (!resizeStartRef.current) return;
+      const clientX = "touches" in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+      const clientY = "touches" in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+      const dx = clientX - resizeStartRef.current.x;
+      const dy = clientY - resizeStartRef.current.y;
+      const delta = Math.max(dx, dy);
+      const maxSize = Math.min(window.innerWidth / 2, window.innerHeight / 2);
+      const newSize = Math.max(80, Math.min(maxSize, resizeStartRef.current.startW + delta));
+      setVideoSize(newSize);
+    };
+    const handleUp = () => {
+      setIsResizing(false);
+      resizeStartRef.current = null;
+    };
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    window.addEventListener("touchmove", handleMove, { passive: false });
+    window.addEventListener("touchend", handleUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+      window.removeEventListener("touchmove", handleMove);
+      window.removeEventListener("touchend", handleUp);
+    };
+  }, [isResizing]);
 
   useEffect(() => {
     if (!videoDragging) return;
@@ -684,10 +732,9 @@ export default function TeacherLessonLive() {
       const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
       const dx = clientX - dragStart.current.x;
       const dy = clientY - dragStart.current.y;
-      setVideoPos({
-        x: Math.max(0, dragStart.current.startX + dx),
-        y: Math.max(0, dragStart.current.startY + dy),
-      });
+      const newLeft = Math.max(0, Math.min(window.innerWidth - videoSize, dragStart.current.startLeft + dx));
+      const newTop = Math.max(0, Math.min(window.innerHeight - videoSize, dragStart.current.startTop + dy));
+      setVideoPos({ left: newLeft, top: newTop });
     };
     const handleUp = () => setVideoDragging(false);
     window.addEventListener("mousemove", handleMove);
@@ -700,7 +747,25 @@ export default function TeacherLessonLive() {
       window.removeEventListener("touchmove", handleMove);
       window.removeEventListener("touchend", handleUp);
     };
-  }, [videoDragging]);
+  }, [videoDragging, videoSize]);
+
+  useEffect(() => {
+    setVideoPos(prev => ({
+      left: Math.max(0, Math.min(window.innerWidth - videoSize - 10, prev.left)),
+      top: Math.max(0, Math.min(window.innerHeight - videoSize - 10, prev.top)),
+    }));
+  }, [videoSize]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setVideoPos(prev => ({
+        left: Math.max(0, Math.min(window.innerWidth - videoSize - 10, prev.left)),
+        top: Math.max(0, Math.min(window.innerHeight - videoSize - 10, prev.top)),
+      }));
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [videoSize]);
 
   if (isLoading) {
     return (
@@ -767,6 +832,7 @@ export default function TeacherLessonLive() {
             onTotalPages={setTotalPages}
             onPointerMove={handlePointerMove}
             onZoomChange={handleZoomChange}
+            onViewportChange={handleViewportChange}
             externalZoom={zoomLevel}
             isHost
           />
@@ -960,11 +1026,13 @@ export default function TeacherLessonLive() {
         <div
           className="fixed z-50"
           style={{
-            right: `${videoPos.x}px`,
-            bottom: `${videoPos.y}px`,
+            left: `${videoPos.left}px`,
+            top: `${videoPos.top}px`,
             width: `${videoSize}px`,
             height: videoShape === "circle" ? `${videoSize}px` : `${videoSize * 0.75}px`,
           }}
+          onMouseEnter={() => setShowPipToolbar(true)}
+          onMouseLeave={() => setShowPipToolbar(false)}
           data-testid="teacher-pip-video"
         >
           <div
@@ -983,9 +1051,32 @@ export default function TeacherLessonLive() {
               className="absolute top-0 left-0 w-full h-8 sm:h-6 cursor-move flex items-center justify-center opacity-60 sm:opacity-0 hover:opacity-100 transition-opacity bg-black/30"
               onMouseDown={handleVideoDragStart}
               onTouchStart={handleVideoDragStart}
+              data-testid="teacher-pip-drag-handle"
             >
               <GripVertical className="w-3 h-3 text-white" />
             </div>
+            <div
+              className="absolute bottom-0 right-0 w-3 h-3 cursor-nwse-resize z-10"
+              style={{ background: "linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.6) 50%)" }}
+              onMouseDown={handleResizeStart}
+              onTouchStart={handleResizeStart}
+              data-testid="teacher-pip-resize-handle"
+            />
+          </div>
+          <div
+            className={`absolute -bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-0.5 px-1 py-0.5 rounded bg-black/60 backdrop-blur-sm transition-all duration-200 ${showPipToolbar ? "visible opacity-100" : "invisible opacity-0 sm:invisible sm:opacity-0"}`}
+            style={{ visibility: typeof window !== "undefined" && window.innerWidth < 640 ? "visible" : undefined, opacity: typeof window !== "undefined" && window.innerWidth < 640 ? 1 : undefined }}
+            data-testid="teacher-pip-toolbar"
+          >
+            <button className="p-1 text-white/80" onClick={() => setVideoSize(120)} data-testid="button-pip-small">
+              <Minimize2 className="w-3 h-3" />
+            </button>
+            <button className="p-1 text-white/80" onClick={() => setVideoSize(200)} data-testid="button-pip-medium">
+              <Square className="w-3 h-3" />
+            </button>
+            <button className="p-1 text-white/80" onClick={() => setVideoSize(Math.min(window.innerWidth / 2, window.innerHeight / 2))} data-testid="button-pip-large">
+              <Maximize2 className="w-3 h-3" />
+            </button>
           </div>
         </div>
       )}

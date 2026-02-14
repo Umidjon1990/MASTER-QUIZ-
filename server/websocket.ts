@@ -331,15 +331,18 @@ export function setupWebSocket(httpServer: HttpServer) {
             if (s.data.currentPage) hostCurrentPage = s.data.currentPage;
             if (s.data.zoomLevel !== undefined) hostZoomLevel = s.data.zoomLevel;
             if (s.data.isScreenSharing) hostIsScreenSharing = true;
+            if (s.data.viewport) (socket.data as any).hostViewport = s.data.viewport;
             break;
           }
         }
 
+        const hostViewport = (socket.data as any).hostViewport || null;
         callback?.({
           success: true,
           mode: currentMode,
           currentPage: hostCurrentPage,
           zoomLevel: hostZoomLevel,
+          viewport: hostViewport,
           isScreenSharing: hostIsScreenSharing,
         });
       } catch (err) {
@@ -363,9 +366,10 @@ export function setupWebSocket(httpServer: HttpServer) {
 
     socket.on("lesson:zoom-change", (data) => {
       if (socket.data.lessonRole !== "host") return;
-      const { lessonId, zoomLevel } = data;
+      const { lessonId, zoomLevel, viewport } = data;
       socket.data.zoomLevel = zoomLevel;
-      socket.to(`lesson:${lessonId}`).emit("lesson:zoom-changed", { zoomLevel });
+      if (viewport) socket.data.viewport = viewport;
+      socket.to(`lesson:${lessonId}`).emit("lesson:zoom-changed", { zoomLevel, viewport });
     });
 
     socket.on("lesson:mode-change", (data) => {
