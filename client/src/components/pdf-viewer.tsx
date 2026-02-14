@@ -404,7 +404,7 @@ export default function PDFViewer({
 
       <div
         ref={containerRef}
-        className={`flex-1 flex items-center justify-center bg-muted/30 relative min-h-0 ${isZoomed ? "overflow-auto cursor-grab" : "overflow-hidden"} ${isDragging ? "cursor-grabbing" : ""}`}
+        className={`flex-1 flex items-center justify-center bg-muted/30 relative min-h-0 overflow-auto ${isZoomed ? "cursor-grab" : ""} ${isDragging ? "cursor-grabbing" : ""}`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

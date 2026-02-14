@@ -14,12 +14,13 @@ import { apiRequest } from "@/lib/queryClient";
 import { motion } from "framer-motion";
 import {
   Presentation, ArrowRight, Users, Volume2, VolumeX,
-  GripVertical, Circle, RectangleHorizontal, Monitor,
+  GripVertical, Circle, RectangleHorizontal, Monitor, Mic,
 } from "lucide-react";
 
 interface LessonInfo {
   id: string;
   title: string;
+  lessonType?: string;
   pdfUrl: string;
   status: string;
   currentPage: number;
@@ -53,7 +54,7 @@ export default function LessonJoin() {
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [audioMuted, setAudioMuted] = useState(false);
 
-  const [lessonMode, setLessonMode] = useState<"pdf" | "screen">("pdf");
+  const [lessonMode, setLessonMode] = useState<"pdf" | "screen" | "voice">("pdf");
   const [hasScreenStream, setHasScreenStream] = useState(false);
   const screenPeerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -103,6 +104,11 @@ export default function LessonJoin() {
 
     const dn = name.trim() || user?.firstName || user?.email || "O'quvchi";
     setDisplayName(dn);
+
+    if (lesson.lessonType === "voice") {
+      setLessonMode("voice");
+    }
+
     const socket = io({ path: "/socket.io" });
     socketRef.current = socket;
     setSocketState(socket);
@@ -343,7 +349,11 @@ export default function LessonJoin() {
       <div className="flex flex-col h-screen overflow-hidden relative">
         <div className="flex items-center justify-between gap-1.5 p-1.5 sm:p-2 border-b bg-background/80 backdrop-blur-sm z-20 flex-wrap">
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-            <Presentation className="w-4 h-4 text-primary shrink-0" />
+            {lessonInfo.lessonType === "voice" ? (
+              <Mic className="w-4 h-4 text-primary shrink-0" />
+            ) : (
+              <Presentation className="w-4 h-4 text-primary shrink-0" />
+            )}
             <span className="font-semibold text-xs sm:text-sm truncate max-w-[120px] sm:max-w-[200px]" data-testid="text-lesson-title">
               {lessonInfo.title}
             </span>
@@ -374,7 +384,35 @@ export default function LessonJoin() {
         </div>
 
         <div className="flex-1 relative overflow-hidden min-h-0">
-          {lessonMode === "pdf" ? (
+          {lessonMode === "voice" ? (
+            <div className="flex flex-col items-center justify-center w-full h-full gap-6" data-testid="voice-lesson-student-view">
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center ${!audioMuted ? "bg-primary/20 animate-pulse" : "bg-muted"}`}>
+                {!audioMuted ? <Volume2 className="w-8 h-8 text-primary" /> : <VolumeX className="w-8 h-8 text-muted-foreground" />}
+              </div>
+              <div className="text-center space-y-2">
+                <h2 className="text-xl font-semibold">{lessonInfo.title}</h2>
+                <p className="text-sm text-muted-foreground">
+                  {!audioMuted ? "Ovozli dars davom etmoqda" : "Ovoz o'chirilgan"}
+                </p>
+                <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Users className="w-4 h-4" /> {participantCount} qatnashchi
+                  </span>
+                </div>
+              </div>
+              {hasScreenStream && (
+                <div className="w-full max-w-2xl mx-auto aspect-video bg-black rounded-lg overflow-hidden">
+                  <video
+                    ref={screenVideoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-contain"
+                    data-testid="voice-screen-share-student-video"
+                  />
+                </div>
+              )}
+            </div>
+          ) : lessonMode === "pdf" ? (
             <PDFViewer
               url={lessonInfo.pdfUrl}
               currentPage={currentPage}

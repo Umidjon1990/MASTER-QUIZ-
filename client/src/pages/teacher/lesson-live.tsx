@@ -60,7 +60,7 @@ export default function TeacherLessonLive() {
   const [selectedVideoDevice, setSelectedVideoDevice] = useState<string>("");
   const [showDeviceSettings, setShowDeviceSettings] = useState(false);
 
-  const [lessonMode, setLessonMode] = useState<"pdf" | "screen">("pdf");
+  const [lessonMode, setLessonMode] = useState<"pdf" | "screen" | "voice">("pdf");
   const screenStreamRef = useRef<MediaStream | null>(null);
   const screenPeerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const screenVideoRef = useRef<HTMLVideoElement>(null);
@@ -86,7 +86,7 @@ export default function TeacherLessonLive() {
   }, []);
 
   useEffect(() => {
-    if (!lessonId) return;
+    if (!lessonId || !lesson) return;
 
     const socket = io({ path: "/socket.io" });
     socketRef.current = socket;
@@ -150,12 +150,15 @@ export default function TeacherLessonLive() {
       }
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     };
-  }, [lessonId]);
+  }, [lessonId, lesson]);
 
   useEffect(() => {
     if (lesson) {
       setCurrentPage(lesson.currentPage);
       setIsStarted(lesson.status === "active");
+      if (lesson.lessonType === "voice") {
+        setLessonMode("voice");
+      }
     }
   }, [lesson]);
 
@@ -551,9 +554,9 @@ export default function TeacherLessonLive() {
 
   if (!lesson) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
+      <div className="flex flex-col items-center justify-center h-screen gap-4">
         <Presentation className="w-12 h-12 text-muted-foreground" />
-        <p>Dars topilmadi</p>
+        <p className="text-muted-foreground">Dars topilmadi</p>
         <Button onClick={() => navigate("/teacher/lessons")} data-testid="button-back-lessons">
           <ArrowLeft className="w-4 h-4 mr-2" /> Orqaga
         </Button>
@@ -689,9 +692,43 @@ export default function TeacherLessonLive() {
       )}
 
       <div className="flex-1 relative overflow-hidden min-h-0">
-        {lessonMode === "pdf" ? (
+        {lessonMode === "voice" ? (
+          <div className="flex flex-col items-center justify-center w-full h-full gap-6" data-testid="voice-lesson-view">
+            <div className={`w-24 h-24 rounded-full flex items-center justify-center ${audioEnabled ? "bg-primary/20 animate-pulse" : "bg-muted"}`}>
+              {audioEnabled ? <Mic className="w-10 h-10 text-primary" /> : <MicOff className="w-10 h-10 text-muted-foreground" />}
+            </div>
+            <div className="text-center space-y-2">
+              <h2 className="text-xl font-semibold">{lesson.title}</h2>
+              <p className="text-sm text-muted-foreground">
+                {audioEnabled ? "Ovozli dars davom etmoqda" : "Mikrofonni yoqing va darsni boshlang"}
+              </p>
+              <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Users className="w-4 h-4" /> {participantCount} qatnashchi
+                </span>
+                {isRecording && (
+                  <Badge variant="destructive" className="gap-1 animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-white" /> Yozib olinmoqda
+                  </Badge>
+                )}
+              </div>
+            </div>
+            {isScreenSharing && (
+              <div className="w-full max-w-2xl mx-auto aspect-video bg-black rounded-lg overflow-hidden">
+                <video
+                  ref={screenVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-contain"
+                  data-testid="voice-screen-share-video"
+                />
+              </div>
+            )}
+          </div>
+        ) : lessonMode === "pdf" ? (
           <PDFViewer
-            url={lesson.pdfUrl}
+            url={lesson.pdfUrl!}
             currentPage={currentPage}
             onPageChange={handlePageChange}
             onTotalPages={setTotalPages}
@@ -727,8 +764,8 @@ export default function TeacherLessonLive() {
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white">
                 <Monitor className="w-16 h-16 opacity-50" />
                 <p className="text-lg opacity-70">Ekran ulashish to'xtatildi</p>
-                <Button variant="outline" onClick={() => setLessonMode("pdf")} data-testid="button-back-to-pdf">
-                  PDF ga qaytish
+                <Button variant="outline" onClick={() => setLessonMode(lesson?.lessonType === "voice" ? "voice" : "pdf")} data-testid="button-back-to-pdf">
+                  {lesson?.lessonType === "voice" ? "Ovozli darsga qaytish" : "PDF ga qaytish"}
                 </Button>
               </div>
             )}

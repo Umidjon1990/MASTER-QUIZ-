@@ -1349,13 +1349,16 @@ export async function registerRoutes(
 
   app.post("/api/live-lessons", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
-      const { title, pdfUrl, pdfFileName, requireCode, totalPages } = req.body;
-      if (!title || !pdfUrl) return res.status(400).json({ message: "Title and PDF are required" });
+      const { title, lessonType, pdfUrl, pdfFileName, requireCode, totalPages } = req.body;
+      if (!title) return res.status(400).json({ message: "Title is required" });
+      const type = lessonType === "voice" ? "voice" : "pdf";
+      if (type === "pdf" && !pdfUrl) return res.status(400).json({ message: "PDF is required for PDF lessons" });
       const joinCode = generateJoinCode();
       const lesson = await storage.createLiveLesson({
         teacherId: req.userId,
         title,
-        pdfUrl,
+        lessonType: type,
+        pdfUrl: pdfUrl || null,
         pdfFileName: pdfFileName || null,
         joinCode,
         requireCode: requireCode !== false,
@@ -1397,6 +1400,7 @@ export async function registerRoutes(
       res.json({
         id: lesson.id,
         title: lesson.title,
+        lessonType: lesson.lessonType || "pdf",
         pdfUrl: lesson.pdfUrl,
         status: lesson.status,
         currentPage: lesson.currentPage,

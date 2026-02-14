@@ -76,7 +76,7 @@ Preferred communication style: Simple, everyday language.
   - `class_members` — Class membership (classId, userId)
   - `question_bank` — Reusable question bank with category/tags
   - `quiz_likes` — Quiz like tracking (quizId, userId)
-  - `live_lessons` — Live PDF-based lesson sessions (title, pdfUrl, teacher, status, code, requireCode)
+  - `live_lessons` — Live lesson sessions with lessonType (pdf/voice), title, pdfUrl (nullable for voice), teacher, status, code, requireCode
 
 ### Storage Layer
 - `server/storage.ts` defines an `IStorage` interface with a concrete implementation using Drizzle queries

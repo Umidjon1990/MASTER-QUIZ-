@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Plus, Presentation, Trash2, Play, Link2, Copy, FileText, Users, Lock, Unlock } from "lucide-react";
+import { Plus, Presentation, Trash2, Play, Link2, Copy, FileText, Users, Lock, Unlock, Mic } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,7 @@ export default function TeacherLessons() {
   const [, navigate] = useLocation();
   const [createOpen, setCreateOpen] = useState(false);
   const [title, setTitle] = useState("");
+  const [lessonType, setLessonType] = useState<"pdf" | "voice">("pdf");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [requireCode, setRequireCode] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -34,7 +35,7 @@ export default function TeacherLessons() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { title: string; pdfUrl: string; pdfFileName: string; requireCode: boolean }) => {
+    mutationFn: async (data: { title: string; lessonType: string; pdfUrl?: string; pdfFileName?: string; requireCode: boolean }) => {
       const res = await apiRequest("POST", "/api/live-lessons", data);
       return res.json();
     },
@@ -43,6 +44,7 @@ export default function TeacherLessons() {
       setCreateOpen(false);
       setTitle("");
       setPdfFile(null);
+      setLessonType("pdf");
       toast({ title: "Dars yaratildi!" });
       navigate(`/teacher/lesson/${lesson.id}`);
     },
@@ -62,26 +64,38 @@ export default function TeacherLessons() {
   });
 
   const handleCreate = async () => {
-    if (!title.trim() || !pdfFile) return;
+    if (!title.trim()) return;
+    if (lessonType === "pdf" && !pdfFile) return;
+
+    if (lessonType === "voice") {
+      createMutation.mutate({
+        title: title.trim(),
+        lessonType: "voice",
+        requireCode,
+      });
+      return;
+    }
+
     setUploading(true);
     try {
       const urlRes = await apiRequest("POST", "/api/uploads/request-url", {
-        name: pdfFile.name,
-        size: pdfFile.size,
-        contentType: pdfFile.type || "application/pdf",
+        name: pdfFile!.name,
+        size: pdfFile!.size,
+        contentType: pdfFile!.type || "application/pdf",
       });
       const { uploadURL, objectPath } = await urlRes.json();
 
       await fetch(uploadURL, {
         method: "PUT",
         body: pdfFile,
-        headers: { "Content-Type": pdfFile.type || "application/pdf" },
+        headers: { "Content-Type": pdfFile!.type || "application/pdf" },
       });
 
       createMutation.mutate({
         title: title.trim(),
+        lessonType: "pdf",
         pdfUrl: objectPath,
-        pdfFileName: pdfFile.name,
+        pdfFileName: pdfFile!.name,
         requireCode,
       });
     } catch {
@@ -111,7 +125,7 @@ export default function TeacherLessons() {
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-lessons-title">Jonli Darslar</h1>
-            <p className="text-sm text-muted-foreground">PDF prezentatsiya bilan jonli dars o'tkazing</p>
+            <p className="text-sm text-muted-foreground">PDF prezentatsiya yoki ovozli suhbat bilan jonli dars o'tkazing</p>
           </div>
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild>
@@ -134,19 +148,51 @@ export default function TeacherLessons() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>PDF fayl</Label>
-                  <Input
-                    type="file"
-                    accept=".pdf"
-                    onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
-                    data-testid="input-lesson-pdf"
-                  />
-                  {pdfFile && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <FileText className="w-3 h-3" /> {pdfFile.name}
-                    </p>
-                  )}
+                  <Label>Dars turi</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={lessonType === "pdf" ? "default" : "outline"}
+                      className="flex-1 toggle-elevate"
+                      onClick={() => setLessonType("pdf")}
+                      data-testid="button-type-pdf"
+                    >
+                      <Presentation className="w-4 h-4 mr-2" /> PDF dars
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={lessonType === "voice" ? "default" : "outline"}
+                      className="flex-1 toggle-elevate"
+                      onClick={() => setLessonType("voice")}
+                      data-testid="button-type-voice"
+                    >
+                      <Mic className="w-4 h-4 mr-2" /> Ovozli dars
+                    </Button>
+                  </div>
                 </div>
+                {lessonType === "pdf" && (
+                  <div className="space-y-2">
+                    <Label>PDF fayl</Label>
+                    <Input
+                      type="file"
+                      accept=".pdf"
+                      onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
+                      data-testid="input-lesson-pdf"
+                    />
+                    {pdfFile && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <FileText className="w-3 h-3" /> {pdfFile.name}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {lessonType === "voice" && (
+                  <div className="rounded-md bg-muted p-3">
+                    <p className="text-sm text-muted-foreground">
+                      Ovozli dars rejimida PDF talab qilinmaydi. Siz mikrofonni yoqib, jonli suhbat o'tkazasiz.
+                    </p>
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-4">
                   <div className="space-y-0.5">
                     <Label>Kirish kodi talab qilinsinmi?</Label>
@@ -162,7 +208,7 @@ export default function TeacherLessons() {
                 </div>
                 <Button
                   onClick={handleCreate}
-                  disabled={!title.trim() || !pdfFile || uploading || createMutation.isPending}
+                  disabled={!title.trim() || (lessonType === "pdf" && !pdfFile) || uploading || createMutation.isPending}
                   className="w-full"
                   data-testid="button-submit-lesson"
                 >
@@ -204,11 +250,15 @@ export default function TeacherLessons() {
                     <h3 className="font-semibold truncate" data-testid={`text-lesson-title-${lesson.id}`}>
                       {lesson.title}
                     </h3>
-                    {lesson.pdfFileName && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                        <FileText className="w-3 h-3" /> {lesson.pdfFileName}
-                      </p>
-                    )}
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                      {lesson.lessonType === "voice" ? (
+                        <><Mic className="w-3 h-3" /> Ovozli dars</>
+                      ) : lesson.pdfFileName ? (
+                        <><FileText className="w-3 h-3" /> {lesson.pdfFileName}</>
+                      ) : (
+                        <><Presentation className="w-3 h-3" /> PDF dars</>
+                      )}
+                    </p>
                   </div>
                   <Badge
                     variant={lesson.status === "active" ? "default" : lesson.status === "ended" ? "secondary" : "outline"}

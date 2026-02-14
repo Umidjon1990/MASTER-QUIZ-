@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { MessageCircle, Send, X, Reply, User } from "lucide-react";
+import { MessageCircle, Send, X, Reply, User, Maximize2, Minimize2 } from "lucide-react";
 import type { Socket } from "socket.io-client";
 
 interface ChatMessage {
@@ -28,6 +28,7 @@ export default function LessonChat({ socket, isHost = false, studentName }: Less
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [chatName, setChatName] = useState(studentName || "");
   const [nameSet, setNameSet] = useState(isHost || !!studentName);
+  const [chatSize, setChatSize] = useState<"small" | "large">("small");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -109,11 +110,11 @@ export default function LessonChat({ socket, isHost = false, studentName }: Less
   };
 
   return (
-    <div className="fixed bottom-0 right-0 z-40 flex flex-col items-end" style={{ maxWidth: "min(340px, calc(100vw - 16px))" }}>
+    <div className="fixed bottom-0 right-0 z-40 flex flex-col items-end" style={{ maxWidth: chatSize === "large" ? "min(480px, calc(100vw - 16px))" : "min(340px, calc(100vw - 16px))" }}>
       {isOpen && (
         <div
-          className="w-[300px] max-w-[calc(100vw-16px)] bg-background border border-border rounded-t-lg shadow-lg flex flex-col"
-          style={{ height: "min(300px, 45vh)" }}
+          className={`${chatSize === "large" ? "w-[440px]" : "w-[300px]"} max-w-[calc(100vw-16px)] bg-background border border-border rounded-t-lg shadow-lg flex flex-col`}
+          style={{ height: chatSize === "large" ? "min(480px, 70vh)" : "min(300px, 45vh)" }}
           data-testid="lesson-chat-panel"
         >
           <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 border-b bg-muted/30 rounded-t-lg">
@@ -122,9 +123,19 @@ export default function LessonChat({ socket, isHost = false, studentName }: Less
               <span className="text-xs font-semibold">Dars chati</span>
               <Badge variant="outline" className="text-[10px] px-1">{messages.length}</Badge>
             </div>
-            <Button size="icon" variant="ghost" onClick={() => setIsOpen(false)} data-testid="button-close-chat">
-              <X className="w-4 h-4" />
-            </Button>
+            <div className="flex items-center gap-0.5">
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setChatSize(s => s === "small" ? "large" : "small")}
+                data-testid="button-resize-chat"
+              >
+                {chatSize === "small" ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => setIsOpen(false)} data-testid="button-close-chat">
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
 
           {!nameSet && !isHost ? (
