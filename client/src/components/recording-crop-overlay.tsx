@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { Move } from "lucide-react";
 import type { CropRegion } from "@/components/record-crop-selector";
 
 interface RecordingCropOverlayProps {
@@ -68,10 +69,10 @@ export default function RecordingCropOverlay({ crop, onChange }: RecordingCropOv
     return () => window.removeEventListener("pointerup", up);
   }, [dragging]);
 
-  const left = `${crop.x * 100}%`;
-  const top = `${crop.y * 100}%`;
-  const width = `${crop.w * 100}%`;
-  const height = `${crop.h * 100}%`;
+  const pxLeft = `${crop.x * 100}%`;
+  const pxTop = `${crop.y * 100}%`;
+  const pxW = `${crop.w * 100}%`;
+  const pxH = `${crop.h * 100}%`;
 
   const handles = [
     { pos: "tl", cls: "-top-1.5 -left-1.5 cursor-nwse-resize" },
@@ -84,6 +85,8 @@ export default function RecordingCropOverlay({ crop, onChange }: RecordingCropOv
     { pos: "r", cls: "top-1/2 -right-1.5 -translate-y-1/2 cursor-ew-resize" },
   ];
 
+  const edgeHitSize = 8;
+
   return (
     <div
       ref={containerRef}
@@ -91,18 +94,55 @@ export default function RecordingCropOverlay({ crop, onChange }: RecordingCropOv
       data-testid="recording-crop-overlay"
     >
       <div
-        className="absolute pointer-events-auto"
-        style={{ left, top, width, height, cursor: dragging === "move" ? "grabbing" : "grab", touchAction: "none" }}
-        onPointerDown={(e) => handlePointerDown(e, "move")}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
+        className="absolute pointer-events-none"
+        style={{ left: pxLeft, top: pxTop, width: pxW, height: pxH }}
         data-testid="recording-crop-region"
       >
-        <div className="absolute inset-0 border border-black/70 rounded-sm" />
+        <div className="absolute inset-0 pointer-events-none" style={{ border: "2px solid rgba(0,0,0,0.7)", borderRadius: 2 }} />
 
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full px-1.5 py-0.5 rounded text-[9px] font-medium text-white whitespace-nowrap bg-red-600/90 pointer-events-none">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium text-white whitespace-nowrap bg-red-600/90 pointer-events-none">
           REC
         </div>
+
+        <div
+          className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded bg-black/50 pointer-events-auto"
+          style={{ cursor: dragging === "move" ? "grabbing" : "grab", touchAction: "none" }}
+          onPointerDown={(e) => handlePointerDown(e, "move")}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          data-testid="recording-crop-move-handle"
+        >
+          <Move className="w-3.5 h-3.5 text-white" />
+        </div>
+
+        <div
+          className="absolute pointer-events-auto"
+          style={{ top: -edgeHitSize / 2, left: edgeHitSize, right: edgeHitSize, height: edgeHitSize, cursor: "ns-resize", touchAction: "none" }}
+          onPointerDown={(e) => handlePointerDown(e, "t")}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+        />
+        <div
+          className="absolute pointer-events-auto"
+          style={{ bottom: -edgeHitSize / 2, left: edgeHitSize, right: edgeHitSize, height: edgeHitSize, cursor: "ns-resize", touchAction: "none" }}
+          onPointerDown={(e) => handlePointerDown(e, "b")}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+        />
+        <div
+          className="absolute pointer-events-auto"
+          style={{ left: -edgeHitSize / 2, top: edgeHitSize, bottom: edgeHitSize, width: edgeHitSize, cursor: "ew-resize", touchAction: "none" }}
+          onPointerDown={(e) => handlePointerDown(e, "l")}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+        />
+        <div
+          className="absolute pointer-events-auto"
+          style={{ right: -edgeHitSize / 2, top: edgeHitSize, bottom: edgeHitSize, width: edgeHitSize, cursor: "ew-resize", touchAction: "none" }}
+          onPointerDown={(e) => handlePointerDown(e, "r")}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+        />
 
         {handles.map(({ pos, cls }) => (
           <div
