@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useId } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { CropRegion } from "@/components/record-crop-selector";
 
 interface RecordingCropOverlayProps {
@@ -10,7 +10,6 @@ export default function RecordingCropOverlay({ crop, onChange }: RecordingCropOv
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const dragStartRef = useRef<{ mx: number; my: number; crop: CropRegion }>({ mx: 0, my: 0, crop: crop });
-  const maskId = useId().replace(/:/g, "_");
 
   const getContainerRect = useCallback(() => {
     return containerRef.current?.getBoundingClientRect() || { left: 0, top: 0, width: 1, height: 1 };
@@ -91,16 +90,6 @@ export default function RecordingCropOverlay({ crop, onChange }: RecordingCropOv
       className="fixed inset-0 z-[200] pointer-events-none"
       data-testid="recording-crop-overlay"
     >
-      <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%" }}>
-        <defs>
-          <mask id={maskId}>
-            <rect width="100%" height="100%" fill="white" />
-            <rect x={left} y={top} width={width} height={height} fill="black" />
-          </mask>
-        </defs>
-        <rect width="100%" height="100%" fill="rgba(0,0,0,0.45)" mask={`url(#${maskId})`} />
-      </svg>
-
       <div
         className="absolute pointer-events-auto"
         style={{ left, top, width, height, cursor: dragging === "move" ? "grabbing" : "grab", touchAction: "none" }}
@@ -109,7 +98,7 @@ export default function RecordingCropOverlay({ crop, onChange }: RecordingCropOv
         onPointerUp={handlePointerUp}
         data-testid="recording-crop-region"
       >
-        <div className="absolute inset-0 border-2 border-red-500/70 rounded-sm" style={{ boxShadow: "0 0 0 1px rgba(0,0,0,0.3)" }} />
+        <div className="absolute inset-0 border-2 border-red-500 rounded-sm" />
 
         <div className="absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[9px] font-medium text-white whitespace-nowrap bg-red-600/80 pointer-events-none">
           REC
