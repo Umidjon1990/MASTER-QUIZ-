@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Check, X, RotateCcw, Crop, Monitor, Smartphone } from "lucide-react";
+import { Check, X, RotateCcw, Crop, Monitor, Smartphone, RefreshCw } from "lucide-react";
 
 export interface CropRegion {
   x: number;
@@ -16,10 +16,10 @@ interface ScreenCropSelectorProps {
 }
 
 export default function ScreenCropSelector({ videoStream, onConfirm, onCancel }: ScreenCropSelectorProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const hiddenVideoRef = useRef<HTMLVideoElement | null>(null);
+  const imgCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const animFrameRef = useRef<number>(0);
+  const snapshotDataRef = useRef<string | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
   const [activeTab, setActiveTab] = useState<"desktop" | "mobile">("desktop");
   const [desktopCrop, setDesktopCrop] = useState<CropRegion | null>(null);
@@ -29,32 +29,38 @@ export default function ScreenCropSelector({ videoStream, onConfirm, onCancel }:
   const [currentRect, setCurrentRect] = useState<CropRegion | null>(null);
   const [ready, setReady] = useState(false);
 
-  const videoMetaRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
   const renderInfoRef = useRef<{ offsetX: number; offsetY: number; renderW: number; renderH: number }>({ offsetX: 0, offsetY: 0, renderW: 0, renderH: 0 });
+  const imgSizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
 
-  useEffect(() => {
-    const video = document.createElement("video");
-    video.srcObject = videoStream;
-    video.muted = true;
-    video.playsInline = true;
-    hiddenVideoRef.current = video;
-
-    video.onloadedmetadata = () => {
-      video.play();
-      videoMetaRef.current = { w: video.videoWidth, h: video.videoHeight };
-      setReady(true);
-    };
-
-    return () => {
-      video.pause();
-      video.srcObject = null;
-    };
+  const captureSnapshot = useCallback(() => {
+    return new Promise<string>((resolve, reject) => {
+      const video = document.createElement("video");
+      video.srcObject = videoStream;
+      video.muted = true;
+      video.playsInline = true;
+      video.onloadedmetadata = () => {
+        video.play();
+        setTimeout(() => {
+          const c = document.createElement("canvas");
+          c.width = video.videoWidth;
+          c.height = video.videoHeight;
+          const ctx = c.getContext("2d");
+          if (!ctx) { reject("no ctx"); return; }
+          ctx.drawImage(video, 0, 0);
+          video.pause();
+          video.srcObject = null;
+          const dataUrl = c.toDataURL("image/png");
+          resolve(dataUrl);
+        }, 300);
+      };
+      video.onerror = () => reject("video error");
+    });
   }, [videoStream]);
 
   const computeRenderInfo = useCallback(() => {
-    const canvas = canvasRef.current;
+    const canvas = imgCanvasRef.current;
     if (!canvas) return;
-    const { w: vw, h: vh } = videoMetaRef.current;
+    const { w: vw, h: vh } = imgSizeRef.current;
     if (!vw || !vh) return;
 
     const cw = canvas.width;
@@ -77,45 +83,68 @@ export default function ScreenCropSelector({ videoStream, onConfirm, onCancel }:
     renderInfoRef.current = { offsetX, offsetY, renderW, renderH };
   }, []);
 
-  useEffect(() => {
-    if (!ready) return;
-    const canvas = canvasRef.current;
-    const video = hiddenVideoRef.current;
-    if (!canvas || !video) return;
+  const drawSnapshot = useCallback(() => {
+    const canvas = imgCanvasRef.current;
+    const img = imgRef.current;
+    if (!canvas || !img) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-    const resize = () => {
-      const container = containerRef.current;
-      if (!container) return;
+    const container = containerRef.current;
+    if (container) {
       const rect = container.getBoundingClientRect();
       canvas.width = rect.width;
       canvas.height = rect.height;
-      computeRenderInfo();
-    };
-    resize();
-    window.addEventListener("resize", resize);
+    }
+    computeRenderInfo();
 
-    const ctx = canvas.getContext("2d")!;
-    const drawFrame = () => {
-      const { offsetX, offsetY, renderW, renderH } = renderInfoRef.current;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const { offsetX, offsetY, renderW, renderH } = renderInfoRef.current;
+    ctx.fillStyle = "#111";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, offsetX, offsetY, renderW, renderH);
+  }, [computeRenderInfo]);
 
-      ctx.fillStyle = "#111";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+  useEffect(() => {
+    let cancelled = false;
+    captureSnapshot().then(dataUrl => {
+      if (cancelled) return;
+      snapshotDataRef.current = dataUrl;
+      const img = new Image();
+      img.onload = () => {
+        if (cancelled) return;
+        imgRef.current = img;
+        imgSizeRef.current = { w: img.naturalWidth, h: img.naturalHeight };
+        setReady(true);
+      };
+      img.src = dataUrl;
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [captureSnapshot]);
 
-      ctx.drawImage(video, offsetX, offsetY, renderW, renderH);
+  useEffect(() => {
+    if (!ready) return;
+    drawSnapshot();
+    const handleResize = () => drawSnapshot();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [ready, drawSnapshot]);
 
-      animFrameRef.current = requestAnimationFrame(drawFrame);
-    };
-    animFrameRef.current = requestAnimationFrame(drawFrame);
-
-    return () => {
-      cancelAnimationFrame(animFrameRef.current);
-      window.removeEventListener("resize", resize);
-    };
-  }, [ready, computeRenderInfo]);
+  const retakeSnapshot = useCallback(() => {
+    setReady(false);
+    captureSnapshot().then(dataUrl => {
+      snapshotDataRef.current = dataUrl;
+      const img = new Image();
+      img.onload = () => {
+        imgRef.current = img;
+        imgSizeRef.current = { w: img.naturalWidth, h: img.naturalHeight };
+        setReady(true);
+      };
+      img.src = dataUrl;
+    }).catch(() => {});
+  }, [captureSnapshot]);
 
   const clientToRatio = useCallback((clientX: number, clientY: number): { rx: number; ry: number } => {
-    const canvas = canvasRef.current;
+    const canvas = imgCanvasRef.current;
     if (!canvas) return { rx: 0, ry: 0 };
     const rect = canvas.getBoundingClientRect();
     const { offsetX, offsetY, renderW, renderH } = renderInfoRef.current;
@@ -218,6 +247,9 @@ export default function ScreenCropSelector({ videoStream, onConfirm, onCancel }:
         </div>
 
         <div className="flex items-center gap-1.5">
+          <Button size="sm" variant="ghost" onClick={retakeSnapshot} className="text-zinc-300 gap-1" data-testid="button-retake-snapshot" title="Yangi rasm olish">
+            <RefreshCw className="w-3.5 h-3.5" />
+          </Button>
           <Button size="sm" variant="ghost" onClick={resetCrop} className="text-zinc-300 gap-1" data-testid="button-reset-crop">
             <RotateCcw className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Tozalash</span>
           </Button>
@@ -238,7 +270,7 @@ export default function ScreenCropSelector({ videoStream, onConfirm, onCancel }:
 
       <div ref={containerRef} className="flex-1 relative min-h-0 overflow-hidden">
         <canvas
-          ref={canvasRef}
+          ref={imgCanvasRef}
           className="absolute inset-0 w-full h-full"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -248,14 +280,17 @@ export default function ScreenCropSelector({ videoStream, onConfirm, onCancel }:
         />
 
         {!ready && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center bg-black">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <p className="text-zinc-400 text-sm">Ekran rasmi olinmoqda...</p>
+            </div>
           </div>
         )}
 
         {ready && displayRect && (() => {
           const px = ratioToCanvas(displayRect);
-          const canvas = canvasRef.current;
+          const canvas = imgCanvasRef.current;
           if (!canvas) return null;
           const cRect = canvas.getBoundingClientRect();
           return (
@@ -290,7 +325,6 @@ export default function ScreenCropSelector({ videoStream, onConfirm, onCancel }:
                 <div className="absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded text-[10px] font-medium text-white whitespace-nowrap" style={{ background: borderColor }}>
                   {activeTab === "desktop" ? "Kompyuter" : "Mobil"}
                 </div>
-
                 <div className="absolute w-2.5 h-2.5 rounded-full -top-1 -left-1" style={{ background: borderColor }} />
                 <div className="absolute w-2.5 h-2.5 rounded-full -top-1 -right-1" style={{ background: borderColor }} />
                 <div className="absolute w-2.5 h-2.5 rounded-full -bottom-1 -left-1" style={{ background: borderColor }} />
