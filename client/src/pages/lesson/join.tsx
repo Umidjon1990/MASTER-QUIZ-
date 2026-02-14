@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRoute, useLocation } from "wouter";
 import { io, Socket } from "socket.io-client";
 import PDFViewer from "@/components/pdf-viewer";
+import LessonChat from "@/components/lesson-chat";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -58,6 +59,7 @@ export default function LessonJoin() {
   const screenVideoRef = useRef<HTMLVideoElement>(null);
 
   const socketRef = useRef<Socket | null>(null);
+  const [socketState, setSocketState] = useState<Socket | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
@@ -101,6 +103,7 @@ export default function LessonJoin() {
     const displayName = name.trim() || user?.firstName || user?.email || "O'quvchi";
     const socket = io({ path: "/socket.io" });
     socketRef.current = socket;
+    setSocketState(socket);
 
     socket.emit("lesson:student-join", {
       lessonId: lesson.id,
@@ -458,6 +461,8 @@ export default function LessonJoin() {
             el.srcObject = remoteStreamRef.current;
           }
         }} autoPlay hidden />
+
+        <LessonChat socket={socketState} />
       </div>
     );
   }

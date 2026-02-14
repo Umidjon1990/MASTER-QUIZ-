@@ -435,6 +435,21 @@ export function setupWebSocket(httpServer: HttpServer) {
       socket.to(`lesson:${lessonId}`).emit("lesson:stream-requested", { socketId: socket.id });
     });
 
+    socket.on("lesson:chat-send", (data) => {
+      if (!socket.data.lessonId) return;
+      const { message } = data;
+      if (!message || typeof message !== "string" || message.trim().length === 0) return;
+      const trimmed = message.trim().slice(0, 500);
+      const chatMsg = {
+        id: `${socket.id}-${Date.now()}`,
+        name: socket.data.lessonRole === "host" ? "O'qituvchi" : (socket.data.studentName || "O'quvchi"),
+        message: trimmed,
+        role: socket.data.lessonRole as string,
+        timestamp: Date.now(),
+      };
+      io.to(`lesson:${socket.data.lessonId}`).emit("lesson:chat-message", chatMsg);
+    });
+
     socket.on("disconnect", () => {
       console.log("Client disconnected:", socket.id);
       if (socket.data.sessionId && socket.data.role === "player") {

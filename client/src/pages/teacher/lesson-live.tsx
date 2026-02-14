@@ -4,6 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useRoute, useLocation } from "wouter";
 import { io, Socket } from "socket.io-client";
 import PDFViewer from "@/components/pdf-viewer";
+import LessonChat from "@/components/lesson-chat";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -30,6 +31,7 @@ export default function TeacherLessonLive() {
   const lessonId = params?.id;
 
   const socketRef = useRef<Socket | null>(null);
+  const [socketState, setSocketState] = useState<Socket | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -88,6 +90,7 @@ export default function TeacherLessonLive() {
 
     const socket = io({ path: "/socket.io" });
     socketRef.current = socket;
+    setSocketState(socket);
 
     socket.emit("lesson:host-join", { lessonId }, (res: any) => {
       if (!res.success) toast({ title: "Xatolik", variant: "destructive" });
@@ -766,6 +769,8 @@ export default function TeacherLessonLive() {
           </div>
         </div>
       )}
+
+      <LessonChat socket={socketState} isHost />
     </div>
   );
 }
