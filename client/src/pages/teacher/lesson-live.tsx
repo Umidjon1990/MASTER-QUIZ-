@@ -744,7 +744,7 @@ export default function TeacherLessonLive() {
               </Button>
             )}
             {showRecordOptions && (
-              <div className="absolute bottom-full right-0 mb-2 bg-card border rounded-md shadow-lg p-1 z-[9999] min-w-[180px]">
+              <div className="absolute top-full right-0 mt-2 bg-card border rounded-md shadow-lg p-1 z-[9999] min-w-[180px]">
                 <button
                   className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
                   onClick={() => startRecording("browser")}
