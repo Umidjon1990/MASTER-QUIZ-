@@ -268,7 +268,13 @@ export function setupWebSocket(httpServer: HttpServer) {
           }
         }
 
-        socket.emit("answer:result", { isCorrect, points, correctAnswer: question.correctAnswer });
+        const allParticipants = await storage.getSessionParticipants(sessionId);
+        const myRank = allParticipants.findIndex(p => p.id === participantId) + 1;
+        const myUpdated = allParticipants.find(p => p.id === participantId);
+        const totalScore = myUpdated?.score ?? 0;
+        const totalPlayers = allParticipants.length;
+
+        socket.emit("answer:result", { isCorrect, points, correctAnswer: question.correctAnswer, rank: myRank, totalScore, totalPlayers });
 
         io.to(`session:${sessionId}`).emit("answer:received", {
           participantId,

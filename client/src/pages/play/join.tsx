@@ -56,6 +56,8 @@ export default function JoinPlay() {
   const [timerEnabled, setTimerEnabled] = useState(true);
   const [answered, setAnswered] = useState(false);
   const [myScore, setMyScore] = useState(0);
+  const [myLiveRank, setMyLiveRank] = useState(0);
+  const [totalPlayers, setTotalPlayers] = useState(0);
 
   useEffect(() => {
     return () => {
@@ -101,8 +103,10 @@ export default function JoinPlay() {
     socket.on("answer:result", (data) => {
       setAnswerResult(data);
       setPhase("result");
+      if (data.rank) setMyLiveRank(data.rank);
+      if (data.totalScore !== undefined) setMyScore(data.totalScore);
+      if (data.totalPlayers) setTotalPlayers(data.totalPlayers);
       if (data.isCorrect) {
-        setMyScore((s) => s + data.points);
         confetti({ particleCount: 80, spread: 60, origin: { y: 0.7 } });
       }
     });
@@ -579,6 +583,29 @@ export default function JoinPlay() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {myLiveRank > 0 && (phase === "question" || phase === "result") && (
+        <motion.div
+          initial={{ y: 100, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50"
+          data-testid="text-live-rank-indicator"
+        >
+          <div className="flex items-center gap-3 px-5 py-2.5 rounded-md bg-background/90 backdrop-blur-sm border shadow-lg">
+            <div className="flex items-center gap-1.5">
+              <Trophy className="w-4 h-4 text-yellow-500" />
+              <span className="font-bold text-lg tabular-nums">{myLiveRank}</span>
+              <span className="text-sm text-muted-foreground">/{totalPlayers}</span>
+            </div>
+            <div className="w-px h-5 bg-border" />
+            <div className="flex items-center gap-1.5">
+              <Flame className="w-4 h-4 text-orange-500" />
+              <span className="font-bold text-lg tabular-nums">{myScore}</span>
+              <span className="text-sm text-muted-foreground">ball</span>
+            </div>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }
