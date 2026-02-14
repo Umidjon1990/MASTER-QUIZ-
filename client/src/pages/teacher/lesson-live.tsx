@@ -562,7 +562,7 @@ export default function TeacherLessonLive() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-57px)] relative">
+    <div className="flex flex-col h-screen overflow-hidden relative">
       <div className="flex items-center justify-between gap-1.5 p-1.5 sm:p-2 border-b bg-background/80 backdrop-blur-sm flex-wrap z-20" data-testid="lesson-controls">
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
           <Button size="icon" variant="ghost" onClick={() => navigate("/teacher/lessons")} data-testid="button-back">

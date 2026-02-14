@@ -162,7 +162,11 @@ function App() {
               {() => <ProtectedPage component={TeacherLessons} />}
             </Route>
             <Route path="/teacher/lesson/:id">
-              {() => <ProtectedPage component={TeacherLessonLive} />}
+              {() => (
+                <AuthGuard>
+                  <TeacherLessonLive />
+                </AuthGuard>
+              )}
             </Route>
 
             <Route path="/lesson/join" component={LessonJoin} />
