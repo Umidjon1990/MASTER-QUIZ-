@@ -372,7 +372,9 @@ export default function TeacherLessonLive() {
           stopScreenSharingCleanup();
         };
 
-        setShowCropSelector(true);
+        desktopCropRef.current = { x: 0, y: 0, w: 1, h: 1 };
+        mobileCropRef.current = { x: 0, y: 0, w: 1, h: 1 };
+        handleCropConfirm({ x: 0, y: 0, w: 1, h: 1 }, { x: 0, y: 0, w: 1, h: 1 });
       } catch (err: any) {
         if (err?.name !== "NotAllowedError") {
           toast({ title: "Ekranni ulashib bo'lmadi", variant: "destructive" });
@@ -1057,8 +1059,8 @@ export default function TeacherLessonLive() {
           <Button size="icon" variant="ghost" className={`toggle-elevate ${isScreenSharing ? "toggle-elevated bg-white/20 text-white" : "text-white/60"}`} onClick={toggleScreenShare} data-testid="button-toggle-screen-share">
             {isScreenSharing ? <Monitor className="w-4 h-4" /> : <MonitorOff className="w-4 h-4" />}
           </Button>
-          {isScreenSharing && (
-            <Button size="icon" variant="ghost" className="text-red-400 ring-1 ring-red-400/60" onClick={() => { if (rawScreenStreamRef.current) setShowCropSelector(true); }} data-testid="button-recrop-screen" title="Ekranni qirqish">
+          {isScreenSharing && rawScreenStreamRef.current && (
+            <Button size="icon" variant="ghost" className="text-red-400 ring-1 ring-red-400/60" onClick={() => setShowCropSelector(true)} data-testid="button-recrop-screen" title="Ekranni qirqish">
               <Crop className="w-4 h-4" />
             </Button>
           )}
