@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Monitor, Smartphone, Check, RotateCcw, Crop } from "lucide-react";
+import { Check, X, RotateCcw, Crop, Monitor, Smartphone } from "lucide-react";
 
 export interface CropRegion {
   x: number;
@@ -17,65 +16,125 @@ interface ScreenCropSelectorProps {
 }
 
 export default function ScreenCropSelector({ videoStream, onConfirm, onCancel }: ScreenCropSelectorProps) {
-  const previewVideoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hiddenVideoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const animFrameRef = useRef<number>(0);
 
   const [activeTab, setActiveTab] = useState<"desktop" | "mobile">("desktop");
   const [desktopCrop, setDesktopCrop] = useState<CropRegion | null>(null);
   const [mobileCrop, setMobileCrop] = useState<CropRegion | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
-  const [currentRect, setCurrentRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
-  const [videoReady, setVideoReady] = useState(false);
+  const [currentRect, setCurrentRect] = useState<CropRegion | null>(null);
+  const [ready, setReady] = useState(false);
+
+  const videoMetaRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
+  const renderInfoRef = useRef<{ offsetX: number; offsetY: number; renderW: number; renderH: number }>({ offsetX: 0, offsetY: 0, renderW: 0, renderH: 0 });
 
   useEffect(() => {
-    const video = previewVideoRef.current;
-    if (!video) return;
+    const video = document.createElement("video");
     video.srcObject = videoStream;
+    video.muted = true;
+    video.playsInline = true;
+    hiddenVideoRef.current = video;
+
     video.onloadedmetadata = () => {
       video.play();
-      setVideoReady(true);
+      videoMetaRef.current = { w: video.videoWidth, h: video.videoHeight };
+      setReady(true);
+    };
+
+    return () => {
+      video.pause();
+      video.srcObject = null;
     };
   }, [videoStream]);
 
-  const getVideoRect = useCallback(() => {
-    const video = previewVideoRef.current;
-    const container = containerRef.current;
-    if (!video || !container) return null;
+  const computeRenderInfo = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const { w: vw, h: vh } = videoMetaRef.current;
+    if (!vw || !vh) return;
 
-    const containerRect = container.getBoundingClientRect();
-    const videoW = video.videoWidth;
-    const videoH = video.videoHeight;
-    if (!videoW || !videoH) return null;
-
-    const containerAspect = containerRect.width / containerRect.height;
-    const videoAspect = videoW / videoH;
+    const cw = canvas.width;
+    const ch = canvas.height;
+    const videoAspect = vw / vh;
+    const canvasAspect = cw / ch;
 
     let renderW: number, renderH: number, offsetX: number, offsetY: number;
-    if (videoAspect > containerAspect) {
-      renderW = containerRect.width;
-      renderH = containerRect.width / videoAspect;
+    if (videoAspect > canvasAspect) {
+      renderW = cw;
+      renderH = cw / videoAspect;
       offsetX = 0;
-      offsetY = (containerRect.height - renderH) / 2;
+      offsetY = (ch - renderH) / 2;
     } else {
-      renderH = containerRect.height;
-      renderW = containerRect.height * videoAspect;
-      offsetX = (containerRect.width - renderW) / 2;
+      renderH = ch;
+      renderW = ch * videoAspect;
+      offsetX = (cw - renderW) / 2;
       offsetY = 0;
     }
-
-    return { renderW, renderH, offsetX, offsetY, containerRect, videoW, videoH };
+    renderInfoRef.current = { offsetX, offsetY, renderW, renderH };
   }, []);
 
-  const clientToRatio = useCallback((clientX: number, clientY: number) => {
-    const info = getVideoRect();
-    if (!info) return { rx: 0, ry: 0 };
-    const { renderW, renderH, offsetX, offsetY, containerRect } = info;
-    const rx = Math.max(0, Math.min(1, (clientX - containerRect.left - offsetX) / renderW));
-    const ry = Math.max(0, Math.min(1, (clientY - containerRect.top - offsetY) / renderH));
+  useEffect(() => {
+    if (!ready) return;
+    const canvas = canvasRef.current;
+    const video = hiddenVideoRef.current;
+    if (!canvas || !video) return;
+
+    const resize = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      computeRenderInfo();
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const ctx = canvas.getContext("2d")!;
+    const drawFrame = () => {
+      const { offsetX, offsetY, renderW, renderH } = renderInfoRef.current;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "#111";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.drawImage(video, offsetX, offsetY, renderW, renderH);
+
+      animFrameRef.current = requestAnimationFrame(drawFrame);
+    };
+    animFrameRef.current = requestAnimationFrame(drawFrame);
+
+    return () => {
+      cancelAnimationFrame(animFrameRef.current);
+      window.removeEventListener("resize", resize);
+    };
+  }, [ready, computeRenderInfo]);
+
+  const clientToRatio = useCallback((clientX: number, clientY: number): { rx: number; ry: number } => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { rx: 0, ry: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const { offsetX, offsetY, renderW, renderH } = renderInfoRef.current;
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
+    const rx = Math.max(0, Math.min(1, (px - offsetX) / renderW));
+    const ry = Math.max(0, Math.min(1, (py - offsetY) / renderH));
     return { rx, ry };
-  }, [getVideoRect]);
+  }, []);
+
+  const ratioToCanvas = useCallback((r: CropRegion) => {
+    const { offsetX, offsetY, renderW, renderH } = renderInfoRef.current;
+    return {
+      left: offsetX + r.x * renderW,
+      top: offsetY + r.y * renderH,
+      width: r.w * renderW,
+      height: r.h * renderH,
+    };
+  }, []);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -89,11 +148,12 @@ export default function ScreenCropSelector({ videoStream, onConfirm, onCancel }:
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!drawing || !startPoint) return;
     const { rx, ry } = clientToRatio(e.clientX, e.clientY);
-    const x = Math.min(startPoint.x, rx);
-    const y = Math.min(startPoint.y, ry);
-    const w = Math.abs(rx - startPoint.x);
-    const h = Math.abs(ry - startPoint.y);
-    setCurrentRect({ x, y, w, h });
+    setCurrentRect({
+      x: Math.min(startPoint.x, rx),
+      y: Math.min(startPoint.y, ry),
+      w: Math.abs(rx - startPoint.x),
+      h: Math.abs(ry - startPoint.y),
+    });
   };
 
   const handlePointerUp = () => {
@@ -102,38 +162,18 @@ export default function ScreenCropSelector({ videoStream, onConfirm, onCancel }:
       return;
     }
     setDrawing(false);
-
-    if (currentRect.w < 0.02 || currentRect.h < 0.02) return;
-
-    const crop: CropRegion = {
-      x: currentRect.x,
-      y: currentRect.y,
-      w: currentRect.w,
-      h: currentRect.h,
-    };
+    if (currentRect.w < 0.03 || currentRect.h < 0.03) return;
 
     if (activeTab === "desktop") {
-      setDesktopCrop(crop);
+      setDesktopCrop(currentRect);
     } else {
-      setMobileCrop(crop);
+      setMobileCrop(currentRect);
     }
     setCurrentRect(null);
   };
 
   const activeCrop = activeTab === "desktop" ? desktopCrop : mobileCrop;
   const displayRect = drawing && currentRect ? currentRect : activeCrop;
-
-  const rectToPixels = (r: { x: number; y: number; w: number; h: number }) => {
-    const info = getVideoRect();
-    if (!info) return { left: 0, top: 0, width: 0, height: 0 };
-    const { renderW, renderH, offsetX, offsetY } = info;
-    return {
-      left: offsetX + r.x * renderW,
-      top: offsetY + r.y * renderH,
-      width: r.w * renderW,
-      height: r.h * renderH,
-    };
-  };
 
   const resetCrop = () => {
     if (activeTab === "desktop") setDesktopCrop(null);
@@ -146,165 +186,151 @@ export default function ScreenCropSelector({ videoStream, onConfirm, onCancel }:
     onConfirm(dc, mc);
   };
 
+  const borderColor = activeTab === "desktop" ? "#3b82f6" : "#a855f7";
+
   return (
-    <div className="fixed inset-0 z-[9999] bg-black/90 flex flex-col" data-testid="screen-crop-overlay">
-      <div className="flex items-center justify-between gap-2 p-3 bg-black/60 border-b border-white/10">
-        <div className="flex items-center gap-2">
-          <Crop className="w-5 h-5 text-white" />
-          <span className="text-white font-semibold text-sm sm:text-base">Ekran qirqish sozlamalari</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-md overflow-hidden border border-white/20">
+    <div className="fixed inset-0 z-[9999] bg-black flex flex-col" data-testid="screen-crop-overlay">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 bg-zinc-900 border-b border-zinc-700 shrink-0">
+        <div className="flex items-center gap-3">
+          <Crop className="w-5 h-5 text-white shrink-0" />
+          <span className="text-white font-medium text-sm hidden sm:inline">Ekranni qirqish</span>
+
+          <div className="flex rounded-md border border-zinc-600 overflow-visible ml-2">
             <button
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm transition-colors ${activeTab === "desktop" ? "bg-white/20 text-white" : "text-white/60"}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors ${activeTab === "desktop" ? "bg-blue-600 text-white" : "text-zinc-400"}`}
               onClick={() => setActiveTab("desktop")}
               data-testid="button-crop-desktop-tab"
             >
               <Monitor className="w-3.5 h-3.5" />
-              <span>Kompyuter</span>
-              {desktopCrop && <Check className="w-3 h-3 text-green-400" />}
+              <span className="hidden sm:inline">Kompyuter</span>
+              {desktopCrop && <Check className="w-3 h-3 text-green-300" />}
             </button>
             <button
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm transition-colors ${activeTab === "mobile" ? "bg-white/20 text-white" : "text-white/60"}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors ${activeTab === "mobile" ? "bg-purple-600 text-white" : "text-zinc-400"}`}
               onClick={() => setActiveTab("mobile")}
               data-testid="button-crop-mobile-tab"
             >
               <Smartphone className="w-3.5 h-3.5" />
-              <span>Mobil</span>
-              {mobileCrop && <Check className="w-3 h-3 text-green-400" />}
+              <span className="hidden sm:inline">Mobil</span>
+              {mobileCrop && <Check className="w-3 h-3 text-green-300" />}
             </button>
           </div>
         </div>
+
+        <div className="flex items-center gap-1.5">
+          <Button size="sm" variant="ghost" onClick={resetCrop} className="text-zinc-300 gap-1" data-testid="button-reset-crop">
+            <RotateCcw className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Tozalash</span>
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onCancel} className="text-zinc-300 gap-1" data-testid="button-cancel-crop">
+            <X className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Bekor</span>
+          </Button>
+          <Button size="sm" onClick={handleConfirm} className="bg-green-600 text-white border-green-600 gap-1" data-testid="button-confirm-crop">
+            <Check className="w-3.5 h-3.5" /> Tasdiqlash
+          </Button>
+        </div>
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-4 min-h-0">
-        <div className="text-center mb-2 absolute top-16 left-1/2 -translate-x-1/2 z-10">
-          <p className="text-white/70 text-xs sm:text-sm">
-            {activeTab === "desktop" ? "Kompyuter" : "Mobil"} uchun ko'rsatiladigan qismni sichqoncha bilan belgilang
-          </p>
-        </div>
-        <div
-          ref={containerRef}
-          className="relative w-full h-full max-w-[90vw] max-h-[70vh] flex items-center justify-center select-none"
+      <div className="px-3 py-1.5 bg-zinc-900/80 text-center shrink-0">
+        <p className="text-zinc-400 text-xs">
+          Sichqonchani bosib tortib, {activeTab === "desktop" ? "kompyuter" : "mobil"} talabalariga ko'rsatiladigan qismni belgilang
+        </p>
+      </div>
+
+      <div ref={containerRef} className="flex-1 relative min-h-0 overflow-hidden">
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 w-full h-full"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           style={{ cursor: "crosshair", touchAction: "none" }}
           data-testid="crop-draw-area"
-        >
-          <video
-            ref={previewVideoRef}
-            autoPlay
-            playsInline
-            muted
-            className="max-w-full max-h-full object-contain pointer-events-none"
-            data-testid="crop-preview-video"
-          />
+        />
 
-          {!videoReady && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-white/60 text-sm">Yuklanmoqda...</span>
-            </div>
-          )}
+        {!ready && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
 
-          {videoReady && displayRect && (() => {
-            const px = rectToPixels(displayRect);
-            return (
-              <>
-                <div
-                  className="absolute pointer-events-none"
-                  style={{
-                    left: `${px.left}px`,
-                    top: `${px.top}px`,
-                    width: `${px.width}px`,
-                    height: `${px.height}px`,
-                    border: `2px solid ${activeTab === "desktop" ? "#3b82f6" : "#8b5cf6"}`,
-                    background: `${activeTab === "desktop" ? "rgba(59,130,246,0.1)" : "rgba(139,92,246,0.1)"}`,
-                  }}
-                  data-testid="crop-selection-rect"
-                >
-                  <Badge
-                    variant="secondary"
-                    className="absolute -top-6 left-0 text-[10px] px-1.5 py-0"
-                    style={{ background: activeTab === "desktop" ? "#3b82f6" : "#8b5cf6", color: "white", border: "none" }}
-                  >
-                    {activeTab === "desktop" ? "Kompyuter" : "Mobil"}
-                  </Badge>
+        {ready && displayRect && (() => {
+          const px = ratioToCanvas(displayRect);
+          const canvas = canvasRef.current;
+          if (!canvas) return null;
+          const cRect = canvas.getBoundingClientRect();
+          return (
+            <>
+              <svg
+                className="absolute inset-0 pointer-events-none"
+                width={cRect.width}
+                height={cRect.height}
+                style={{ position: "absolute", top: 0, left: 0 }}
+              >
+                <defs>
+                  <mask id="cropMask">
+                    <rect width="100%" height="100%" fill="white" />
+                    <rect x={px.left} y={px.top} width={px.width} height={px.height} fill="black" />
+                  </mask>
+                </defs>
+                <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#cropMask)" />
+              </svg>
+
+              <div
+                className="absolute pointer-events-none"
+                style={{
+                  left: `${px.left}px`,
+                  top: `${px.top}px`,
+                  width: `${px.width}px`,
+                  height: `${px.height}px`,
+                  border: `2px solid ${borderColor}`,
+                  boxShadow: `0 0 0 1px rgba(0,0,0,0.5), 0 0 20px ${borderColor}40`,
+                }}
+                data-testid="crop-selection-rect"
+              >
+                <div className="absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded text-[10px] font-medium text-white whitespace-nowrap" style={{ background: borderColor }}>
+                  {activeTab === "desktop" ? "Kompyuter" : "Mobil"}
                 </div>
 
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  background: `
-                    linear-gradient(to bottom, rgba(0,0,0,0.5) ${px.top}px, transparent ${px.top}px, transparent ${px.top + px.height}px, rgba(0,0,0,0.5) ${px.top + px.height}px)
-                  `,
-                }} />
-              </>
-            );
-          })()}
-
-          {videoReady && activeTab === "mobile" && desktopCrop && !drawing && (() => {
-            const px = rectToPixels(desktopCrop);
-            return (
-              <div
-                className="absolute pointer-events-none"
-                style={{
-                  left: `${px.left}px`,
-                  top: `${px.top}px`,
-                  width: `${px.width}px`,
-                  height: `${px.height}px`,
-                  border: "1px dashed rgba(59,130,246,0.5)",
-                }}
-              >
-                <Badge
-                  variant="secondary"
-                  className="absolute -top-5 left-0 text-[9px] px-1 py-0 opacity-60"
-                  style={{ background: "#3b82f6", color: "white", border: "none" }}
-                >
-                  Kompyuter
-                </Badge>
+                <div className="absolute w-2.5 h-2.5 rounded-full -top-1 -left-1" style={{ background: borderColor }} />
+                <div className="absolute w-2.5 h-2.5 rounded-full -top-1 -right-1" style={{ background: borderColor }} />
+                <div className="absolute w-2.5 h-2.5 rounded-full -bottom-1 -left-1" style={{ background: borderColor }} />
+                <div className="absolute w-2.5 h-2.5 rounded-full -bottom-1 -right-1" style={{ background: borderColor }} />
               </div>
-            );
-          })()}
+            </>
+          );
+        })()}
 
-          {videoReady && activeTab === "desktop" && mobileCrop && !drawing && (() => {
-            const px = rectToPixels(mobileCrop);
-            return (
-              <div
-                className="absolute pointer-events-none"
-                style={{
-                  left: `${px.left}px`,
-                  top: `${px.top}px`,
-                  width: `${px.width}px`,
-                  height: `${px.height}px`,
-                  border: "1px dashed rgba(139,92,246,0.5)",
-                }}
-              >
-                <Badge
-                  variant="secondary"
-                  className="absolute -top-5 left-0 text-[9px] px-1 py-0 opacity-60"
-                  style={{ background: "#8b5cf6", color: "white", border: "none" }}
-                >
-                  Mobil
-                </Badge>
-              </div>
-            );
-          })()}
-        </div>
-      </div>
+        {ready && activeTab === "mobile" && desktopCrop && !drawing && (() => {
+          const px = ratioToCanvas(desktopCrop);
+          return (
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                left: `${px.left}px`,
+                top: `${px.top}px`,
+                width: `${px.width}px`,
+                height: `${px.height}px`,
+                border: "1px dashed rgba(59,130,246,0.4)",
+              }}
+            />
+          );
+        })()}
 
-      <div className="flex items-center justify-between gap-2 p-3 bg-black/60 border-t border-white/10">
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={resetCrop} className="text-white border-white/20" data-testid="button-reset-crop">
-            <RotateCcw className="w-3.5 h-3.5 mr-1" /> Qayta belgilash
-          </Button>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={onCancel} className="text-white border-white/20" data-testid="button-cancel-crop">
-            Bekor qilish
-          </Button>
-          <Button size="sm" onClick={handleConfirm} className="bg-green-600 text-white border-green-600" disabled={!desktopCrop && !mobileCrop} data-testid="button-confirm-crop">
-            <Check className="w-3.5 h-3.5 mr-1" /> Tasdiqlash
-          </Button>
-        </div>
+        {ready && activeTab === "desktop" && mobileCrop && !drawing && (() => {
+          const px = ratioToCanvas(mobileCrop);
+          return (
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                left: `${px.left}px`,
+                top: `${px.top}px`,
+                width: `${px.width}px`,
+                height: `${px.height}px`,
+                border: "1px dashed rgba(168,85,247,0.4)",
+              }}
+            />
+          );
+        })()}
       </div>
     </div>
   );
