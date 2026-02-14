@@ -727,55 +727,61 @@ export default function TeacherLessonLive() {
           >
             <Settings2 className="w-4 h-4" />
           </Button>
-          {!isRecording ? (
-            <div className="relative" ref={recordOptionsRef}>
-              <Button size="icon" variant="ghost" onClick={() => setShowRecordOptions(v => !v)} data-testid="button-start-recording">
-                <Download className="w-4 h-4" />
+          <div className="relative" ref={recordOptionsRef}>
+            {!isRecording ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="text-red-500"
+                onClick={() => setShowRecordOptions(v => !v)}
+                data-testid="button-start-recording"
+              >
+                <Circle className="w-4 h-4 fill-red-500" />
               </Button>
-              {showRecordOptions && (
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-card border rounded-md shadow-lg p-1 z-50 min-w-[160px]">
+            ) : (
+              <Button size="icon" variant="destructive" onClick={stopRecording} data-testid="button-stop-recording">
+                <StopCircle className="w-4 h-4" />
+              </Button>
+            )}
+            {showRecordOptions && (
+              <div className="absolute bottom-full right-0 mb-2 bg-card border rounded-md shadow-lg p-1 z-[9999] min-w-[180px]">
+                <button
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
+                  onClick={() => startRecording("browser")}
+                  data-testid="button-record-tab"
+                >
+                  <Presentation className="w-4 h-4 shrink-0" />
+                  Brauzer tab
+                </button>
+                <button
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
+                  onClick={() => startRecording("window")}
+                  data-testid="button-record-window"
+                >
+                  <Square className="w-4 h-4 shrink-0" />
+                  Oyna
+                </button>
+                <button
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
+                  onClick={() => startRecording("monitor")}
+                  data-testid="button-record-screen"
+                >
+                  <Monitor className="w-4 h-4 shrink-0" />
+                  Butun ekran
+                </button>
+                {lesson?.lessonType === "voice" && (
                   <button
                     className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
-                    onClick={() => startRecording("browser")}
-                    data-testid="button-record-tab"
+                    onClick={() => startRecording()}
+                    data-testid="button-record-audio"
                   >
-                    <Presentation className="w-4 h-4" />
-                    Brauzer tab
+                    <Mic className="w-4 h-4 shrink-0" />
+                    Faqat ovoz
                   </button>
-                  <button
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
-                    onClick={() => startRecording("window")}
-                    data-testid="button-record-window"
-                  >
-                    <Square className="w-4 h-4" />
-                    Oyna
-                  </button>
-                  <button
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
-                    onClick={() => startRecording("monitor")}
-                    data-testid="button-record-screen"
-                  >
-                    <Monitor className="w-4 h-4" />
-                    Butun ekran
-                  </button>
-                  {lesson?.lessonType === "voice" && (
-                    <button
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
-                      onClick={() => startRecording()}
-                      data-testid="button-record-audio"
-                    >
-                      <Mic className="w-4 h-4" />
-                      Faqat ovoz
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : (
-            <Button size="icon" variant="destructive" onClick={stopRecording} data-testid="button-stop-recording">
-              <StopCircle className="w-4 h-4" />
-            </Button>
-          )}
+                )}
+              </div>
+            )}
+          </div>
           {isRecording && (
             <Badge variant="destructive" className="gap-1 animate-pulse" data-testid="badge-recording-time">
               <span className="w-2 h-2 rounded-full bg-white" /> {formatRecTime(recordingTime)}
