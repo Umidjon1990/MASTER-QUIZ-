@@ -388,8 +388,87 @@ export default function TeacherLessonLive() {
     }
   };
 
+  const getRecordingMimeType = () => {
+    const mp4Types = [
+      "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+      "video/mp4;codecs=avc1,mp4a.40.2",
+      "video/mp4",
+    ];
+    for (const t of mp4Types) {
+      if (MediaRecorder.isTypeSupported(t)) return { mime: t, ext: "mp4" };
+    }
+    const webmTypes = [
+      "video/webm;codecs=h264,opus",
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm",
+    ];
+    for (const t of webmTypes) {
+      if (MediaRecorder.isTypeSupported(t)) return { mime: t, ext: "webm" };
+    }
+    return { mime: "video/webm", ext: "webm" };
+  };
+
+  const getAudioMimeType = () => {
+    const mp4Types = ["audio/mp4", "audio/aac"];
+    for (const t of mp4Types) {
+      if (MediaRecorder.isTypeSupported(t)) return { mime: t, ext: "m4a" };
+    }
+    const webmTypes = ["audio/webm;codecs=opus", "audio/webm"];
+    for (const t of webmTypes) {
+      if (MediaRecorder.isTypeSupported(t)) return { mime: t, ext: "webm" };
+    }
+    return { mime: "audio/webm", ext: "webm" };
+  };
+
   const startRecording = async () => {
     try {
+      const isVoiceMode = lesson?.lessonType === "voice" && !isScreenSharing;
+
+      if (isVoiceMode) {
+        const combinedStream = new MediaStream();
+        if (localStreamRef.current) {
+          localStreamRef.current.getAudioTracks().forEach(t => combinedStream.addTrack(t));
+        } else {
+          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          micStream.getAudioTracks().forEach(t => combinedStream.addTrack(t));
+        }
+
+        if (combinedStream.getAudioTracks().length === 0) {
+          toast({ title: "Avval mikrofonni yoqing", variant: "destructive" });
+          return;
+        }
+
+        const { mime, ext } = getAudioMimeType();
+        const recorder = new MediaRecorder(combinedStream, { mimeType: mime });
+        recordedChunksRef.current = [];
+
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+        };
+
+        recorder.onstop = () => {
+          const blob = new Blob(recordedChunksRef.current, { type: mime });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `dars_${lesson?.title || "recording"}_${new Date().toISOString().slice(0, 10)}.${ext}`;
+          a.click();
+          URL.revokeObjectURL(url);
+          setIsRecording(false);
+          setRecordingTime(0);
+          if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        };
+
+        recorder.start(1000);
+        mediaRecorderRef.current = recorder;
+        setIsRecording(true);
+        setRecordingTime(0);
+        recordingTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
+        toast({ title: "Ovoz yozib olish boshlandi" });
+        return;
+      }
+
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: { displaySurface: "browser" } as any,
         audio: true,
@@ -403,11 +482,8 @@ export default function TeacherLessonLive() {
       }
       screenStream.getAudioTracks().forEach(t => combinedStream.addTrack(t));
 
-      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-        ? "video/webm;codecs=vp9,opus"
-        : "video/webm";
-
-      const recorder = new MediaRecorder(combinedStream, { mimeType });
+      const { mime, ext } = getRecordingMimeType();
+      const recorder = new MediaRecorder(combinedStream, { mimeType: mime, videoBitsPerSecond: 2_500_000 });
       recordedChunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
@@ -415,11 +491,11 @@ export default function TeacherLessonLive() {
       };
 
       recorder.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+        const blob = new Blob(recordedChunksRef.current, { type: mime });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `dars_${lesson?.title || "recording"}_${new Date().toISOString().slice(0, 10)}.webm`;
+        a.download = `dars_${lesson?.title || "recording"}_${new Date().toISOString().slice(0, 10)}.${ext}`;
         a.click();
         URL.revokeObjectURL(url);
         setIsRecording(false);
