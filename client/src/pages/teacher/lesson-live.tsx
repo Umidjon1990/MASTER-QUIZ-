@@ -63,6 +63,8 @@ export default function TeacherLessonLive() {
   const [lessonMode, setLessonMode] = useState<"pdf" | "screen" | "voice">("pdf");
   const [showRecordOptions, setShowRecordOptions] = useState(false);
   const recordOptionsRef = useRef<HTMLDivElement>(null);
+  const [showControls, setShowControls] = useState(true);
+  const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const screenPeerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const screenVideoRef = useRef<HTMLVideoElement>(null);
@@ -72,6 +74,26 @@ export default function TeacherLessonLive() {
     queryKey: ["/api/live-lessons", lessonId],
     enabled: !!lessonId,
   });
+
+  const resetControlsTimer = useCallback(() => {
+    setShowControls(true);
+    if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
+    controlsTimerRef.current = setTimeout(() => {
+      if (!showRecordOptions && !showDeviceSettings) setShowControls(false);
+    }, 4000);
+  }, [showRecordOptions, showDeviceSettings]);
+
+  useEffect(() => {
+    resetControlsTimer();
+    const handleMove = () => resetControlsTimer();
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("touchstart", handleMove);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("touchstart", handleMove);
+      if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
+    };
+  }, [resetControlsTimer]);
 
   useEffect(() => {
     if (!showRecordOptions) return;
@@ -665,179 +687,8 @@ export default function TeacherLessonLive() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden relative">
-      <div className="flex items-center justify-between gap-1.5 p-1.5 sm:p-2 border-b bg-background/80 backdrop-blur-sm flex-wrap z-20" data-testid="lesson-controls">
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
-          <Button size="icon" variant="ghost" onClick={() => navigate("/teacher/lessons")} data-testid="button-back">
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <h2 className="font-semibold text-xs sm:text-sm truncate max-w-[100px] sm:max-w-[200px]" data-testid="text-lesson-name">
-            {lesson.title}
-          </h2>
-          <Badge variant="outline" className="gap-1" data-testid="badge-participants">
-            <Users className="w-3 h-3" /> {participantCount}
-          </Badge>
-          {lesson.requireCode && (
-            <button onClick={copyCode} className="hidden sm:flex items-center gap-1 text-xs font-mono" data-testid="button-lesson-code">
-              <Lock className="w-3 h-3" /> {lesson.joinCode} <Copy className="w-3 h-3" />
-            </button>
-          )}
-          {lesson.requireCode && (
-            <button onClick={copyCode} className="flex sm:hidden items-center gap-1 text-xs font-mono" data-testid="button-lesson-code-mobile">
-              <Lock className="w-3 h-3" /> <Copy className="w-3 h-3" />
-            </button>
-          )}
-          {!lesson.requireCode && (
-            <Badge variant="secondary" className="gap-1 hidden sm:flex">
-              <Unlock className="w-3 h-3" /> Kodsiz
-            </Badge>
-          )}
-        </div>
-
-        <div className="flex items-center gap-0.5 sm:gap-1 flex-wrap">
-          <Button size="icon" variant={audioEnabled ? "default" : "ghost"} onClick={toggleAudio} data-testid="button-toggle-audio">
-            {audioEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-          </Button>
-          <Button size="icon" variant={videoEnabled ? "default" : "ghost"} onClick={toggleVideo} data-testid="button-toggle-video">
-            {videoEnabled ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
-          </Button>
-          {videoEnabled && (
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setVideoShape(s => s === "circle" ? "rectangle" : "circle")}
-              data-testid="button-video-shape"
-            >
-              {videoShape === "circle" ? <Circle className="w-4 h-4" /> : <RectangleHorizontal className="w-4 h-4" />}
-            </Button>
-          )}
-          <Button
-            size="icon"
-            variant={isScreenSharing ? "default" : "ghost"}
-            onClick={toggleScreenShare}
-            data-testid="button-toggle-screen-share"
-          >
-            {isScreenSharing ? <Monitor className="w-4 h-4" /> : <MonitorOff className="w-4 h-4" />}
-          </Button>
-          <Button
-            size="icon"
-            variant={showDeviceSettings ? "default" : "ghost"}
-            onClick={() => setShowDeviceSettings(v => !v)}
-            data-testid="button-device-settings"
-          >
-            <Settings2 className="w-4 h-4" />
-          </Button>
-          <div className="relative" ref={recordOptionsRef}>
-            {!isRecording ? (
-              <Button
-                size="icon"
-                variant="ghost"
-                className="text-red-500"
-                onClick={() => setShowRecordOptions(v => !v)}
-                data-testid="button-start-recording"
-              >
-                <Circle className="w-4 h-4 fill-red-500" />
-              </Button>
-            ) : (
-              <Button size="icon" variant="destructive" onClick={stopRecording} data-testid="button-stop-recording">
-                <StopCircle className="w-4 h-4" />
-              </Button>
-            )}
-            {showRecordOptions && (
-              <div className="absolute top-full right-0 mt-2 bg-card border rounded-md shadow-lg p-1 z-[9999] min-w-[180px]">
-                <button
-                  className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
-                  onClick={() => startRecording("browser")}
-                  data-testid="button-record-tab"
-                >
-                  <Presentation className="w-4 h-4 shrink-0" />
-                  Brauzer tab
-                </button>
-                <button
-                  className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
-                  onClick={() => startRecording("window")}
-                  data-testid="button-record-window"
-                >
-                  <Square className="w-4 h-4 shrink-0" />
-                  Oyna
-                </button>
-                <button
-                  className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
-                  onClick={() => startRecording("monitor")}
-                  data-testid="button-record-screen"
-                >
-                  <Monitor className="w-4 h-4 shrink-0" />
-                  Butun ekran
-                </button>
-                {lesson?.lessonType === "voice" && (
-                  <button
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left"
-                    onClick={() => startRecording()}
-                    data-testid="button-record-audio"
-                  >
-                    <Mic className="w-4 h-4 shrink-0" />
-                    Faqat ovoz
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-          {isRecording && (
-            <Badge variant="destructive" className="gap-1 animate-pulse" data-testid="badge-recording-time">
-              <span className="w-2 h-2 rounded-full bg-white" /> {formatRecTime(recordingTime)}
-            </Badge>
-          )}
-          <Button size="icon" variant="ghost" onClick={copyLink} data-testid="button-copy-link">
-            <Link2 className="w-4 h-4" />
-          </Button>
-          {!isStarted ? (
-            <Button size="sm" onClick={handleStart} data-testid="button-start-lesson">
-              <Play className="w-3 h-3 sm:mr-1" /> <span className="hidden sm:inline">Boshlash</span>
-            </Button>
-          ) : (
-            <Button size="sm" variant="destructive" onClick={handleEnd} data-testid="button-end-lesson">
-              <Square className="w-3 h-3 sm:mr-1" /> <span className="hidden sm:inline">Tugatish</span>
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {showDeviceSettings && (
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 p-2 border-b bg-muted/30 z-10" data-testid="device-settings-panel">
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Mic className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-            <Select value={selectedAudioDevice} onValueChange={switchAudioDevice}>
-              <SelectTrigger className="w-full sm:w-[200px] h-8 text-xs" data-testid="select-audio-device">
-                <SelectValue placeholder="Mikrofon tanlang" />
-              </SelectTrigger>
-              <SelectContent>
-                {audioDevices.map(d => (
-                  <SelectItem key={d.deviceId} value={d.deviceId} data-testid={`option-audio-${d.deviceId}`}>
-                    {d.label || `Mikrofon ${audioDevices.indexOf(d) + 1}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Video className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-            <Select value={selectedVideoDevice} onValueChange={switchVideoDevice}>
-              <SelectTrigger className="w-full sm:w-[200px] h-8 text-xs" data-testid="select-video-device">
-                <SelectValue placeholder="Kamera tanlang" />
-              </SelectTrigger>
-              <SelectContent>
-                {videoDevices.map(d => (
-                  <SelectItem key={d.deviceId} value={d.deviceId} data-testid={`option-video-${d.deviceId}`}>
-                    {d.label || `Kamera ${videoDevices.indexOf(d) + 1}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      )}
-
-      <div className="flex-1 relative overflow-hidden min-h-0">
+    <div className="h-screen w-full overflow-hidden relative">
+      <div className="absolute inset-0 z-0">
         {lessonMode === "voice" ? (
           <div className="flex flex-col items-center justify-center w-full h-full gap-6" data-testid="voice-lesson-view">
             <div className={`w-24 h-24 rounded-full flex items-center justify-center ${audioEnabled ? "bg-primary/20 animate-pulse" : "bg-muted"}`}>
@@ -918,6 +769,126 @@ export default function TeacherLessonLive() {
           </div>
         )}
       </div>
+
+      <div className={`absolute top-0 left-0 right-0 z-30 flex items-center justify-between gap-1 p-1.5 sm:p-2 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${showControls ? "opacity-100" : "opacity-0 pointer-events-none"}`} data-testid="lesson-controls">
+        <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap min-w-0">
+          <Button size="icon" variant="ghost" className="text-white hover:bg-white/20" onClick={() => navigate("/teacher/lessons")} data-testid="button-back">
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <span className="font-semibold text-xs sm:text-sm text-white truncate max-w-[80px] sm:max-w-[180px]" data-testid="text-lesson-name">
+            {lesson.title}
+          </span>
+          <Badge variant="secondary" className="gap-1 bg-white/20 text-white border-0" data-testid="badge-participants">
+            <Users className="w-3 h-3" /> {participantCount}
+          </Badge>
+          {lesson.requireCode && (
+            <button onClick={copyCode} className="hidden sm:flex items-center gap-1 text-xs font-mono text-white/80" data-testid="button-lesson-code">
+              <Lock className="w-3 h-3" /> {lesson.joinCode} <Copy className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-0.5 sm:gap-1 flex-wrap">
+          <Button size="icon" variant="ghost" className={audioEnabled ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/20"} onClick={toggleAudio} data-testid="button-toggle-audio">
+            {audioEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+          </Button>
+          <Button size="icon" variant="ghost" className={videoEnabled ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/20"} onClick={toggleVideo} data-testid="button-toggle-video">
+            {videoEnabled ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+          </Button>
+          {videoEnabled && (
+            <Button size="icon" variant="ghost" className="text-white hover:bg-white/20" onClick={() => setVideoShape(s => s === "circle" ? "rectangle" : "circle")} data-testid="button-video-shape">
+              {videoShape === "circle" ? <Circle className="w-4 h-4" /> : <RectangleHorizontal className="w-4 h-4" />}
+            </Button>
+          )}
+          <Button size="icon" variant="ghost" className={isScreenSharing ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/20"} onClick={toggleScreenShare} data-testid="button-toggle-screen-share">
+            {isScreenSharing ? <Monitor className="w-4 h-4" /> : <MonitorOff className="w-4 h-4" />}
+          </Button>
+          <Button size="icon" variant="ghost" className={showDeviceSettings ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/20"} onClick={() => setShowDeviceSettings(v => !v)} data-testid="button-device-settings">
+            <Settings2 className="w-4 h-4" />
+          </Button>
+          <div className="relative" ref={recordOptionsRef}>
+            {!isRecording ? (
+              <Button size="icon" variant="ghost" className="text-red-400 hover:bg-white/20" onClick={() => setShowRecordOptions(v => !v)} data-testid="button-start-recording">
+                <Circle className="w-4 h-4 fill-red-500" />
+              </Button>
+            ) : (
+              <Button size="icon" variant="destructive" onClick={stopRecording} data-testid="button-stop-recording">
+                <StopCircle className="w-4 h-4" />
+              </Button>
+            )}
+            {showRecordOptions && (
+              <div className="absolute top-full right-0 mt-2 bg-card border rounded-md shadow-lg p-1 z-[9999] min-w-[180px]">
+                <button className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left" onClick={() => startRecording("browser")} data-testid="button-record-tab">
+                  <Presentation className="w-4 h-4 shrink-0" /> Brauzer tab
+                </button>
+                <button className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left" onClick={() => startRecording("window")} data-testid="button-record-window">
+                  <Square className="w-4 h-4 shrink-0" /> Oyna
+                </button>
+                <button className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left" onClick={() => startRecording("monitor")} data-testid="button-record-screen">
+                  <Monitor className="w-4 h-4 shrink-0" /> Butun ekran
+                </button>
+                {lesson?.lessonType === "voice" && (
+                  <button className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover-elevate text-left" onClick={() => startRecording()} data-testid="button-record-audio">
+                    <Mic className="w-4 h-4 shrink-0" /> Faqat ovoz
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          {isRecording && (
+            <Badge variant="destructive" className="gap-1 animate-pulse" data-testid="badge-recording-time">
+              <span className="w-2 h-2 rounded-full bg-white" /> {formatRecTime(recordingTime)}
+            </Badge>
+          )}
+          <Button size="icon" variant="ghost" className="text-white hover:bg-white/20" onClick={copyLink} data-testid="button-copy-link">
+            <Link2 className="w-4 h-4" />
+          </Button>
+          {!isStarted ? (
+            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white border-0" onClick={handleStart} data-testid="button-start-lesson">
+              <Play className="w-3 h-3 sm:mr-1" /> <span className="hidden sm:inline">Boshlash</span>
+            </Button>
+          ) : (
+            <Button size="sm" variant="destructive" onClick={handleEnd} data-testid="button-end-lesson">
+              <Square className="w-3 h-3 sm:mr-1" /> <span className="hidden sm:inline">Tugatish</span>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {showDeviceSettings && showControls && (
+        <div className="absolute top-12 left-0 right-0 z-20 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 p-2 bg-black/40 backdrop-blur-sm" data-testid="device-settings-panel">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Mic className="w-3.5 h-3.5 text-white/70 shrink-0" />
+            <Select value={selectedAudioDevice} onValueChange={switchAudioDevice}>
+              <SelectTrigger className="w-full sm:w-[200px] h-8 text-xs bg-white/10 border-white/20 text-white" data-testid="select-audio-device">
+                <SelectValue placeholder="Mikrofon tanlang" />
+              </SelectTrigger>
+              <SelectContent>
+                {audioDevices.map(d => (
+                  <SelectItem key={d.deviceId} value={d.deviceId} data-testid={`option-audio-${d.deviceId}`}>
+                    {d.label || `Mikrofon ${audioDevices.indexOf(d) + 1}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Video className="w-3.5 h-3.5 text-white/70 shrink-0" />
+            <Select value={selectedVideoDevice} onValueChange={switchVideoDevice}>
+              <SelectTrigger className="w-full sm:w-[200px] h-8 text-xs bg-white/10 border-white/20 text-white" data-testid="select-video-device">
+                <SelectValue placeholder="Kamera tanlang" />
+              </SelectTrigger>
+              <SelectContent>
+                {videoDevices.map(d => (
+                  <SelectItem key={d.deviceId} value={d.deviceId} data-testid={`option-video-${d.deviceId}`}>
+                    {d.label || `Kamera ${videoDevices.indexOf(d) + 1}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
 
       {videoEnabled && (
         <div
