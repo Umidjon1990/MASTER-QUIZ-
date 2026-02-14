@@ -65,6 +65,7 @@ export default function TeacherLessonLive() {
   const recordScreenStreamRef = useRef<MediaStream | null>(null);
   const recordCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const recordAnimFrameRef = useRef<number>(0);
+  const [recordSnapshot, setRecordSnapshot] = useState<{ url: string; w: number; h: number } | null>(null);
 
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
@@ -526,12 +527,32 @@ export default function TeacherLessonLive() {
       screenStream.getVideoTracks()[0].onended = () => {
         if (showRecordCropSelector) {
           setShowRecordCropSelector(false);
+          setRecordSnapshot(null);
           recordScreenStreamRef.current = null;
         } else {
           stopRecording();
         }
       };
 
+      const snapVideo = document.createElement("video");
+      snapVideo.srcObject = screenStream;
+      snapVideo.muted = true;
+      snapVideo.playsInline = true;
+      await new Promise<void>((resolve) => {
+        snapVideo.onloadedmetadata = () => { snapVideo.play(); resolve(); };
+      });
+      await new Promise(r => setTimeout(r, 500));
+      const snapCanvas = document.createElement("canvas");
+      snapCanvas.width = snapVideo.videoWidth;
+      snapCanvas.height = snapVideo.videoHeight;
+      const snapCtx = snapCanvas.getContext("2d");
+      if (snapCtx) {
+        snapCtx.drawImage(snapVideo, 0, 0);
+      }
+      snapVideo.pause();
+      snapVideo.srcObject = null;
+      const snapUrl = snapCanvas.toDataURL("image/jpeg", 0.9);
+      setRecordSnapshot({ url: snapUrl, w: snapCanvas.width, h: snapCanvas.height });
       setShowRecordCropSelector(true);
     } catch (err: any) {
       if (err?.name !== "NotAllowedError") {
@@ -636,6 +657,7 @@ export default function TeacherLessonLive() {
 
   const handleRecordCropCancel = () => {
     setShowRecordCropSelector(false);
+    setRecordSnapshot(null);
     if (recordScreenStreamRef.current) {
       recordScreenStreamRef.current.getTracks().forEach(t => t.stop());
       recordScreenStreamRef.current = null;
@@ -1159,9 +1181,11 @@ export default function TeacherLessonLive() {
 
       <LessonChat socket={socketState} isHost />
 
-      {showRecordCropSelector && recordScreenStreamRef.current && (
+      {showRecordCropSelector && recordSnapshot && (
         <RecordCropSelector
-          videoStream={recordScreenStreamRef.current}
+          snapshotUrl={recordSnapshot.url}
+          snapshotWidth={recordSnapshot.w}
+          snapshotHeight={recordSnapshot.h}
           onConfirm={handleRecordCropConfirm}
           onCancel={handleRecordCropCancel}
         />
