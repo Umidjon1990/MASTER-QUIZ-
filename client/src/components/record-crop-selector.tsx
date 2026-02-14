@@ -16,92 +16,103 @@ interface RecordCropSelectorProps {
 }
 
 export default function RecordCropSelector({ videoStream, onConfirm, onCancel }: RecordCropSelectorProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   const [crop, setCrop] = useState<CropRegion | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
   const [currentRect, setCurrentRect] = useState<CropRegion | null>(null);
-  const [ready, setReady] = useState(false);
-  const [videoLayout, setVideoLayout] = useState<{ offsetX: number; offsetY: number; renderW: number; renderH: number }>({ offsetX: 0, offsetY: 0, renderW: 0, renderH: 0 });
-
-  const computeLayout = useCallback(() => {
-    const video = videoRef.current;
-    const container = containerRef.current;
-    if (!video || !container || !video.videoWidth || !video.videoHeight) return;
-
-    const cRect = container.getBoundingClientRect();
-    const cw = cRect.width;
-    const ch = cRect.height;
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    const videoAspect = vw / vh;
-    const containerAspect = cw / ch;
-
-    let renderW: number, renderH: number, offsetX: number, offsetY: number;
-    if (videoAspect > containerAspect) {
-      renderW = cw;
-      renderH = cw / videoAspect;
-      offsetX = 0;
-      offsetY = (ch - renderH) / 2;
-    } else {
-      renderH = ch;
-      renderW = ch * videoAspect;
-      offsetX = (cw - renderW) / 2;
-      offsetY = 0;
-    }
-    setVideoLayout({ offsetX, offsetY, renderW, renderH });
-  }, []);
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+  const [imgNatural, setImgNatural] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const [imgLayout, setImgLayout] = useState<{ offsetX: number; offsetY: number; renderW: number; renderH: number }>({ offsetX: 0, offsetY: 0, renderW: 0, renderH: 0 });
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
+    let cancelled = false;
+    const video = document.createElement("video");
     video.srcObject = videoStream;
     video.muted = true;
     video.playsInline = true;
 
-    const onMeta = () => {
-      video.play();
-      setReady(true);
-      computeLayout();
+    video.onloadedmetadata = () => {
+      video.play().then(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (cancelled) return;
+            const c = document.createElement("canvas");
+            c.width = video.videoWidth;
+            c.height = video.videoHeight;
+            const ctx = c.getContext("2d");
+            if (!ctx) return;
+            ctx.drawImage(video, 0, 0);
+            video.pause();
+            video.srcObject = null;
+            const url = c.toDataURL("image/jpeg", 0.92);
+            setSnapshotUrl(url);
+            setImgNatural({ w: c.width, h: c.height });
+          });
+        });
+      });
     };
-    video.addEventListener("loadedmetadata", onMeta);
 
-    return () => {
-      video.removeEventListener("loadedmetadata", onMeta);
-    };
-  }, [videoStream, computeLayout]);
+    return () => { cancelled = true; video.pause(); video.srcObject = null; };
+  }, [videoStream]);
+
+  const computeLayout = useCallback(() => {
+    const container = containerRef.current;
+    const img = imgRef.current;
+    if (!container || !img || !imgNatural.w || !imgNatural.h) return;
+
+    const cRect = container.getBoundingClientRect();
+    const cw = cRect.width;
+    const ch = cRect.height;
+    const aspect = imgNatural.w / imgNatural.h;
+    const containerAspect = cw / ch;
+
+    let renderW: number, renderH: number, offsetX: number, offsetY: number;
+    if (aspect > containerAspect) {
+      renderW = cw;
+      renderH = cw / aspect;
+      offsetX = 0;
+      offsetY = (ch - renderH) / 2;
+    } else {
+      renderH = ch;
+      renderW = ch * aspect;
+      offsetX = (cw - renderW) / 2;
+      offsetY = 0;
+    }
+    setImgLayout({ offsetX, offsetY, renderW, renderH });
+  }, [imgNatural]);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!snapshotUrl) return;
     computeLayout();
-    const handleResize = () => computeLayout();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [ready, computeLayout]);
+    const h = () => computeLayout();
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, [snapshotUrl, computeLayout]);
 
   const clientToRatio = useCallback((clientX: number, clientY: number): { rx: number; ry: number } => {
     const container = containerRef.current;
     if (!container) return { rx: 0, ry: 0 };
     const rect = container.getBoundingClientRect();
-    const { offsetX, offsetY, renderW, renderH } = videoLayout;
+    const { offsetX, offsetY, renderW, renderH } = imgLayout;
     const px = clientX - rect.left;
     const py = clientY - rect.top;
     const rx = Math.max(0, Math.min(1, (px - offsetX) / renderW));
     const ry = Math.max(0, Math.min(1, (py - offsetY) / renderH));
     return { rx, ry };
-  }, [videoLayout]);
+  }, [imgLayout]);
 
   const ratioToPixels = useCallback((r: CropRegion) => {
-    const { offsetX, offsetY, renderW, renderH } = videoLayout;
+    const { offsetX, offsetY, renderW, renderH } = imgLayout;
     return {
       left: offsetX + r.x * renderW,
       top: offsetY + r.y * renderH,
       width: r.w * renderW,
       height: r.h * renderH,
     };
-  }, [videoLayout]);
+  }, [imgLayout]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -164,13 +175,18 @@ export default function RecordCropSelector({ videoStream, onConfirm, onCancel }:
       </div>
 
       <div ref={containerRef} className="flex-1 relative min-h-0 overflow-hidden bg-black">
-        <video
-          ref={videoRef}
-          className="absolute inset-0 w-full h-full object-contain"
-          data-testid="record-crop-video-preview"
-        />
+        {snapshotUrl && (
+          <img
+            ref={imgRef}
+            src={snapshotUrl}
+            onLoad={computeLayout}
+            className="absolute inset-0 w-full h-full object-contain"
+            draggable={false}
+            data-testid="record-crop-snapshot"
+          />
+        )}
 
-        {ready && (
+        {snapshotUrl && (
           <div
             className="absolute inset-0"
             onPointerDown={handlePointerDown}
@@ -181,16 +197,16 @@ export default function RecordCropSelector({ videoStream, onConfirm, onCancel }:
           />
         )}
 
-        {!ready && (
+        {!snapshotUrl && (
           <div className="absolute inset-0 flex items-center justify-center bg-black">
             <div className="flex flex-col items-center gap-3">
               <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              <p className="text-zinc-400 text-sm">Ekran yuklanmoqda...</p>
+              <p className="text-zinc-400 text-sm">Ekran rasmi tayyorlanmoqda...</p>
             </div>
           </div>
         )}
 
-        {ready && displayRect && (() => {
+        {snapshotUrl && displayRect && (() => {
           const px = ratioToPixels(displayRect);
           const container = containerRef.current;
           if (!container) return null;
