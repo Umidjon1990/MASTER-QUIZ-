@@ -98,16 +98,16 @@ export default function RecordingCropOverlay({ crop, onChange }: RecordingCropOv
         onPointerUp={handlePointerUp}
         data-testid="recording-crop-region"
       >
-        <div className="absolute inset-0 border-2 border-red-500 rounded-sm" />
+        <div className="absolute inset-0 border border-black/70 rounded-sm" />
 
-        <div className="absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[9px] font-medium text-white whitespace-nowrap bg-red-600/80 pointer-events-none">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full px-1.5 py-0.5 rounded text-[9px] font-medium text-white whitespace-nowrap bg-red-600/90 pointer-events-none">
           REC
         </div>
 
         {handles.map(({ pos, cls }) => (
           <div
             key={pos}
-            className={`absolute w-3 h-3 bg-red-500 rounded-full opacity-80 hover:opacity-100 z-10 pointer-events-auto ${cls}`}
+            className={`absolute w-3 h-3 bg-black/70 rounded-full opacity-80 hover:opacity-100 z-10 pointer-events-auto ${cls}`}
             style={{ touchAction: "none" }}
             onPointerDown={(e) => handlePointerDown(e, pos)}
             onPointerMove={handlePointerMove}
