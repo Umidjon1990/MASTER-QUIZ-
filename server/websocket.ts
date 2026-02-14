@@ -339,6 +339,12 @@ export function setupWebSocket(httpServer: HttpServer) {
       socket.to(`lesson:${lessonId}`).emit("lesson:pointer-update", { x, y, visible });
     });
 
+    socket.on("lesson:zoom-change", (data) => {
+      if (socket.data.lessonRole !== "host") return;
+      const { lessonId, zoomLevel } = data;
+      socket.to(`lesson:${lessonId}`).emit("lesson:zoom-changed", { zoomLevel });
+    });
+
     socket.on("lesson:start", async (data) => {
       if (socket.data.lessonRole !== "host") return;
       const { lessonId } = data;

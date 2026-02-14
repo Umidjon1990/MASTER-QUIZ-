@@ -42,6 +42,7 @@ export default function LessonJoin() {
   const [pointer, setPointer] = useState<{ x: number; y: number; visible: boolean } | null>(null);
   const [ended, setEnded] = useState(false);
   const [participantCount, setParticipantCount] = useState(0);
+  const [externalZoom, setExternalZoom] = useState(0);
 
   const [videoShape, setVideoShape] = useState<"circle" | "rectangle">("circle");
   const [videoPos, setVideoPos] = useState({ x: 20, y: 20 });
@@ -111,6 +112,10 @@ export default function LessonJoin() {
 
     socket.on("lesson:pointer-update", ({ x, y, visible }) => {
       setPointer({ x, y, visible });
+    });
+
+    socket.on("lesson:zoom-changed", ({ zoomLevel }) => {
+      setExternalZoom(zoomLevel);
     });
 
     socket.on("lesson:participant-count", ({ count }) => {
@@ -209,6 +214,12 @@ export default function LessonJoin() {
     };
   }, []);
 
+  useEffect(() => {
+    if (hasRemoteVideo && videoRef.current && remoteStreamRef.current) {
+      videoRef.current.srcObject = remoteStreamRef.current;
+    }
+  }, [hasRemoteVideo]);
+
   const toggleAudioMute = () => {
     if (remoteStreamRef.current) {
       remoteStreamRef.current.getAudioTracks().forEach(t => { t.enabled = audioMuted; });
@@ -263,11 +274,12 @@ export default function LessonJoin() {
           </div>
         </div>
 
-        <div className="flex-1 relative overflow-hidden">
+        <div className="flex-1 relative overflow-hidden min-h-0">
           <PDFViewer
             url={lessonInfo.pdfUrl}
             currentPage={currentPage}
             pointerPosition={pointer}
+            externalZoom={externalZoom}
             isHost={false}
           />
         </div>

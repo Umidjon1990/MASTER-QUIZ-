@@ -9,9 +9,16 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Video, VideoOff, Mic, MicOff, Users, Copy, Link2, Play, Square,
-  Circle, RectangleHorizontal, Move, ArrowLeft, Lock, Unlock,
-  Presentation, GripVertical,
+  Circle, RectangleHorizontal, ArrowLeft, Lock, Unlock,
+  Presentation, GripVertical, Download, StopCircle, Settings2,
 } from "lucide-react";
 import type { LiveLesson } from "@shared/schema";
 
@@ -25,6 +32,8 @@ export default function TeacherLessonLive() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -38,10 +47,34 @@ export default function TeacherLessonLive() {
   const [videoSize, setVideoSize] = useState(160);
   const dragStart = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
 
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedAudioDevice, setSelectedAudioDevice] = useState<string>("");
+  const [selectedVideoDevice, setSelectedVideoDevice] = useState<string>("");
+  const [showDeviceSettings, setShowDeviceSettings] = useState(false);
+
   const { data: lesson, isLoading } = useQuery<LiveLesson>({
     queryKey: ["/api/live-lessons", lessonId],
     enabled: !!lessonId,
   });
+
+  useEffect(() => {
+    const loadDevices = async () => {
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(s => s.getTracks().forEach(t => t.stop()));
+      } catch {}
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        setAudioDevices(devices.filter(d => d.kind === "audioinput"));
+        setVideoDevices(devices.filter(d => d.kind === "videoinput"));
+      } catch {}
+    };
+    loadDevices();
+  }, []);
 
   useEffect(() => {
     if (!lessonId) return;
@@ -80,6 +113,11 @@ export default function TeacherLessonLive() {
       socket.disconnect();
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       peerConnectionsRef.current.forEach(pc => pc.close());
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+      }
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     };
   }, [lessonId]);
 
@@ -125,6 +163,17 @@ export default function TeacherLessonLive() {
     socket.emit("lesson:webrtc-offer", { lessonId, offer, targetSocketId });
   };
 
+  const getMediaStream = async (audio: boolean, video: boolean) => {
+    const constraints: MediaStreamConstraints = {};
+    if (audio) {
+      constraints.audio = selectedAudioDevice ? { deviceId: { exact: selectedAudioDevice } } : true;
+    }
+    if (video) {
+      constraints.video = selectedVideoDevice ? { deviceId: { exact: selectedVideoDevice } } : true;
+    }
+    return navigator.mediaDevices.getUserMedia(constraints);
+  };
+
   const toggleAudio = async () => {
     if (audioEnabled) {
       localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = false; });
@@ -132,7 +181,7 @@ export default function TeacherLessonLive() {
     } else {
       if (!localStreamRef.current) {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: videoEnabled });
+          const stream = await getMediaStream(true, videoEnabled);
           localStreamRef.current = stream;
           if (videoRef.current) videoRef.current.srcObject = stream;
         } catch {
@@ -145,7 +194,7 @@ export default function TeacherLessonLive() {
           audioTracks.forEach(t => { t.enabled = true; });
         } else {
           try {
-            const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const audioStream = await getMediaStream(true, false);
             audioStream.getAudioTracks().forEach(t => localStreamRef.current!.addTrack(t));
           } catch {
             toast({ title: "Mikrofondan foydalanib bo'lmaydi", variant: "destructive" });
@@ -167,10 +216,10 @@ export default function TeacherLessonLive() {
     } else {
       try {
         if (!localStreamRef.current) {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: audioEnabled, video: true });
+          const stream = await getMediaStream(audioEnabled, true);
           localStreamRef.current = stream;
         } else {
-          const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          const videoStream = await getMediaStream(false, true);
           videoStream.getVideoTracks().forEach(t => localStreamRef.current!.addTrack(t));
         }
         if (videoRef.current) videoRef.current.srcObject = localStreamRef.current;
@@ -180,6 +229,125 @@ export default function TeacherLessonLive() {
       }
     }
   };
+
+  const switchAudioDevice = async (deviceId: string) => {
+    setSelectedAudioDevice(deviceId);
+    if (audioEnabled && localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(t => {
+        t.stop();
+        localStreamRef.current!.removeTrack(t);
+      });
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId } } });
+        newStream.getAudioTracks().forEach(t => localStreamRef.current!.addTrack(t));
+        peerConnectionsRef.current.forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === "audio");
+          const newTrack = newStream.getAudioTracks()[0];
+          if (sender && newTrack) sender.replaceTrack(newTrack);
+        });
+      } catch {
+        toast({ title: "Qurilmani almashtirish xatoligi", variant: "destructive" });
+      }
+    }
+  };
+
+  const switchVideoDevice = async (deviceId: string) => {
+    setSelectedVideoDevice(deviceId);
+    if (videoEnabled && localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach(t => {
+        t.stop();
+        localStreamRef.current!.removeTrack(t);
+      });
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId } } });
+        newStream.getVideoTracks().forEach(t => localStreamRef.current!.addTrack(t));
+        if (videoRef.current) videoRef.current.srcObject = localStreamRef.current;
+        peerConnectionsRef.current.forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === "video");
+          const newTrack = newStream.getVideoTracks()[0];
+          if (sender && newTrack) sender.replaceTrack(newTrack);
+        });
+      } catch {
+        toast({ title: "Qurilmani almashtirish xatoligi", variant: "destructive" });
+      }
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: "browser" } as any,
+        audio: true,
+      });
+
+      const combinedStream = new MediaStream();
+      screenStream.getVideoTracks().forEach(t => combinedStream.addTrack(t));
+
+      if (localStreamRef.current) {
+        localStreamRef.current.getAudioTracks().forEach(t => combinedStream.addTrack(t));
+      }
+      screenStream.getAudioTracks().forEach(t => combinedStream.addTrack(t));
+
+      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+        ? "video/webm;codecs=vp9,opus"
+        : "video/webm";
+
+      const recorder = new MediaRecorder(combinedStream, { mimeType });
+      recordedChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `dars_${lesson?.title || "recording"}_${new Date().toISOString().slice(0, 10)}.webm`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setIsRecording(false);
+        setRecordingTime(0);
+        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      };
+
+      screenStream.getVideoTracks()[0].onended = () => {
+        stopRecording();
+      };
+
+      recorder.start(1000);
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+      setRecordingTime(0);
+      recordingTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
+      toast({ title: "Yozib olish boshlandi" });
+    } catch (err: any) {
+      if (err?.name !== "NotAllowedError") {
+        toast({ title: "Yozib olishni boshlab bo'lmadi", variant: "destructive" });
+      }
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+    }
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+  };
+
+  const formatRecTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  useEffect(() => {
+    if (videoEnabled && videoRef.current && localStreamRef.current) {
+      videoRef.current.srcObject = localStreamRef.current;
+    }
+  }, [videoEnabled]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -191,6 +359,10 @@ export default function TeacherLessonLive() {
     socketRef.current?.emit("lesson:pointer-move", { lessonId, x, y, visible });
   };
 
+  const handleZoomChange = (zoomLevel: number) => {
+    socketRef.current?.emit("lesson:zoom-change", { lessonId, zoomLevel });
+  };
+
   const handleStart = async () => {
     await apiRequest("PATCH", `/api/live-lessons/${lessonId}`, { status: "active", startedAt: new Date().toISOString() });
     socketRef.current?.emit("lesson:start", { lessonId });
@@ -200,6 +372,7 @@ export default function TeacherLessonLive() {
   };
 
   const handleEnd = async () => {
+    if (isRecording) stopRecording();
     await apiRequest("PATCH", `/api/live-lessons/${lessonId}`, { status: "ended", endedAt: new Date().toISOString() });
     socketRef.current?.emit("lesson:end", { lessonId });
     setIsStarted(false);
@@ -310,6 +483,28 @@ export default function TeacherLessonLive() {
               {videoShape === "circle" ? <Circle className="w-4 h-4" /> : <RectangleHorizontal className="w-4 h-4" />}
             </Button>
           )}
+          <Button
+            size="icon"
+            variant={showDeviceSettings ? "default" : "ghost"}
+            onClick={() => setShowDeviceSettings(v => !v)}
+            data-testid="button-device-settings"
+          >
+            <Settings2 className="w-4 h-4" />
+          </Button>
+          {!isRecording ? (
+            <Button size="icon" variant="ghost" onClick={startRecording} data-testid="button-start-recording">
+              <Download className="w-4 h-4" />
+            </Button>
+          ) : (
+            <Button size="icon" variant="destructive" onClick={stopRecording} data-testid="button-stop-recording">
+              <StopCircle className="w-4 h-4" />
+            </Button>
+          )}
+          {isRecording && (
+            <Badge variant="destructive" className="gap-1 animate-pulse" data-testid="badge-recording-time">
+              <span className="w-2 h-2 rounded-full bg-white" /> {formatRecTime(recordingTime)}
+            </Badge>
+          )}
           <Button size="icon" variant="ghost" onClick={copyLink} data-testid="button-copy-link">
             <Link2 className="w-4 h-4" />
           </Button>
@@ -325,13 +520,49 @@ export default function TeacherLessonLive() {
         </div>
       </div>
 
-      <div className="flex-1 relative overflow-hidden">
+      {showDeviceSettings && (
+        <div className="flex items-center gap-3 p-2 border-b bg-muted/30 flex-wrap z-10" data-testid="device-settings-panel">
+          <div className="flex items-center gap-2">
+            <Mic className="w-3.5 h-3.5 text-muted-foreground" />
+            <Select value={selectedAudioDevice} onValueChange={switchAudioDevice}>
+              <SelectTrigger className="w-[200px] h-8 text-xs" data-testid="select-audio-device">
+                <SelectValue placeholder="Mikrofon tanlang" />
+              </SelectTrigger>
+              <SelectContent>
+                {audioDevices.map(d => (
+                  <SelectItem key={d.deviceId} value={d.deviceId} data-testid={`option-audio-${d.deviceId}`}>
+                    {d.label || `Mikrofon ${audioDevices.indexOf(d) + 1}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Video className="w-3.5 h-3.5 text-muted-foreground" />
+            <Select value={selectedVideoDevice} onValueChange={switchVideoDevice}>
+              <SelectTrigger className="w-[200px] h-8 text-xs" data-testid="select-video-device">
+                <SelectValue placeholder="Kamera tanlang" />
+              </SelectTrigger>
+              <SelectContent>
+                {videoDevices.map(d => (
+                  <SelectItem key={d.deviceId} value={d.deviceId} data-testid={`option-video-${d.deviceId}`}>
+                    {d.label || `Kamera ${videoDevices.indexOf(d) + 1}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 relative overflow-hidden min-h-0">
         <PDFViewer
           url={lesson.pdfUrl}
           currentPage={currentPage}
           onPageChange={handlePageChange}
           onTotalPages={setTotalPages}
           onPointerMove={handlePointerMove}
+          onZoomChange={handleZoomChange}
           isHost
         />
       </div>

@@ -15,6 +15,8 @@ interface PDFViewerProps {
   pointerPosition?: { x: number; y: number; visible: boolean } | null;
   isHost?: boolean;
   className?: string;
+  onZoomChange?: (zoomLevel: number) => void;
+  externalZoom?: number;
 }
 
 export default function PDFViewer({
@@ -26,6 +28,8 @@ export default function PDFViewer({
   pointerPosition,
   isHost = false,
   className = "",
+  onZoomChange,
+  externalZoom,
 }: PDFViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -36,6 +40,26 @@ export default function PDFViewer({
   const [error, setError] = useState<string | null>(null);
   const renderTaskRef = useRef<any>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
+
+  const lastTouchDistRef = useRef<number | null>(null);
+  const touchDragStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
+
+  useEffect(() => {
+    if (externalZoom !== undefined) {
+      setZoomLevel(externalZoom);
+    }
+  }, [externalZoom]);
+
+  const updateZoom = useCallback((newZoomOrUpdater: number | ((prev: number) => number)) => {
+    setZoomLevel(prev => {
+      const newZoom = typeof newZoomOrUpdater === "function" ? newZoomOrUpdater(prev) : newZoomOrUpdater;
+      onZoomChange?.(newZoom);
+      return newZoom;
+    });
+  }, [onZoomChange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,19 +152,101 @@ export default function PDFViewer({
     };
   }, [renderPage]);
 
-  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isHost || !onPointerMove || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    onPointerMove(x, y, true);
+  useEffect(() => {
+    if (zoomLevel <= 0 && containerRef.current) {
+      containerRef.current.scrollLeft = 0;
+      containerRef.current.scrollTop = 0;
+    }
+  }, [zoomLevel]);
+
+  const isZoomed = zoomLevel > 0;
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isZoomed || !containerRef.current) return;
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      scrollLeft: containerRef.current.scrollLeft,
+      scrollTop: containerRef.current.scrollTop,
+    };
+  }, [isZoomed]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (isDragging && dragStartRef.current && containerRef.current) {
+      e.preventDefault();
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+      containerRef.current.scrollLeft = dragStartRef.current.scrollLeft - dx;
+      containerRef.current.scrollTop = dragStartRef.current.scrollTop - dy;
+    }
+
+    if (!isDragging && isHost && onPointerMove && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const rect = canvas.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      onPointerMove(x, y, true);
+    }
+  }, [isDragging, isHost, onPointerMove]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+    dragStartRef.current = null;
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsDragging(false);
+    dragStartRef.current = null;
+    if (isHost && onPointerMove) {
+      onPointerMove(0, 0, false);
+    }
+  }, [isHost, onPointerMove]);
+
+  const getTouchDistance = (touches: React.TouchList) => {
+    if (touches.length < 2) return 0;
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
   };
 
-  const handleCanvasMouseLeave = () => {
-    if (!isHost || !onPointerMove) return;
-    onPointerMove(0, 0, false);
-  };
+  const handleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2) {
+      lastTouchDistRef.current = getTouchDistance(e.touches);
+      touchDragStartRef.current = null;
+    } else if (e.touches.length === 1 && isZoomed && containerRef.current) {
+      touchDragStartRef.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+        scrollLeft: containerRef.current.scrollLeft,
+        scrollTop: containerRef.current.scrollTop,
+      };
+    }
+  }, [isZoomed]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2 && lastTouchDistRef.current !== null) {
+      e.preventDefault();
+      const currentDist = getTouchDistance(e.touches);
+      const diff = currentDist - lastTouchDistRef.current;
+      if (Math.abs(diff) > 20) {
+        const direction = diff > 0 ? 1 : -1;
+        updateZoom(z => Math.max(-3, Math.min(8, z + direction)));
+        lastTouchDistRef.current = currentDist;
+      }
+    } else if (e.touches.length === 1 && touchDragStartRef.current && containerRef.current) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - touchDragStartRef.current.x;
+      const dy = e.touches[0].clientY - touchDragStartRef.current.y;
+      containerRef.current.scrollLeft = touchDragStartRef.current.scrollLeft - dx;
+      containerRef.current.scrollTop = touchDragStartRef.current.scrollTop - dy;
+    }
+  }, [updateZoom]);
+
+  const handleTouchEnd = useCallback(() => {
+    lastTouchDistRef.current = null;
+    touchDragStartRef.current = null;
+  }, []);
 
   return (
     <div className={`flex flex-col h-full w-full ${className}`}>
@@ -169,16 +275,16 @@ export default function PDFViewer({
           </Button>
         </div>
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" onClick={() => setZoomLevel(z => Math.max(-3, z - 1))} data-testid="button-zoom-out">
+          <Button size="icon" variant="ghost" onClick={() => updateZoom(z => Math.max(-3, z - 1))} data-testid="button-zoom-out">
             <ZoomOut className="w-4 h-4" />
           </Button>
-          <span className="text-xs min-w-[40px] text-center text-muted-foreground">
+          <span className="text-xs min-w-[40px] text-center text-muted-foreground" data-testid="text-zoom-level">
             {Math.round((1 + zoomLevel * 0.15) * 100)}%
           </span>
-          <Button size="icon" variant="ghost" onClick={() => setZoomLevel(z => Math.min(8, z + 1))} data-testid="button-zoom-in">
+          <Button size="icon" variant="ghost" onClick={() => updateZoom(z => Math.min(8, z + 1))} data-testid="button-zoom-in">
             <ZoomIn className="w-4 h-4" />
           </Button>
-          <Button size="icon" variant="ghost" onClick={() => setZoomLevel(0)} data-testid="button-fit-width">
+          <Button size="icon" variant="ghost" onClick={() => updateZoom(0)} data-testid="button-fit-width">
             <Maximize2 className="w-4 h-4" />
           </Button>
         </div>
@@ -186,9 +292,14 @@ export default function PDFViewer({
 
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto flex items-center justify-center bg-muted/30 relative min-h-0"
-        onMouseMove={handleCanvasMouseMove}
-        onMouseLeave={handleCanvasMouseLeave}
+        className={`flex-1 flex items-center justify-center bg-muted/30 relative min-h-0 ${isZoomed ? "overflow-auto cursor-grab" : "overflow-hidden"} ${isDragging ? "cursor-grabbing" : ""}`}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         data-testid="pdf-canvas-container"
       >
         {isLoading ? (
