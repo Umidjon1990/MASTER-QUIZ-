@@ -9,7 +9,7 @@ import { AnimatedCounter } from "@/components/animated-counter";
 import { useLocation } from "wouter";
 import {
   Zap, Users, Trophy, BookOpen, ArrowRight, Moon, Sun, Sparkles, Globe,
-  Monitor, Mic, FileText, Radio, BarChart3, MessageSquare, Video, Presentation
+  Monitor, Mic, FileText, Radio, BarChart3, MessageSquare, Video, Presentation, Send
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import type { Quiz } from "@shared/schema";
@@ -155,7 +155,7 @@ export default function Landing() {
           <p className="text-muted-foreground max-w-xl mx-auto">O'qituvchilar va o'quvchilar uchun barcha zarur vositalar</p>
         </motion.div>
 
-        <motion.div variants={container} initial="hidden" whileInView="show" viewport={{ once: true }} className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <motion.div variants={container} initial="hidden" whileInView="show" viewport={{ once: true }} className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {[
             { icon: Zap, color: "gradient-purple", title: "Jonli Quizlar", desc: "Real vaqtda o'quvchilar bilan interaktiv quiz o'tkazing, leaderboard bilan" },
             { icon: Presentation, color: "gradient-teal", title: "Jonli Darslar", desc: "PDF taqdimotlar, ekran almashish va ovozli darslar" },
@@ -165,6 +165,7 @@ export default function Landing() {
             { icon: Users, color: "gradient-orange", title: "Sinflar", desc: "Sinf yaratish, o'quvchilarni qo'shish va boshqarish" },
             { icon: MessageSquare, color: "gradient-purple", title: "Jonli Chat", desc: "Dars davomida o'quvchilar bilan real vaqt muloqot" },
             { icon: BarChart3, color: "gradient-teal", title: "Statistika", desc: "Batafsil natijalar, tahlil va o'quvchi faolligi" },
+            { icon: Send, color: "gradient-orange", title: "Telegram Ulashish", desc: "Quizlarni Telegram guruh va kanallarga quiz formatda yuborish" },
           ].map((feature, i) => (
             <motion.div key={i} variants={item}>
               <Card className="p-5 h-full hover-elevate">
