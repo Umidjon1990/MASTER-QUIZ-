@@ -14,9 +14,9 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, Send, ListChecks, ToggleLeft, MessageSquare, Pencil, BarChart3, CheckSquare } from "lucide-react";
+import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, ListChecks, ToggleLeft, MessageSquare, Pencil, BarChart3, CheckSquare } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { Quiz, Question, UserProfile } from "@shared/schema";
+import type { Quiz, Question } from "@shared/schema";
 
 function MediaPreview({ mediaUrl, mediaType, className }: { mediaUrl: string; mediaType: string; className?: string }) {
   if (!mediaUrl) return null;
@@ -57,14 +57,7 @@ export default function QuizEditor() {
   const [initialized, setInitialized] = useState(false);
   const [textImportOpen, setTextImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
-  const [telegramOpen, setTelegramOpen] = useState(false);
-  const [tgBotToken, setTgBotToken] = useState("");
-  const [tgChatId, setTgChatId] = useState("");
-  const [tgSending, setTgSending] = useState(false);
 
-  const { data: profile } = useQuery<UserProfile>({
-    queryKey: ["/api/profile"],
-  });
 
   const { data: quiz, isLoading: quizLoading } = useQuery<Quiz>({
     queryKey: ["/api/quizzes", quizId],
@@ -366,46 +359,6 @@ export default function QuizEditor() {
     }
   };
 
-  const handleTelegramOpen = (open: boolean) => {
-    setTelegramOpen(open);
-    if (open && profile) {
-      if (profile.telegramBotToken && !tgBotToken) setTgBotToken(profile.telegramBotToken);
-      if (profile.telegramChatId && !tgChatId) setTgChatId(profile.telegramChatId);
-    }
-  };
-
-  const handleTelegramSend = async () => {
-    if (!tgBotToken.trim() || !tgChatId.trim()) {
-      toast({ title: "Bot token va Chat ID kiriting", variant: "destructive" });
-      return;
-    }
-    setTgSending(true);
-    try {
-      if (profile?.telegramBotToken !== tgBotToken || profile?.telegramChatId !== tgChatId) {
-        await fetch("/api/profile", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ telegramBotToken: tgBotToken, telegramChatId: tgChatId }),
-          credentials: "include",
-        });
-        queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
-      }
-      const res = await fetch("/api/telegram/send-quiz", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quizId, botToken: tgBotToken, chatId: tgChatId }),
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Xatolik");
-      toast({ title: `${data.sent} ta savol Telegramga yuborildi!` });
-      setTelegramOpen(false);
-    } catch (error: any) {
-      toast({ title: error.message || "Telegramga yuborishda xatolik", variant: "destructive" });
-    } finally {
-      setTgSending(false);
-    }
-  };
 
   const [newQ, setNewQ] = useState({
     questionText: "",
@@ -641,77 +594,6 @@ export default function QuizEditor() {
                     />
                     <Button onClick={handleTextImport} className="w-full gradient-purple border-0" data-testid="button-submit-text-import">
                       <Upload className="w-4 h-4 mr-1" /> Yuklash
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-              <Dialog open={telegramOpen} onOpenChange={handleTelegramOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" disabled={!questionsList?.length} data-testid="button-telegram-send">
-                    <Send className="w-4 h-4 mr-1" /> Telegramga yuborish
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-lg">
-                  <DialogHeader>
-                    <DialogTitle>Telegramga anonim quiz yuborish</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <p className="text-sm text-muted-foreground">
-                      Savollar Telegram guruh yoki kanalingizga anonim quiz (poll) shaklida yuboriladi. Har bir savol alohida quiz poll bo'ladi.
-                    </p>
-                    <Card className="p-3 text-xs text-muted-foreground space-y-1">
-                      <p>1. @BotFather da yangi bot yarating va tokenni oling</p>
-                      <p>2. Botni guruh/kanalga admin qilib qo'shing</p>
-                      <p>3. Chat ID: guruh uchun "-100..." yoki kanal uchun "@kanalusername"</p>
-                    </Card>
-                    <div>
-                      <Label>Bot Token</Label>
-                      <Input
-                        value={tgBotToken}
-                        onChange={(e) => setTgBotToken(e.target.value)}
-                        placeholder="123456:ABC-DEF..."
-                        type="password"
-                        data-testid="input-tg-bot-token"
-                      />
-                    </div>
-                    <div>
-                      <Label>Chat ID yoki kanal username</Label>
-                      <Input
-                        value={tgChatId}
-                        onChange={(e) => setTgChatId(e.target.value)}
-                        placeholder="@kanalusername yoki -1001234567890"
-                        data-testid="input-tg-chat-id"
-                      />
-                    </div>
-                    <div className="text-sm text-muted-foreground space-y-1">
-                      <p>Yuboriladi: <span className="font-medium text-foreground">{questionsList?.length || 0}</span> ta savol</p>
-                      {questionsList && questionsList.length > 0 && (
-                        <p className="text-xs">
-                          {(() => {
-                            const mc = questionsList.filter(q => q.type === "multiple_choice" || !q.type).length;
-                            const tf = questionsList.filter(q => q.type === "true_false").length;
-                            const oe = questionsList.filter(q => q.type === "open_ended").length;
-                            const pl = questionsList.filter(q => q.type === "poll").length;
-                            const ms = questionsList.filter(q => q.type === "multiple_select").length;
-                            const parts = [];
-                            if (mc > 0) parts.push(`${mc} variantli`);
-                            if (tf > 0) parts.push(`${tf} to'g'ri/noto'g'ri`);
-                            if (oe > 0) parts.push(`${oe} yozma (matn sifatida)`);
-                            if (pl > 0) parts.push(`${pl} so'rovnoma`);
-                            if (ms > 0) parts.push(`${ms} ko'p tanlov`);
-                            return parts.join(", ");
-                          })()}
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      onClick={handleTelegramSend}
-                      disabled={tgSending || !tgBotToken.trim() || !tgChatId.trim()}
-                      className="w-full gradient-purple border-0"
-                      data-testid="button-submit-telegram"
-                    >
-                      {tgSending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
-                      {tgSending ? "Yuborilmoqda..." : "Yuborish"}
                     </Button>
                   </div>
                 </DialogContent>

@@ -15,7 +15,7 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Zap, LayoutDashboard, BookOpen, Users, Trophy, Settings, LogOut, Play, Upload, Send, ClipboardList, GraduationCap, Library, Search } from "lucide-react";
+import { Zap, LayoutDashboard, BookOpen, Users, Trophy, Settings, LogOut, Play, Upload, Send, ClipboardList, GraduationCap, Library, Search, Bot } from "lucide-react";
 import type { UserProfile } from "@shared/schema";
 
 const adminMenu = [
@@ -32,6 +32,7 @@ const teacherMenu = [
   { title: "Sinflarim", url: "/teacher/classes", icon: GraduationCap },
   { title: "Savol Banki", url: "/teacher/question-bank", icon: Library },
   { title: "Natijalar", url: "/teacher/results", icon: Trophy },
+  { title: "Telegram Bot", url: "/teacher/telegram", icon: Bot },
   { title: "Discover", url: "/discover", icon: Search },
 ];
 

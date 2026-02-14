@@ -25,6 +25,7 @@ import TeacherResults from "@/pages/teacher/results";
 import TeacherAssignments from "@/pages/teacher/assignments";
 import TeacherClasses from "@/pages/teacher/classes";
 import TeacherQuestionBank from "@/pages/teacher/question-bank";
+import TeacherTelegram from "@/pages/teacher/telegram";
 import StudentDashboard from "@/pages/student/index";
 import StudentResults from "@/pages/student/results";
 import StudentAssignments from "@/pages/student/assignments";
@@ -150,6 +151,9 @@ function App() {
             </Route>
             <Route path="/teacher/question-bank">
               {() => <ProtectedPage component={TeacherQuestionBank} />}
+            </Route>
+            <Route path="/teacher/telegram">
+              {() => <ProtectedPage component={TeacherTelegram} />}
             </Route>
 
             <Route path="/student">

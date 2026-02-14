@@ -113,9 +113,15 @@ Preferred communication style: Simple, everyday language.
 - `node-telegram-bot-api` — Telegram bot integration for sending quizzes as anonymous polls to Telegram groups/channels
 
 ### Telegram Integration
-- Teachers can send quiz questions to Telegram groups/channels as anonymous quiz polls
-- Bot token and chat ID stored in userProfiles (telegramBotToken, telegramChatId columns)
-- API: POST /api/telegram/send-quiz with { quizId, botToken, chatId }
-- Sends quiz title message first, then each question as a Telegram quiz poll (type: "quiz", is_anonymous: true)
+- Teachers have a dedicated Telegram Bot Settings page (`/teacher/telegram`)
+- Bot token saved server-side only; client receives masked version (`****...`) via `hasTelegramBot` flag
+- Multiple Telegram chats (groups/channels) stored in `telegramChats` JSONB field on userProfiles
+- API endpoints:
+  - POST /api/telegram/save-token — validate & store bot token
+  - DELETE /api/telegram/token — remove bot token and all linked chats
+  - POST /api/telegram/add-chat — add a group/channel by chat ID or @username
+  - DELETE /api/telegram/chats/:chatId — remove a linked chat
+  - POST /api/telegram/send-quiz — send quiz to selected chat (uses server-stored token)
+- Quiz list page shows "Telegram" share button per quiz; dialog shows saved chats to choose from
+- Sends quiz title message first, then each question as Telegram quiz poll (type: "quiz", is_anonymous: true)
 - Ownership check: only quiz creator or admin can send
-- UI: "Telegramga yuborish" button in quiz editor opens dialog with bot token / chat ID inputs

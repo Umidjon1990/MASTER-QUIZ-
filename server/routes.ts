@@ -52,7 +52,8 @@ export async function registerRoutes(
           quizLimit: 5,
         });
       }
-      res.json(profile);
+      const { telegramBotToken, ...safeProfile } = profile as any;
+      res.json({ ...safeProfile, hasTelegramBot: !!telegramBotToken, telegramBotToken: telegramBotToken ? `****${telegramBotToken.slice(-6)}` : null });
     } catch (error) {
       console.error("Error getting profile:", error);
       res.status(500).json({ message: "Server error" });
@@ -62,8 +63,10 @@ export async function registerRoutes(
   app.patch("/api/profile", requireAuth, async (req: any, res) => {
     try {
       const userId = req.userId;
-      const updated = await storage.updateUserProfile(userId, req.body);
-      res.json(updated);
+      const { telegramBotToken: _tbt, ...safeBody } = req.body;
+      const updated = await storage.updateUserProfile(userId, safeBody);
+      const { telegramBotToken, ...safeResult } = updated as any;
+      res.json({ ...safeResult, hasTelegramBot: !!telegramBotToken, telegramBotToken: telegramBotToken ? `****${telegramBotToken.slice(-6)}` : null });
     } catch (error) {
       res.status(500).json({ message: "Server error" });
     }
@@ -597,9 +600,14 @@ export async function registerRoutes(
 
   app.post("/api/telegram/send-quiz", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
-      const { quizId, botToken, chatId } = req.body;
-      if (!botToken || !chatId) {
-        return res.status(400).json({ message: "Telegram bot token va chat ID kerak" });
+      const { quizId, chatId } = req.body;
+      if (!chatId) {
+        return res.status(400).json({ message: "Chat ID kerak" });
+      }
+
+      const profile = await storage.getUserProfile(req.userId);
+      if (!profile?.telegramBotToken) {
+        return res.status(400).json({ message: "Avval Telegram bot sozlamalarida tokenni saqlang" });
       }
 
       const quiz = await storage.getQuiz(quizId);
@@ -612,7 +620,7 @@ export async function registerRoutes(
       if (questionsList.length === 0) return res.status(400).json({ message: "Quizda savollar yo'q. Avval savollar qo'shing" });
 
       const TelegramBot = (await import("node-telegram-bot-api")).default;
-      const bot = new TelegramBot(botToken);
+      const bot = new TelegramBot(profile.telegramBotToken);
 
       let sent = 0;
       const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
