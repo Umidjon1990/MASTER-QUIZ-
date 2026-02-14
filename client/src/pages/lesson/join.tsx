@@ -46,7 +46,7 @@ export default function LessonJoin() {
 
   const [videoShape, setVideoShape] = useState<"circle" | "rectangle">("circle");
   const [videoPos, setVideoPos] = useState({ x: 20, y: 20 });
-  const [videoSize, setVideoSize] = useState(120);
+  const [videoSize, setVideoSize] = useState(typeof window !== "undefined" && window.innerWidth < 640 ? 80 : 120);
   const [videoDragging, setVideoDragging] = useState(false);
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [audioMuted, setAudioMuted] = useState(false);
@@ -255,17 +255,21 @@ export default function LessonJoin() {
     });
   };
 
-  const handleVideoDragStart = (e: React.MouseEvent) => {
+  const handleVideoDragStart = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
     setVideoDragging(true);
-    dragStart.current = { x: e.clientX, y: e.clientY, startX: videoPos.x, startY: videoPos.y };
+    dragStart.current = { x: clientX, y: clientY, startX: videoPos.x, startY: videoPos.y };
   };
 
   useEffect(() => {
     if (!videoDragging) return;
-    const handleMove = (e: MouseEvent) => {
-      const dx = e.clientX - dragStart.current.x;
-      const dy = e.clientY - dragStart.current.y;
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+      const dx = clientX - dragStart.current.x;
+      const dy = clientY - dragStart.current.y;
       setVideoPos({
         x: Math.max(0, dragStart.current.startX + dx),
         y: Math.max(0, dragStart.current.startY + dy),
@@ -274,9 +278,13 @@ export default function LessonJoin() {
     const handleUp = () => setVideoDragging(false);
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
+    window.addEventListener("touchmove", handleMove, { passive: false });
+    window.addEventListener("touchend", handleUp);
     return () => {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
+      window.removeEventListener("touchmove", handleMove);
+      window.removeEventListener("touchend", handleUp);
     };
   }, [videoDragging]);
 
@@ -328,10 +336,10 @@ export default function LessonJoin() {
   if (joined && lessonInfo) {
     return (
       <div className="flex flex-col h-screen relative">
-        <div className="flex items-center justify-between gap-2 p-2 border-b bg-background/80 backdrop-blur-sm z-20 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Presentation className="w-4 h-4 text-primary" />
-            <span className="font-semibold text-sm truncate max-w-[200px]" data-testid="text-lesson-title">
+        <div className="flex items-center justify-between gap-1.5 p-1.5 sm:p-2 border-b bg-background/80 backdrop-blur-sm z-20 flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <Presentation className="w-4 h-4 text-primary shrink-0" />
+            <span className="font-semibold text-xs sm:text-sm truncate max-w-[120px] sm:max-w-[200px]" data-testid="text-lesson-title">
               {lessonInfo.title}
             </span>
             <Badge variant="outline" className="gap-1">
@@ -339,11 +347,11 @@ export default function LessonJoin() {
             </Badge>
             {lessonMode === "screen" && (
               <Badge variant="secondary" className="gap-1" data-testid="badge-screen-mode">
-                <Monitor className="w-3 h-3" /> Ekran
+                <Monitor className="w-3 h-3" /> <span className="hidden sm:inline">Ekran</span>
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5 sm:gap-1">
             <Button size="icon" variant="ghost" onClick={toggleAudioMute} data-testid="button-toggle-audio-mute">
               {audioMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
             </Button>
@@ -370,15 +378,37 @@ export default function LessonJoin() {
               isHost={false}
             />
           ) : (
-            <div className="flex items-center justify-center w-full h-full bg-black" data-testid="screen-share-student-view">
+            <div className="flex items-center justify-center w-full h-full bg-black relative" data-testid="screen-share-student-view">
               {hasScreenStream ? (
-                <video
-                  ref={screenVideoRef}
-                  autoPlay
-                  playsInline
-                  className="max-w-full max-h-full object-contain"
-                  data-testid="screen-share-student-video"
-                />
+                <>
+                  <video
+                    ref={screenVideoRef}
+                    autoPlay
+                    playsInline
+                    className="max-w-full max-h-full object-contain"
+                    data-testid="screen-share-student-video"
+                  />
+                  {pointer && pointer.visible && screenVideoRef.current && (() => {
+                    const rect = screenVideoRef.current!.getBoundingClientRect();
+                    const parentRect = screenVideoRef.current!.parentElement?.getBoundingClientRect();
+                    if (!parentRect || rect.width === 0 || rect.height === 0) return null;
+                    const offsetLeft = rect.left - parentRect.left;
+                    const offsetTop = rect.top - parentRect.top;
+                    return (
+                      <div
+                        className="absolute pointer-events-none z-50"
+                        style={{
+                          left: `${offsetLeft + (pointer.x / 100) * rect.width}px`,
+                          top: `${offsetTop + (pointer.y / 100) * rect.height}px`,
+                          transform: "translate(-50%, -50%)",
+                        }}
+                        data-testid="screen-laser-pointer"
+                      >
+                        <div className="w-5 h-5 rounded-full bg-red-500 opacity-80 animate-pulse shadow-[0_0_12px_4px_rgba(239,68,68,0.6)]" />
+                      </div>
+                    );
+                  })()}
+                </>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-3 text-white/70">
                   <Monitor className="w-12 h-12" />
@@ -413,19 +443,12 @@ export default function LessonJoin() {
                 className="w-full h-full object-cover"
               />
               <div
-                className="absolute top-0 left-0 w-full h-6 cursor-move flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity bg-black/30"
+                className="absolute top-0 left-0 w-full h-8 sm:h-6 cursor-move flex items-center justify-center opacity-60 sm:opacity-0 hover:opacity-100 transition-opacity bg-black/30"
                 onMouseDown={handleVideoDragStart}
+                onTouchStart={handleVideoDragStart}
               >
                 <GripVertical className="w-3 h-3 text-white" />
               </div>
-            </div>
-            <div className="flex items-center justify-center gap-1 mt-1">
-              <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => setVideoSize(s => Math.max(60, s - 20))}>
-                <span className="text-xs">-</span>
-              </Button>
-              <Button size="icon" variant="ghost" className="w-6 h-6" onClick={() => setVideoSize(s => Math.min(250, s + 20))}>
-                <span className="text-xs">+</span>
-              </Button>
             </div>
           </div>
         )}

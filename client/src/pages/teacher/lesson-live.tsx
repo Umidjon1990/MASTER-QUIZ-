@@ -45,7 +45,7 @@ export default function TeacherLessonLive() {
   const [videoShape, setVideoShape] = useState<"circle" | "rectangle">("circle");
   const [videoDragging, setVideoDragging] = useState(false);
   const [videoPos, setVideoPos] = useState({ x: 20, y: 20 });
-  const [videoSize, setVideoSize] = useState(160);
+  const [videoSize, setVideoSize] = useState(typeof window !== "undefined" && window.innerWidth < 640 ? 100 : 160);
   const dragStart = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
 
   const [isRecording, setIsRecording] = useState(false);
@@ -505,17 +505,21 @@ export default function TeacherLessonLive() {
     toast({ title: "Kod nusxalandi!" });
   };
 
-  const handleVideoDragStart = (e: React.MouseEvent) => {
+  const handleVideoDragStart = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
     setVideoDragging(true);
-    dragStart.current = { x: e.clientX, y: e.clientY, startX: videoPos.x, startY: videoPos.y };
+    dragStart.current = { x: clientX, y: clientY, startX: videoPos.x, startY: videoPos.y };
   };
 
   useEffect(() => {
     if (!videoDragging) return;
-    const handleMove = (e: MouseEvent) => {
-      const dx = e.clientX - dragStart.current.x;
-      const dy = e.clientY - dragStart.current.y;
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+      const dx = clientX - dragStart.current.x;
+      const dy = clientY - dragStart.current.y;
       setVideoPos({
         x: Math.max(0, dragStart.current.startX + dx),
         y: Math.max(0, dragStart.current.startY + dy),
@@ -524,9 +528,13 @@ export default function TeacherLessonLive() {
     const handleUp = () => setVideoDragging(false);
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
+    window.addEventListener("touchmove", handleMove, { passive: false });
+    window.addEventListener("touchend", handleUp);
     return () => {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
+      window.removeEventListener("touchmove", handleMove);
+      window.removeEventListener("touchend", handleUp);
     };
   }, [videoDragging]);
 
@@ -552,30 +560,35 @@ export default function TeacherLessonLive() {
 
   return (
     <div className="flex flex-col h-full relative">
-      <div className="flex items-center justify-between gap-2 p-2 border-b bg-background/80 backdrop-blur-sm flex-wrap z-20" data-testid="lesson-controls">
-        <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center justify-between gap-1.5 p-1.5 sm:p-2 border-b bg-background/80 backdrop-blur-sm flex-wrap z-20" data-testid="lesson-controls">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
           <Button size="icon" variant="ghost" onClick={() => navigate("/teacher/lessons")} data-testid="button-back">
             <ArrowLeft className="w-4 h-4" />
           </Button>
-          <h2 className="font-semibold text-sm truncate max-w-[200px]" data-testid="text-lesson-name">
+          <h2 className="font-semibold text-xs sm:text-sm truncate max-w-[100px] sm:max-w-[200px]" data-testid="text-lesson-name">
             {lesson.title}
           </h2>
           <Badge variant="outline" className="gap-1" data-testid="badge-participants">
             <Users className="w-3 h-3" /> {participantCount}
           </Badge>
           {lesson.requireCode && (
-            <button onClick={copyCode} className="flex items-center gap-1 text-xs font-mono" data-testid="button-lesson-code">
+            <button onClick={copyCode} className="hidden sm:flex items-center gap-1 text-xs font-mono" data-testid="button-lesson-code">
               <Lock className="w-3 h-3" /> {lesson.joinCode} <Copy className="w-3 h-3" />
             </button>
           )}
+          {lesson.requireCode && (
+            <button onClick={copyCode} className="flex sm:hidden items-center gap-1 text-xs font-mono" data-testid="button-lesson-code-mobile">
+              <Lock className="w-3 h-3" /> <Copy className="w-3 h-3" />
+            </button>
+          )}
           {!lesson.requireCode && (
-            <Badge variant="secondary" className="gap-1">
+            <Badge variant="secondary" className="gap-1 hidden sm:flex">
               <Unlock className="w-3 h-3" /> Kodsiz
             </Badge>
           )}
         </div>
 
-        <div className="flex items-center gap-1 flex-wrap">
+        <div className="flex items-center gap-0.5 sm:gap-1 flex-wrap">
           <Button size="icon" variant={audioEnabled ? "default" : "ghost"} onClick={toggleAudio} data-testid="button-toggle-audio">
             {audioEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
           </Button>
@@ -627,22 +640,22 @@ export default function TeacherLessonLive() {
           </Button>
           {!isStarted ? (
             <Button size="sm" onClick={handleStart} data-testid="button-start-lesson">
-              <Play className="w-3 h-3 mr-1" /> Boshlash
+              <Play className="w-3 h-3 sm:mr-1" /> <span className="hidden sm:inline">Boshlash</span>
             </Button>
           ) : (
             <Button size="sm" variant="destructive" onClick={handleEnd} data-testid="button-end-lesson">
-              <Square className="w-3 h-3 mr-1" /> Tugatish
+              <Square className="w-3 h-3 sm:mr-1" /> <span className="hidden sm:inline">Tugatish</span>
             </Button>
           )}
         </div>
       </div>
 
       {showDeviceSettings && (
-        <div className="flex items-center gap-3 p-2 border-b bg-muted/30 flex-wrap z-10" data-testid="device-settings-panel">
-          <div className="flex items-center gap-2">
-            <Mic className="w-3.5 h-3.5 text-muted-foreground" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 p-2 border-b bg-muted/30 z-10" data-testid="device-settings-panel">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Mic className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
             <Select value={selectedAudioDevice} onValueChange={switchAudioDevice}>
-              <SelectTrigger className="w-[200px] h-8 text-xs" data-testid="select-audio-device">
+              <SelectTrigger className="w-full sm:w-[200px] h-8 text-xs" data-testid="select-audio-device">
                 <SelectValue placeholder="Mikrofon tanlang" />
               </SelectTrigger>
               <SelectContent>
@@ -654,10 +667,10 @@ export default function TeacherLessonLive() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-center gap-2">
-            <Video className="w-3.5 h-3.5 text-muted-foreground" />
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Video className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
             <Select value={selectedVideoDevice} onValueChange={switchVideoDevice}>
-              <SelectTrigger className="w-[200px] h-8 text-xs" data-testid="select-video-device">
+              <SelectTrigger className="w-full sm:w-[200px] h-8 text-xs" data-testid="select-video-device">
                 <SelectValue placeholder="Kamera tanlang" />
               </SelectTrigger>
               <SelectContent>
@@ -684,7 +697,21 @@ export default function TeacherLessonLive() {
             isHost
           />
         ) : (
-          <div className="flex items-center justify-center w-full h-full bg-black" data-testid="screen-share-preview">
+          <div
+            className="flex items-center justify-center w-full h-full bg-black relative"
+            data-testid="screen-share-preview"
+            onPointerMove={(e) => {
+              if (!isScreenSharing || !screenVideoRef.current) return;
+              const video = screenVideoRef.current;
+              const rect = video.getBoundingClientRect();
+              if (rect.width === 0 || rect.height === 0) return;
+              const x = ((e.clientX - rect.left) / rect.width) * 100;
+              const y = ((e.clientY - rect.top) / rect.height) * 100;
+              const visible = x >= 0 && x <= 100 && y >= 0 && y <= 100;
+              handlePointerMove(x, y, visible);
+            }}
+            onPointerLeave={() => handlePointerMove(0, 0, false)}
+          >
             <video
               ref={screenVideoRef}
               autoPlay
@@ -730,29 +757,12 @@ export default function TeacherLessonLive() {
               className="w-full h-full object-cover"
             />
             <div
-              className="absolute top-0 left-0 w-full h-6 cursor-move flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity bg-black/30"
+              className="absolute top-0 left-0 w-full h-8 sm:h-6 cursor-move flex items-center justify-center opacity-60 sm:opacity-0 hover:opacity-100 transition-opacity bg-black/30"
               onMouseDown={handleVideoDragStart}
+              onTouchStart={handleVideoDragStart}
             >
               <GripVertical className="w-3 h-3 text-white" />
             </div>
-          </div>
-          <div className="flex items-center justify-center gap-1 mt-1">
-            <Button
-              size="icon"
-              variant="ghost"
-              className="w-6 h-6"
-              onClick={() => setVideoSize(s => Math.max(80, s - 20))}
-            >
-              <span className="text-xs">-</span>
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="w-6 h-6"
-              onClick={() => setVideoSize(s => Math.min(300, s + 20))}
-            >
-              <span className="text-xs">+</span>
-            </Button>
           </div>
         </div>
       )}
