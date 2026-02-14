@@ -75,6 +75,7 @@
     "openid-client": "^6.8.2",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
+    "pdfjs-dist": "^5.4.624",
     "pg": "^8.16.3",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",

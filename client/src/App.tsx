@@ -26,6 +26,9 @@ import TeacherAssignments from "@/pages/teacher/assignments";
 import TeacherClasses from "@/pages/teacher/classes";
 import TeacherQuestionBank from "@/pages/teacher/question-bank";
 import TeacherTelegram from "@/pages/teacher/telegram";
+import TeacherLessons from "@/pages/teacher/lessons";
+import TeacherLessonLive from "@/pages/teacher/lesson-live";
+import LessonJoin from "@/pages/lesson/join";
 import StudentDashboard from "@/pages/student/index";
 import StudentResults from "@/pages/student/results";
 import StudentAssignments from "@/pages/student/assignments";
@@ -155,6 +158,15 @@ function App() {
             <Route path="/teacher/telegram">
               {() => <ProtectedPage component={TeacherTelegram} />}
             </Route>
+            <Route path="/teacher/lessons">
+              {() => <ProtectedPage component={TeacherLessons} />}
+            </Route>
+            <Route path="/teacher/lesson/:id">
+              {() => <ProtectedPage component={TeacherLessonLive} />}
+            </Route>
+
+            <Route path="/lesson/join" component={LessonJoin} />
+            <Route path="/lesson/join/:code" component={LessonJoin} />
 
             <Route path="/student">
               {() => <ProtectedPage component={StudentDashboard} />}

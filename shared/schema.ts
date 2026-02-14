@@ -174,6 +174,23 @@ export const quizResults = pgTable("quiz_results", {
   completedAt: timestamp("completed_at").defaultNow(),
 });
 
+export const liveLessons = pgTable("live_lessons", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  teacherId: varchar("teacher_id").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  pdfUrl: text("pdf_url").notNull(),
+  pdfFileName: varchar("pdf_file_name", { length: 255 }),
+  joinCode: varchar("join_code", { length: 6 }).notNull().unique(),
+  requireCode: boolean("require_code").notNull().default(true),
+  status: varchar("status", { length: 20 }).notNull().default("waiting"),
+  currentPage: integer("current_page").notNull().default(1),
+  totalPages: integer("total_pages").notNull().default(0),
+  participantCount: integer("participant_count").notNull().default(0),
+  startedAt: timestamp("started_at"),
+  endedAt: timestamp("ended_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertUserProfileSchema = createInsertSchema(userProfiles).omit({ id: true, createdAt: true });
 export const insertQuizSchema = createInsertSchema(quizzes).omit({ id: true, createdAt: true, updatedAt: true, totalQuestions: true, totalPlays: true, totalLikes: true });
 export const insertQuestionSchema = createInsertSchema(questions).omit({ id: true });
@@ -187,6 +204,7 @@ export const insertClassSchema = createInsertSchema(classes).omit({ id: true, cr
 export const insertClassMemberSchema = createInsertSchema(classMembers).omit({ id: true, joinedAt: true });
 export const insertQuestionBankSchema = createInsertSchema(questionBank).omit({ id: true, createdAt: true });
 export const insertQuizLikeSchema = createInsertSchema(quizLikes).omit({ id: true, createdAt: true });
+export const insertLiveLessonSchema = createInsertSchema(liveLessons).omit({ id: true, createdAt: true, participantCount: true, currentPage: true });
 
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type UserProfile = typeof userProfiles.$inferSelect;
@@ -214,3 +232,5 @@ export type InsertQuestionBank = z.infer<typeof insertQuestionBankSchema>;
 export type QuestionBankItem = typeof questionBank.$inferSelect;
 export type InsertQuizLike = z.infer<typeof insertQuizLikeSchema>;
 export type QuizLike = typeof quizLikes.$inferSelect;
+export type InsertLiveLesson = z.infer<typeof insertLiveLessonSchema>;
+export type LiveLesson = typeof liveLessons.$inferSelect;

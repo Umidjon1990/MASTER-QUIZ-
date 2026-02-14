@@ -1,0 +1,391 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useRoute, useLocation } from "wouter";
+import { io, Socket } from "socket.io-client";
+import PDFViewer from "@/components/pdf-viewer";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Video, VideoOff, Mic, MicOff, Users, Copy, Link2, Play, Square,
+  Circle, RectangleHorizontal, Move, ArrowLeft, Lock, Unlock,
+  Presentation, GripVertical,
+} from "lucide-react";
+import type { LiveLesson } from "@shared/schema";
+
+export default function TeacherLessonLive() {
+  const [, params] = useRoute("/teacher/lesson/:id");
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const lessonId = params?.id;
+
+  const socketRef = useRef<Socket | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [participantCount, setParticipantCount] = useState(0);
+  const [isStarted, setIsStarted] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [videoEnabled, setVideoEnabled] = useState(false);
+  const [videoShape, setVideoShape] = useState<"circle" | "rectangle">("circle");
+  const [videoDragging, setVideoDragging] = useState(false);
+  const [videoPos, setVideoPos] = useState({ x: 20, y: 20 });
+  const [videoSize, setVideoSize] = useState(160);
+  const dragStart = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
+
+  const { data: lesson, isLoading } = useQuery<LiveLesson>({
+    queryKey: ["/api/live-lessons", lessonId],
+    enabled: !!lessonId,
+  });
+
+  useEffect(() => {
+    if (!lessonId) return;
+
+    const socket = io({ path: "/socket.io" });
+    socketRef.current = socket;
+
+    socket.emit("lesson:host-join", { lessonId }, (res: any) => {
+      if (!res.success) toast({ title: "Xatolik", variant: "destructive" });
+    });
+
+    socket.on("lesson:participant-count", ({ count }) => {
+      setParticipantCount(count - 1);
+    });
+
+    socket.on("lesson:stream-requested", async ({ socketId }) => {
+      if (!localStreamRef.current) return;
+      await createPeerConnection(socketId);
+    });
+
+    socket.on("lesson:webrtc-answer", async ({ answer, senderSocketId }) => {
+      const pc = peerConnectionsRef.current.get(senderSocketId);
+      if (pc) {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      }
+    });
+
+    socket.on("lesson:webrtc-ice-candidate", async ({ candidate, senderSocketId }) => {
+      const pc = peerConnectionsRef.current.get(senderSocketId);
+      if (pc && candidate) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+      localStreamRef.current?.getTracks().forEach(t => t.stop());
+      peerConnectionsRef.current.forEach(pc => pc.close());
+    };
+  }, [lessonId]);
+
+  useEffect(() => {
+    if (lesson) {
+      setCurrentPage(lesson.currentPage);
+      setIsStarted(lesson.status === "active");
+    }
+  }, [lesson]);
+
+  const createPeerConnection = async (targetSocketId: string) => {
+    const socket = socketRef.current;
+    if (!socket || !localStreamRef.current) return;
+
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    peerConnectionsRef.current.set(targetSocketId, pc);
+
+    localStreamRef.current.getTracks().forEach(track => {
+      pc.addTrack(track, localStreamRef.current!);
+    });
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate) {
+        socket.emit("lesson:webrtc-ice-candidate", {
+          candidate: e.candidate,
+          targetSocketId,
+          lessonId,
+        });
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+        pc.close();
+        peerConnectionsRef.current.delete(targetSocketId);
+      }
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socket.emit("lesson:webrtc-offer", { lessonId, offer, targetSocketId });
+  };
+
+  const toggleAudio = async () => {
+    if (audioEnabled) {
+      localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = false; });
+      setAudioEnabled(false);
+    } else {
+      if (!localStreamRef.current) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: videoEnabled });
+          localStreamRef.current = stream;
+          if (videoRef.current) videoRef.current.srcObject = stream;
+        } catch {
+          toast({ title: "Mikrofondan foydalanib bo'lmaydi", variant: "destructive" });
+          return;
+        }
+      } else {
+        const audioTracks = localStreamRef.current.getAudioTracks();
+        if (audioTracks.length > 0) {
+          audioTracks.forEach(t => { t.enabled = true; });
+        } else {
+          try {
+            const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioStream.getAudioTracks().forEach(t => localStreamRef.current!.addTrack(t));
+          } catch {
+            toast({ title: "Mikrofondan foydalanib bo'lmaydi", variant: "destructive" });
+            return;
+          }
+        }
+      }
+      setAudioEnabled(true);
+    }
+  };
+
+  const toggleVideo = async () => {
+    if (videoEnabled) {
+      localStreamRef.current?.getVideoTracks().forEach(t => {
+        t.stop();
+        localStreamRef.current!.removeTrack(t);
+      });
+      setVideoEnabled(false);
+    } else {
+      try {
+        if (!localStreamRef.current) {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: audioEnabled, video: true });
+          localStreamRef.current = stream;
+        } else {
+          const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          videoStream.getVideoTracks().forEach(t => localStreamRef.current!.addTrack(t));
+        }
+        if (videoRef.current) videoRef.current.srcObject = localStreamRef.current;
+        setVideoEnabled(true);
+      } catch {
+        toast({ title: "Kameradan foydalanib bo'lmaydi", variant: "destructive" });
+      }
+    }
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    socketRef.current?.emit("lesson:change-page", { lessonId, page });
+    apiRequest("PATCH", `/api/live-lessons/${lessonId}`, { currentPage: page });
+  };
+
+  const handlePointerMove = (x: number, y: number, visible: boolean) => {
+    socketRef.current?.emit("lesson:pointer-move", { lessonId, x, y, visible });
+  };
+
+  const handleStart = async () => {
+    await apiRequest("PATCH", `/api/live-lessons/${lessonId}`, { status: "active", startedAt: new Date().toISOString() });
+    socketRef.current?.emit("lesson:start", { lessonId });
+    setIsStarted(true);
+    queryClient.invalidateQueries({ queryKey: ["/api/live-lessons", lessonId] });
+    toast({ title: "Dars boshlandi!" });
+  };
+
+  const handleEnd = async () => {
+    await apiRequest("PATCH", `/api/live-lessons/${lessonId}`, { status: "ended", endedAt: new Date().toISOString() });
+    socketRef.current?.emit("lesson:end", { lessonId });
+    setIsStarted(false);
+    queryClient.invalidateQueries({ queryKey: ["/api/live-lessons", lessonId] });
+    toast({ title: "Dars tugadi" });
+  };
+
+  const copyLink = () => {
+    if (!lesson) return;
+    const baseUrl = window.location.origin;
+    const link = lesson.requireCode
+      ? `${baseUrl}/lesson/join`
+      : `${baseUrl}/lesson/join/${lesson.joinCode}`;
+    navigator.clipboard.writeText(link);
+    toast({ title: "Havola nusxalandi!" });
+  };
+
+  const copyCode = () => {
+    if (!lesson) return;
+    navigator.clipboard.writeText(lesson.joinCode);
+    toast({ title: "Kod nusxalandi!" });
+  };
+
+  const handleVideoDragStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setVideoDragging(true);
+    dragStart.current = { x: e.clientX, y: e.clientY, startX: videoPos.x, startY: videoPos.y };
+  };
+
+  useEffect(() => {
+    if (!videoDragging) return;
+    const handleMove = (e: MouseEvent) => {
+      const dx = e.clientX - dragStart.current.x;
+      const dy = e.clientY - dragStart.current.y;
+      setVideoPos({
+        x: Math.max(0, dragStart.current.startX + dx),
+        y: Math.max(0, dragStart.current.startY + dy),
+      });
+    };
+    const handleUp = () => setVideoDragging(false);
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, [videoDragging]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!lesson) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4">
+        <Presentation className="w-12 h-12 text-muted-foreground" />
+        <p>Dars topilmadi</p>
+        <Button onClick={() => navigate("/teacher/lessons")} data-testid="button-back-lessons">
+          <ArrowLeft className="w-4 h-4 mr-2" /> Orqaga
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full relative">
+      <div className="flex items-center justify-between gap-2 p-2 border-b bg-background/80 backdrop-blur-sm flex-wrap z-20" data-testid="lesson-controls">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button size="icon" variant="ghost" onClick={() => navigate("/teacher/lessons")} data-testid="button-back">
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <h2 className="font-semibold text-sm truncate max-w-[200px]" data-testid="text-lesson-name">
+            {lesson.title}
+          </h2>
+          <Badge variant="outline" className="gap-1" data-testid="badge-participants">
+            <Users className="w-3 h-3" /> {participantCount}
+          </Badge>
+          {lesson.requireCode && (
+            <button onClick={copyCode} className="flex items-center gap-1 text-xs font-mono" data-testid="button-lesson-code">
+              <Lock className="w-3 h-3" /> {lesson.joinCode} <Copy className="w-3 h-3" />
+            </button>
+          )}
+          {!lesson.requireCode && (
+            <Badge variant="secondary" className="gap-1">
+              <Unlock className="w-3 h-3" /> Kodsiz
+            </Badge>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 flex-wrap">
+          <Button size="icon" variant={audioEnabled ? "default" : "ghost"} onClick={toggleAudio} data-testid="button-toggle-audio">
+            {audioEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+          </Button>
+          <Button size="icon" variant={videoEnabled ? "default" : "ghost"} onClick={toggleVideo} data-testid="button-toggle-video">
+            {videoEnabled ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+          </Button>
+          {videoEnabled && (
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setVideoShape(s => s === "circle" ? "rectangle" : "circle")}
+              data-testid="button-video-shape"
+            >
+              {videoShape === "circle" ? <Circle className="w-4 h-4" /> : <RectangleHorizontal className="w-4 h-4" />}
+            </Button>
+          )}
+          <Button size="icon" variant="ghost" onClick={copyLink} data-testid="button-copy-link">
+            <Link2 className="w-4 h-4" />
+          </Button>
+          {!isStarted ? (
+            <Button size="sm" onClick={handleStart} data-testid="button-start-lesson">
+              <Play className="w-3 h-3 mr-1" /> Boshlash
+            </Button>
+          ) : (
+            <Button size="sm" variant="destructive" onClick={handleEnd} data-testid="button-end-lesson">
+              <Square className="w-3 h-3 mr-1" /> Tugatish
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 relative overflow-hidden">
+        <PDFViewer
+          url={lesson.pdfUrl}
+          currentPage={currentPage}
+          onPageChange={handlePageChange}
+          onTotalPages={setTotalPages}
+          onPointerMove={handlePointerMove}
+          isHost
+        />
+      </div>
+
+      {videoEnabled && (
+        <div
+          className="fixed z-50"
+          style={{
+            right: `${videoPos.x}px`,
+            bottom: `${videoPos.y}px`,
+            width: `${videoSize}px`,
+            height: videoShape === "circle" ? `${videoSize}px` : `${videoSize * 0.75}px`,
+          }}
+          data-testid="teacher-pip-video"
+        >
+          <div
+            className={`relative w-full h-full overflow-hidden border-2 border-primary/50 shadow-lg ${
+              videoShape === "circle" ? "rounded-full" : "rounded-lg"
+            }`}
+          >
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
+            <div
+              className="absolute top-0 left-0 w-full h-6 cursor-move flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity bg-black/30"
+              onMouseDown={handleVideoDragStart}
+            >
+              <GripVertical className="w-3 h-3 text-white" />
+            </div>
+          </div>
+          <div className="flex items-center justify-center gap-1 mt-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="w-6 h-6"
+              onClick={() => setVideoSize(s => Math.max(80, s - 20))}
+            >
+              <span className="text-xs">-</span>
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="w-6 h-6"
+              onClick={() => setVideoSize(s => Math.min(300, s + 20))}
+            >
+              <span className="text-xs">+</span>
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -12,9 +12,11 @@ import {
   type ClassMember, type InsertClassMember,
   type QuestionBankItem, type InsertQuestionBank,
   type QuizLike, type InsertQuizLike,
+  type LiveLesson, type InsertLiveLesson,
   userProfiles, quizzes, questions, liveSessions,
   sessionParticipants, sessionAnswers, quizResults,
   assignments, assignmentAttempts, classes, classMembers, questionBank, quizLikes,
+  liveLessons,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, ilike, isNull, or, inArray } from "drizzle-orm";
@@ -91,6 +93,13 @@ export interface IStorage {
   toggleQuizLike(quizId: string, userId: string): Promise<{ liked: boolean }>;
   getQuizLikes(quizId: string): Promise<number>;
   isQuizLiked(quizId: string, userId: string): Promise<boolean>;
+
+  createLiveLesson(data: InsertLiveLesson): Promise<LiveLesson>;
+  getLiveLesson(id: string): Promise<LiveLesson | undefined>;
+  getLiveLessonByCode(code: string): Promise<LiveLesson | undefined>;
+  getLiveLessonsByTeacher(teacherId: string): Promise<LiveLesson[]>;
+  updateLiveLesson(id: string, data: Partial<LiveLesson>): Promise<LiveLesson | undefined>;
+  deleteLiveLesson(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -399,6 +408,34 @@ export class DatabaseStorage implements IStorage {
   async isQuizLiked(quizId: string, userId: string): Promise<boolean> {
     const [existing] = await db.select().from(quizLikes).where(and(eq(quizLikes.quizId, quizId), eq(quizLikes.userId, userId)));
     return !!existing;
+  }
+
+  async createLiveLesson(data: InsertLiveLesson): Promise<LiveLesson> {
+    const [created] = await db.insert(liveLessons).values(data).returning();
+    return created;
+  }
+
+  async getLiveLesson(id: string): Promise<LiveLesson | undefined> {
+    const [lesson] = await db.select().from(liveLessons).where(eq(liveLessons.id, id));
+    return lesson;
+  }
+
+  async getLiveLessonByCode(code: string): Promise<LiveLesson | undefined> {
+    const [lesson] = await db.select().from(liveLessons).where(eq(liveLessons.joinCode, code));
+    return lesson;
+  }
+
+  async getLiveLessonsByTeacher(teacherId: string): Promise<LiveLesson[]> {
+    return db.select().from(liveLessons).where(eq(liveLessons.teacherId, teacherId)).orderBy(desc(liveLessons.createdAt));
+  }
+
+  async updateLiveLesson(id: string, data: Partial<LiveLesson>): Promise<LiveLesson | undefined> {
+    const [updated] = await db.update(liveLessons).set(data).where(eq(liveLessons.id, id)).returning();
+    return updated;
+  }
+
+  async deleteLiveLesson(id: string): Promise<void> {
+    await db.delete(liveLessons).where(eq(liveLessons.id, id));
   }
 }
 

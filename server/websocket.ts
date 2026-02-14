@@ -285,12 +285,122 @@ export function setupWebSocket(httpServer: HttpServer) {
       }
     });
 
+    socket.on("lesson:host-join", async (data, callback) => {
+      try {
+        const { lessonId } = data;
+        const lesson = await storage.getLiveLesson(lessonId);
+        if (!lesson) return callback?.({ success: false, error: "Lesson not found" });
+        socket.join(`lesson:${lessonId}`);
+        socket.data.lessonRole = "host";
+        socket.data.lessonId = lessonId;
+        callback?.({ success: true });
+      } catch (err) {
+        callback?.({ success: false, error: "Failed to join lesson" });
+      }
+    });
+
+    socket.on("lesson:student-join", async (data, callback) => {
+      try {
+        const { lessonId, name } = data;
+        const lesson = await storage.getLiveLesson(lessonId);
+        if (!lesson) return callback?.({ success: false, error: "Lesson not found" });
+        if (lesson.status === "ended") return callback?.({ success: false, error: "Lesson ended" });
+        socket.join(`lesson:${lessonId}`);
+        socket.data.lessonRole = "student";
+        socket.data.lessonId = lessonId;
+        socket.data.studentName = name || "O'quvchi";
+
+        const room = io.sockets.adapter.rooms.get(`lesson:${lessonId}`);
+        const count = room ? room.size : 0;
+
+        io.to(`lesson:${lessonId}`).emit("lesson:participant-count", { count });
+        io.to(`lesson:${lessonId}`).emit("lesson:student-joined", {
+          name: socket.data.studentName,
+          socketId: socket.id,
+          count,
+        });
+
+        callback?.({ success: true });
+      } catch (err) {
+        callback?.({ success: false, error: "Failed to join lesson" });
+      }
+    });
+
+    socket.on("lesson:change-page", async (data) => {
+      if (socket.data.lessonRole !== "host") return;
+      const { lessonId, page } = data;
+      socket.to(`lesson:${lessonId}`).emit("lesson:page-changed", { page });
+      try { await storage.updateLiveLesson(lessonId, { currentPage: page }); } catch {}
+    });
+
+    socket.on("lesson:pointer-move", (data) => {
+      if (socket.data.lessonRole !== "host") return;
+      const { lessonId, x, y, visible } = data;
+      socket.to(`lesson:${lessonId}`).emit("lesson:pointer-update", { x, y, visible });
+    });
+
+    socket.on("lesson:start", async (data) => {
+      if (socket.data.lessonRole !== "host") return;
+      const { lessonId } = data;
+      io.to(`lesson:${lessonId}`).emit("lesson:started");
+      try { await storage.updateLiveLesson(lessonId, { status: "active" }); } catch {}
+    });
+
+    socket.on("lesson:end", async (data) => {
+      if (socket.data.lessonRole !== "host") return;
+      const { lessonId } = data;
+      io.to(`lesson:${lessonId}`).emit("lesson:ended");
+      try { await storage.updateLiveLesson(lessonId, { status: "ended" }); } catch {}
+    });
+
+    socket.on("lesson:webrtc-offer", (data) => {
+      if (socket.data.lessonRole !== "host") return;
+      const { lessonId, offer, targetSocketId } = data;
+      if (targetSocketId) {
+        io.to(targetSocketId).emit("lesson:webrtc-offer", { offer, senderSocketId: socket.id });
+      } else {
+        socket.to(`lesson:${lessonId}`).emit("lesson:webrtc-offer", { offer, senderSocketId: socket.id });
+      }
+    });
+
+    socket.on("lesson:webrtc-answer", (data) => {
+      const { answer, targetSocketId } = data;
+      io.to(targetSocketId).emit("lesson:webrtc-answer", { answer, senderSocketId: socket.id });
+    });
+
+    socket.on("lesson:webrtc-ice-candidate", (data) => {
+      const { candidate, targetSocketId, lessonId } = data;
+      if (targetSocketId) {
+        io.to(targetSocketId).emit("lesson:webrtc-ice-candidate", { candidate, senderSocketId: socket.id });
+      } else {
+        socket.to(`lesson:${lessonId}`).emit("lesson:webrtc-ice-candidate", { candidate, senderSocketId: socket.id });
+      }
+    });
+
+    socket.on("lesson:request-stream", (data) => {
+      if (socket.data.lessonRole !== "student") return;
+      const { lessonId } = data;
+      socket.to(`lesson:${lessonId}`).emit("lesson:stream-requested", { socketId: socket.id });
+    });
+
     socket.on("disconnect", () => {
       console.log("Client disconnected:", socket.id);
       if (socket.data.sessionId && socket.data.role === "player") {
         io.to(`session:${socket.data.sessionId}`).emit("player:left", {
           participantId: socket.data.participantId,
         });
+      }
+      if (socket.data.lessonId) {
+        const room = io.sockets.adapter.rooms.get(`lesson:${socket.data.lessonId}`);
+        const count = room ? room.size : 0;
+        io.to(`lesson:${socket.data.lessonId}`).emit("lesson:participant-count", { count });
+        if (socket.data.lessonRole === "student") {
+          io.to(`lesson:${socket.data.lessonId}`).emit("lesson:student-left", {
+            socketId: socket.id,
+            name: socket.data.studentName,
+            count,
+          });
+        }
       }
     });
   });

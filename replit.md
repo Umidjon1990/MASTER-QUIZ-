@@ -41,6 +41,10 @@ Preferred communication style: Simple, everyday language.
 - `/student/classes` — Student class membership and join-by-code
 - `/discover` — Public quiz discovery with search, category filter, likes
 - `/play/join` — Quiz join page (by 6-digit code)
+- `/teacher/lessons` — Live lesson management (create, list, delete)
+- `/teacher/lesson/:id` — Live lesson hosting (PDF viewer + pointer + audio/video)
+- `/lesson/join` — Student lesson join page (by code)
+- `/lesson/join/:code` — Direct lesson join (codeless)
 
 ### Backend (`server/`)
 - **Framework**: Express.js with TypeScript, run via `tsx`
@@ -72,6 +76,7 @@ Preferred communication style: Simple, everyday language.
   - `class_members` — Class membership (classId, userId)
   - `question_bank` — Reusable question bank with category/tags
   - `quiz_likes` — Quiz like tracking (quizId, userId)
+  - `live_lessons` — Live PDF-based lesson sessions (title, pdfUrl, teacher, status, code, requireCode)
 
 ### Storage Layer
 - `server/storage.ts` defines an `IStorage` interface with a concrete implementation using Drizzle queries

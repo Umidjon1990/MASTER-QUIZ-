@@ -1347,6 +1347,95 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/live-lessons", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { title, pdfUrl, pdfFileName, requireCode, totalPages } = req.body;
+      if (!title || !pdfUrl) return res.status(400).json({ message: "Title and PDF are required" });
+      const joinCode = generateJoinCode();
+      const lesson = await storage.createLiveLesson({
+        teacherId: req.userId,
+        title,
+        pdfUrl,
+        pdfFileName: pdfFileName || null,
+        joinCode,
+        requireCode: requireCode !== false,
+        status: "waiting",
+        totalPages: totalPages || 0,
+      });
+      res.json(lesson);
+    } catch (error) {
+      console.error("Create live lesson error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/live-lessons", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const lessons = await storage.getLiveLessonsByTeacher(req.userId);
+      res.json(lessons);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/live-lessons/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const lesson = await storage.getLiveLesson(req.params.id);
+      if (!lesson) return res.status(404).json({ message: "Lesson not found" });
+      if (lesson.teacherId !== req.userId) return res.status(403).json({ message: "Forbidden" });
+      res.json(lesson);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/live-lessons/join/:code", async (req: any, res) => {
+    try {
+      const lesson = await storage.getLiveLessonByCode(req.params.code);
+      if (!lesson) return res.status(404).json({ message: "Dars topilmadi" });
+      if (lesson.status === "ended") return res.status(400).json({ message: "Dars tugagan" });
+      res.json({
+        id: lesson.id,
+        title: lesson.title,
+        pdfUrl: lesson.pdfUrl,
+        status: lesson.status,
+        currentPage: lesson.currentPage,
+        totalPages: lesson.totalPages,
+        requireCode: lesson.requireCode,
+        joinCode: lesson.joinCode,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.patch("/api/live-lessons/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const lesson = await storage.getLiveLesson(req.params.id);
+      if (!lesson || lesson.teacherId !== req.userId) return res.status(403).json({ message: "Forbidden" });
+      const allowedFields = ["title", "status", "currentPage", "requireCode", "totalPages"] as const;
+      const safeUpdate: Record<string, any> = {};
+      for (const key of allowedFields) {
+        if (req.body[key] !== undefined) safeUpdate[key] = req.body[key];
+      }
+      const updated = await storage.updateLiveLesson(req.params.id, safeUpdate);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/live-lessons/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const lesson = await storage.getLiveLesson(req.params.id);
+      if (!lesson || lesson.teacherId !== req.userId) return res.status(403).json({ message: "Forbidden" });
+      await storage.deleteLiveLesson(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   setupWebSocket(httpServer);
 
   return httpServer;
