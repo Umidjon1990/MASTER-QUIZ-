@@ -320,7 +320,16 @@ export function setupWebSocket(httpServer: HttpServer) {
           count,
         });
 
-        callback?.({ success: true });
+        let currentMode = "pdf";
+        const roomSockets = await io.in(`lesson:${lessonId}`).fetchSockets();
+        for (const s of roomSockets) {
+          if (s.data.lessonRole === "host" && s.data.lessonMode) {
+            currentMode = s.data.lessonMode;
+            break;
+          }
+        }
+
+        callback?.({ success: true, mode: currentMode });
       } catch (err) {
         callback?.({ success: false, error: "Failed to join lesson" });
       }
@@ -343,6 +352,43 @@ export function setupWebSocket(httpServer: HttpServer) {
       if (socket.data.lessonRole !== "host") return;
       const { lessonId, zoomLevel } = data;
       socket.to(`lesson:${lessonId}`).emit("lesson:zoom-changed", { zoomLevel });
+    });
+
+    socket.on("lesson:mode-change", (data) => {
+      if (socket.data.lessonRole !== "host") return;
+      const { lessonId, mode } = data;
+      socket.data.lessonMode = mode;
+      socket.to(`lesson:${lessonId}`).emit("lesson:mode-changed", { mode });
+    });
+
+    socket.on("lesson:screen-offer", (data) => {
+      if (socket.data.lessonRole !== "host") return;
+      const { lessonId, offer, targetSocketId } = data;
+      if (targetSocketId) {
+        io.to(targetSocketId).emit("lesson:screen-offer", { offer, senderSocketId: socket.id });
+      } else {
+        socket.to(`lesson:${lessonId}`).emit("lesson:screen-offer", { offer, senderSocketId: socket.id });
+      }
+    });
+
+    socket.on("lesson:screen-answer", (data) => {
+      const { answer, targetSocketId } = data;
+      io.to(targetSocketId).emit("lesson:screen-answer", { answer, senderSocketId: socket.id });
+    });
+
+    socket.on("lesson:screen-ice-candidate", (data) => {
+      const { candidate, targetSocketId, lessonId } = data;
+      if (targetSocketId) {
+        io.to(targetSocketId).emit("lesson:screen-ice-candidate", { candidate, senderSocketId: socket.id });
+      } else {
+        socket.to(`lesson:${lessonId}`).emit("lesson:screen-ice-candidate", { candidate, senderSocketId: socket.id });
+      }
+    });
+
+    socket.on("lesson:request-screen-stream", (data) => {
+      if (socket.data.lessonRole !== "student") return;
+      const { lessonId } = data;
+      socket.to(`lesson:${lessonId}`).emit("lesson:screen-stream-requested", { socketId: socket.id });
     });
 
     socket.on("lesson:start", async (data) => {

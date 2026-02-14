@@ -38,8 +38,11 @@ export default function PDFViewer({
   const [zoomLevel, setZoomLevel] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isPageRendering, setIsPageRendering] = useState(false);
   const renderTaskRef = useRef<any>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const pageCacheRef = useRef<Map<string, ImageBitmap>>(new Map());
+  const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
@@ -60,6 +63,19 @@ export default function PDFViewer({
       return newZoom;
     });
   }, [onZoomChange]);
+
+  useEffect(() => {
+    pageCacheRef.current.forEach(bitmap => bitmap.close());
+    pageCacheRef.current = new Map();
+  }, [url]);
+
+  useEffect(() => {
+    return () => {
+      pageCacheRef.current.forEach(bitmap => bitmap.close());
+      pageCacheRef.current = new Map();
+      if (resizeTimeoutRef.current) clearTimeout(resizeTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,8 +99,47 @@ export default function PDFViewer({
     return () => { cancelled = true; };
   }, [url]);
 
+  const prefetchPage = useCallback(async (pageNum: number, containerWidth: number, containerHeight: number, currentZoom: number) => {
+    if (!pdfRef.current || pageNum < 1 || pageNum > pdfRef.current.numPages) return;
+
+    const cacheKey = `${pageNum}_${containerWidth}_${containerHeight}_${currentZoom}`;
+    if (pageCacheRef.current.has(cacheKey)) return;
+
+    try {
+      const page = await pdfRef.current.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 1 });
+      const scaleX = containerWidth / viewport.width;
+      const scaleY = containerHeight / viewport.height;
+      const fitScale = Math.min(scaleX, scaleY);
+      const zoomMultiplier = 1 + (currentZoom * 0.15);
+      const finalScale = fitScale * zoomMultiplier;
+
+      const scaledViewport = page.getViewport({ scale: finalScale });
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      const offscreen = document.createElement("canvas");
+      offscreen.width = scaledViewport.width * dpr;
+      offscreen.height = scaledViewport.height * dpr;
+      const offCtx = offscreen.getContext("2d");
+      if (!offCtx) return;
+      offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const renderTask = page.render({
+        canvasContext: offCtx,
+        viewport: scaledViewport,
+        canvas: offscreen,
+      } as any);
+      await renderTask.promise;
+
+      const bitmap = await createImageBitmap(offscreen);
+      pageCacheRef.current.set(cacheKey, bitmap);
+    } catch {}
+  }, []);
+
   const renderPage = useCallback(async () => {
     if (!pdfRef.current || !canvasRef.current || !containerRef.current) return;
+
+    setIsPageRendering(true);
 
     try {
       if (renderTaskRef.current) {
@@ -99,7 +154,10 @@ export default function PDFViewer({
       const containerWidth = container.clientWidth - 16;
       const containerHeight = container.clientHeight - 16;
 
-      if (containerWidth <= 0 || containerHeight <= 0) return;
+      if (containerWidth <= 0 || containerHeight <= 0) {
+        setIsPageRendering(false);
+        return;
+      }
 
       const viewport = page.getViewport({ scale: 1 });
       const scaleX = containerWidth / viewport.width;
@@ -111,28 +169,72 @@ export default function PDFViewer({
       const scaledViewport = page.getViewport({ scale: finalScale });
       const canvas = canvasRef.current;
       const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      if (!ctx) {
+        setIsPageRendering(false);
+        return;
+      }
 
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = scaledViewport.width * dpr;
       canvas.height = scaledViewport.height * dpr;
       canvas.style.width = `${scaledViewport.width}px`;
       canvas.style.height = `${scaledViewport.height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const renderTask = page.render({
-        canvasContext: ctx,
-        viewport: scaledViewport,
-        canvas: canvas,
-      } as any);
-      renderTaskRef.current = renderTask;
-      await renderTask.promise;
+      const cacheKey = `${currentPage}_${containerWidth}_${containerHeight}_${zoomLevel}`;
+      const cachedBitmap = pageCacheRef.current.get(cacheKey);
+
+      if (cachedBitmap) {
+        ctx.drawImage(cachedBitmap, 0, 0, scaledViewport.width, scaledViewport.height);
+        setIsPageRendering(false);
+      } else {
+        const renderTask = page.render({
+          canvasContext: ctx,
+          viewport: scaledViewport,
+          canvas: canvas,
+        } as any);
+        renderTaskRef.current = renderTask;
+        await renderTask.promise;
+
+        try {
+          const bitmap = await createImageBitmap(canvas);
+          pageCacheRef.current.set(cacheKey, bitmap);
+        } catch {}
+
+        setIsPageRendering(false);
+      }
+
+      let prefetchCancelled = false;
+      const currentPageNum = currentPage;
+      const cw = containerWidth;
+      const ch = containerHeight;
+      const cz = zoomLevel;
+      const numPages = pdfRef.current.numPages;
+
+      const doPrefetch = () => {
+        if (prefetchCancelled) return;
+        if (currentPageNum < numPages) {
+          prefetchPage(currentPageNum + 1, cw, ch, cz);
+        }
+        if (currentPageNum > 1) {
+          prefetchPage(currentPageNum - 1, cw, ch, cz);
+        }
+      };
+
+      if (typeof window.requestIdleCallback === "function") {
+        const idleId = window.requestIdleCallback(doPrefetch);
+        renderTaskRef.current = { cancel: () => { prefetchCancelled = true; window.cancelIdleCallback(idleId); } };
+      } else {
+        const timerId = setTimeout(doPrefetch, 100);
+        renderTaskRef.current = { cancel: () => { prefetchCancelled = true; clearTimeout(timerId); } };
+      }
     } catch (err: any) {
       if (err?.name !== "RenderingCancelledException") {
         console.error("PDF render error:", err);
       }
+      setIsPageRendering(false);
     }
-  }, [currentPage, zoomLevel]);
+  }, [currentPage, zoomLevel, prefetchPage]);
 
   useEffect(() => {
     renderPage();
@@ -143,12 +245,22 @@ export default function PDFViewer({
     if (!container) return;
 
     resizeObserverRef.current = new ResizeObserver(() => {
-      renderPage();
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
+      }
+      resizeTimeoutRef.current = setTimeout(() => {
+        pageCacheRef.current.forEach(bitmap => bitmap.close());
+        pageCacheRef.current = new Map();
+        renderPage();
+      }, 300);
     });
     resizeObserverRef.current.observe(container);
 
     return () => {
       resizeObserverRef.current?.disconnect();
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
+      }
     };
   }, [renderPage]);
 
@@ -313,6 +425,11 @@ export default function PDFViewer({
         ) : (
           <div className="relative inline-block">
             <canvas ref={canvasRef} className="block" data-testid="pdf-canvas" />
+            {isPageRendering && (
+              <div className="absolute inset-0 flex items-center justify-center z-40 pointer-events-none" data-testid="page-render-spinner">
+                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin opacity-70" />
+              </div>
+            )}
             {pointerPosition && pointerPosition.visible && (
               <div
                 className="absolute pointer-events-none z-50"

@@ -19,6 +19,7 @@ import {
   Video, VideoOff, Mic, MicOff, Users, Copy, Link2, Play, Square,
   Circle, RectangleHorizontal, ArrowLeft, Lock, Unlock,
   Presentation, GripVertical, Download, StopCircle, Settings2,
+  Monitor, MonitorOff,
 } from "lucide-react";
 import type { LiveLesson } from "@shared/schema";
 
@@ -56,6 +57,12 @@ export default function TeacherLessonLive() {
   const [selectedAudioDevice, setSelectedAudioDevice] = useState<string>("");
   const [selectedVideoDevice, setSelectedVideoDevice] = useState<string>("");
   const [showDeviceSettings, setShowDeviceSettings] = useState(false);
+
+  const [lessonMode, setLessonMode] = useState<"pdf" | "screen">("pdf");
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const screenPeerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const screenVideoRef = useRef<HTMLVideoElement>(null);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
 
   const { data: lesson, isLoading } = useQuery<LiveLesson>({
     queryKey: ["/api/live-lessons", lessonId],
@@ -95,6 +102,25 @@ export default function TeacherLessonLive() {
       await createPeerConnection(socketId);
     });
 
+    socket.on("lesson:screen-stream-requested", async ({ socketId }) => {
+      if (!screenStreamRef.current) return;
+      await createScreenPeerConnection(socketId);
+    });
+
+    socket.on("lesson:screen-answer", async ({ answer, senderSocketId }) => {
+      const pc = screenPeerConnectionsRef.current.get(senderSocketId);
+      if (pc) {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      }
+    });
+
+    socket.on("lesson:screen-ice-candidate", async ({ candidate, senderSocketId }) => {
+      const pc = screenPeerConnectionsRef.current.get(senderSocketId);
+      if (pc && candidate) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    });
+
     socket.on("lesson:webrtc-answer", async ({ answer, senderSocketId }) => {
       const pc = peerConnectionsRef.current.get(senderSocketId);
       if (pc) {
@@ -113,6 +139,8 @@ export default function TeacherLessonLive() {
       socket.disconnect();
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       peerConnectionsRef.current.forEach(pc => pc.close());
+      screenStreamRef.current?.getTracks().forEach(t => t.stop());
+      screenPeerConnectionsRef.current.forEach(pc => pc.close());
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
         mediaRecorderRef.current.stop();
         mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
@@ -162,6 +190,87 @@ export default function TeacherLessonLive() {
     await pc.setLocalDescription(offer);
     socket.emit("lesson:webrtc-offer", { lessonId, offer, targetSocketId });
   };
+
+  const createScreenPeerConnection = async (targetSocketId: string) => {
+    const socket = socketRef.current;
+    if (!socket || !screenStreamRef.current) return;
+
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    screenPeerConnectionsRef.current.set(targetSocketId, pc);
+
+    screenStreamRef.current.getTracks().forEach(track => {
+      pc.addTrack(track, screenStreamRef.current!);
+    });
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate) {
+        socket.emit("lesson:screen-ice-candidate", {
+          candidate: e.candidate,
+          targetSocketId,
+          lessonId,
+        });
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+        pc.close();
+        screenPeerConnectionsRef.current.delete(targetSocketId);
+      }
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socket.emit("lesson:screen-offer", { lessonId, offer, targetSocketId });
+  };
+
+  const toggleScreenShare = async () => {
+    if (isScreenSharing) {
+      screenStreamRef.current?.getTracks().forEach(t => t.stop());
+      screenStreamRef.current = null;
+      screenPeerConnectionsRef.current.forEach(pc => pc.close());
+      screenPeerConnectionsRef.current.clear();
+      setIsScreenSharing(false);
+      setLessonMode("pdf");
+      socketRef.current?.emit("lesson:mode-change", { lessonId, mode: "pdf" });
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: false,
+        });
+        screenStreamRef.current = stream;
+        setIsScreenSharing(true);
+        setLessonMode("screen");
+        socketRef.current?.emit("lesson:mode-change", { lessonId, mode: "screen" });
+
+        stream.getVideoTracks()[0].onended = () => {
+          screenStreamRef.current = null;
+          screenPeerConnectionsRef.current.forEach(pc => pc.close());
+          screenPeerConnectionsRef.current.clear();
+          setIsScreenSharing(false);
+          setLessonMode("pdf");
+          socketRef.current?.emit("lesson:mode-change", { lessonId, mode: "pdf" });
+        };
+
+        if (screenVideoRef.current) {
+          screenVideoRef.current.srcObject = stream;
+        }
+      } catch (err: any) {
+        if (err?.name !== "NotAllowedError") {
+          toast({ title: "Ekranni ulashib bo'lmadi", variant: "destructive" });
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (isScreenSharing && screenVideoRef.current && screenStreamRef.current) {
+      screenVideoRef.current.srcObject = screenStreamRef.current;
+    }
+  }, [isScreenSharing]);
 
   const getMediaStream = async (audio: boolean, video: boolean) => {
     const constraints: MediaStreamConstraints = {};
@@ -485,6 +594,14 @@ export default function TeacherLessonLive() {
           )}
           <Button
             size="icon"
+            variant={isScreenSharing ? "default" : "ghost"}
+            onClick={toggleScreenShare}
+            data-testid="button-toggle-screen-share"
+          >
+            {isScreenSharing ? <Monitor className="w-4 h-4" /> : <MonitorOff className="w-4 h-4" />}
+          </Button>
+          <Button
+            size="icon"
             variant={showDeviceSettings ? "default" : "ghost"}
             onClick={() => setShowDeviceSettings(v => !v)}
             data-testid="button-device-settings"
@@ -556,15 +673,37 @@ export default function TeacherLessonLive() {
       )}
 
       <div className="flex-1 relative overflow-hidden min-h-0">
-        <PDFViewer
-          url={lesson.pdfUrl}
-          currentPage={currentPage}
-          onPageChange={handlePageChange}
-          onTotalPages={setTotalPages}
-          onPointerMove={handlePointerMove}
-          onZoomChange={handleZoomChange}
-          isHost
-        />
+        {lessonMode === "pdf" ? (
+          <PDFViewer
+            url={lesson.pdfUrl}
+            currentPage={currentPage}
+            onPageChange={handlePageChange}
+            onTotalPages={setTotalPages}
+            onPointerMove={handlePointerMove}
+            onZoomChange={handleZoomChange}
+            isHost
+          />
+        ) : (
+          <div className="flex items-center justify-center w-full h-full bg-black" data-testid="screen-share-preview">
+            <video
+              ref={screenVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className="max-w-full max-h-full object-contain"
+              data-testid="screen-share-video"
+            />
+            {!isScreenSharing && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white">
+                <Monitor className="w-16 h-16 opacity-50" />
+                <p className="text-lg opacity-70">Ekran ulashish to'xtatildi</p>
+                <Button variant="outline" onClick={() => setLessonMode("pdf")} data-testid="button-back-to-pdf">
+                  PDF ga qaytish
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {videoEnabled && (

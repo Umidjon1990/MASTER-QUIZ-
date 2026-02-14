@@ -42,7 +42,7 @@ Preferred communication style: Simple, everyday language.
 - `/discover` — Public quiz discovery with search, category filter, likes
 - `/play/join` — Quiz join page (by 6-digit code)
 - `/teacher/lessons` — Live lesson management (create, list, delete)
-- `/teacher/lesson/:id` — Live lesson hosting (PDF viewer + pointer + audio/video + zoom sync + recording + device selection)
+- `/teacher/lesson/:id` — Live lesson hosting (PDF viewer + pointer + audio/video + zoom sync + recording + device selection + screen sharing)
 - `/lesson/join` — Student lesson join page (by code)
 - `/lesson/join/:code` — Direct lesson join (codeless)
 

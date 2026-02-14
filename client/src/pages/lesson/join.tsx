@@ -13,7 +13,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { motion } from "framer-motion";
 import {
   Presentation, ArrowRight, Users, Volume2, VolumeX,
-  GripVertical, Circle, RectangleHorizontal,
+  GripVertical, Circle, RectangleHorizontal, Monitor,
 } from "lucide-react";
 
 interface LessonInfo {
@@ -50,6 +50,12 @@ export default function LessonJoin() {
   const [videoDragging, setVideoDragging] = useState(false);
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [audioMuted, setAudioMuted] = useState(false);
+
+  const [lessonMode, setLessonMode] = useState<"pdf" | "screen">("pdf");
+  const [hasScreenStream, setHasScreenStream] = useState(false);
+  const screenPeerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const screenVideoRef = useRef<HTMLVideoElement>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -103,6 +109,10 @@ export default function LessonJoin() {
       if (res.success) {
         setJoined(true);
         socket.emit("lesson:request-stream", { lessonId: lesson.id });
+        if (res.mode === "screen") {
+          setLessonMode("screen");
+          socket.emit("lesson:request-screen-stream", { lessonId: lesson.id });
+        }
       }
     });
 
@@ -116,6 +126,69 @@ export default function LessonJoin() {
 
     socket.on("lesson:zoom-changed", ({ zoomLevel }) => {
       setExternalZoom(zoomLevel);
+    });
+
+    socket.on("lesson:mode-changed", ({ mode }) => {
+      setLessonMode(mode);
+      if (mode === "screen") {
+        socket.emit("lesson:request-screen-stream", { lessonId: lesson.id });
+      }
+      if (mode === "pdf") {
+        screenPeerConnectionRef.current?.close();
+        screenStreamRef.current?.getTracks().forEach(t => t.stop());
+        screenStreamRef.current = null;
+        setHasScreenStream(false);
+      }
+    });
+
+    socket.on("lesson:screen-offer", async ({ offer, senderSocketId }) => {
+      try {
+        const pc = new RTCPeerConnection({
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        });
+        screenPeerConnectionRef.current = pc;
+
+        pc.ontrack = (e) => {
+          if (!screenStreamRef.current) {
+            screenStreamRef.current = new MediaStream();
+          }
+          screenStreamRef.current.addTrack(e.track);
+          if (screenVideoRef.current) {
+            screenVideoRef.current.srcObject = screenStreamRef.current;
+          }
+          if (e.track.kind === "video") setHasScreenStream(true);
+        };
+
+        pc.onicecandidate = (e) => {
+          if (e.candidate) {
+            socket.emit("lesson:screen-ice-candidate", {
+              candidate: e.candidate,
+              targetSocketId: senderSocketId,
+              lessonId: lesson.id,
+            });
+          }
+        };
+
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        socket.emit("lesson:screen-answer", {
+          answer,
+          targetSocketId: senderSocketId,
+        });
+      } catch (err) {
+        console.error("Screen WebRTC answer error:", err);
+      }
+    });
+
+    socket.on("lesson:screen-ice-candidate", async ({ candidate }) => {
+      const pc = screenPeerConnectionRef.current;
+      if (pc && candidate) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch {}
+      }
     });
 
     socket.on("lesson:participant-count", ({ count }) => {
@@ -211,6 +284,8 @@ export default function LessonJoin() {
     return () => {
       socketRef.current?.disconnect();
       peerConnectionRef.current?.close();
+      screenPeerConnectionRef.current?.close();
+      screenStreamRef.current?.getTracks().forEach(t => t.stop());
     };
   }, []);
 
@@ -219,6 +294,12 @@ export default function LessonJoin() {
       videoRef.current.srcObject = remoteStreamRef.current;
     }
   }, [hasRemoteVideo]);
+
+  useEffect(() => {
+    if (hasScreenStream && screenVideoRef.current && screenStreamRef.current) {
+      screenVideoRef.current.srcObject = screenStreamRef.current;
+    }
+  }, [hasScreenStream]);
 
   const toggleAudioMute = () => {
     if (remoteStreamRef.current) {
@@ -256,6 +337,11 @@ export default function LessonJoin() {
             <Badge variant="outline" className="gap-1">
               <Users className="w-3 h-3" /> {participantCount}
             </Badge>
+            {lessonMode === "screen" && (
+              <Badge variant="secondary" className="gap-1" data-testid="badge-screen-mode">
+                <Monitor className="w-3 h-3" /> Ekran
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <Button size="icon" variant="ghost" onClick={toggleAudioMute} data-testid="button-toggle-audio-mute">
@@ -275,13 +361,33 @@ export default function LessonJoin() {
         </div>
 
         <div className="flex-1 relative overflow-hidden min-h-0">
-          <PDFViewer
-            url={lessonInfo.pdfUrl}
-            currentPage={currentPage}
-            pointerPosition={pointer}
-            externalZoom={externalZoom}
-            isHost={false}
-          />
+          {lessonMode === "pdf" ? (
+            <PDFViewer
+              url={lessonInfo.pdfUrl}
+              currentPage={currentPage}
+              pointerPosition={pointer}
+              externalZoom={externalZoom}
+              isHost={false}
+            />
+          ) : (
+            <div className="flex items-center justify-center w-full h-full bg-black" data-testid="screen-share-student-view">
+              {hasScreenStream ? (
+                <video
+                  ref={screenVideoRef}
+                  autoPlay
+                  playsInline
+                  className="max-w-full max-h-full object-contain"
+                  data-testid="screen-share-student-video"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-3 text-white/70">
+                  <Monitor className="w-12 h-12" />
+                  <p>O'qituvchi ekranini ulashmoqda...</p>
+                  <div className="w-6 h-6 border-2 border-white/50 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {hasRemoteVideo && (
