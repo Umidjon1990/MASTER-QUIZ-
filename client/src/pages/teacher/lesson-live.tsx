@@ -6,6 +6,7 @@ import { io, Socket } from "socket.io-client";
 import PDFViewer from "@/components/pdf-viewer";
 import LessonChat from "@/components/lesson-chat";
 import RecordCropSelector, { type CropRegion } from "@/components/record-crop-selector";
+import RecordingCropOverlay from "@/components/recording-crop-overlay";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -66,6 +67,10 @@ export default function TeacherLessonLive() {
   const recordCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const recordAnimFrameRef = useRef<number>(0);
   const [recordSnapshot, setRecordSnapshot] = useState<{ url: string; w: number; h: number } | null>(null);
+  const [activeRecordCrop, setActiveRecordCrop] = useState<CropRegion | null>(null);
+  const activeRecordCropRef = useRef<CropRegion | null>(null);
+  const recordVideoElRef = useRef<HTMLVideoElement | null>(null);
+  const recordSrcSizeRef = useRef<{ w: number; h: number }>({ w: 1920, h: 1080 });
 
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
@@ -563,6 +568,7 @@ export default function TeacherLessonLive() {
 
   const handleRecordCropConfirm = (crop: CropRegion | null) => {
     setShowRecordCropSelector(false);
+    setRecordSnapshot(null);
     const screenStream = recordScreenStreamRef.current;
     if (!screenStream) return;
 
@@ -573,29 +579,38 @@ export default function TeacherLessonLive() {
       const settings = videoTrack.getSettings();
       const srcW = settings.width || 1920;
       const srcH = settings.height || 1080;
+      recordSrcSizeRef.current = { w: srcW, h: srcH };
+
+      const video = document.createElement("video");
+      video.srcObject = screenStream;
+      video.muted = true;
+      video.playsInline = true;
+      video.play();
+      recordVideoElRef.current = video;
 
       let recordStream: MediaStream;
 
       if (crop) {
-        const cropX = Math.round(crop.x * srcW);
-        const cropY = Math.round(crop.y * srcH);
-        const cropW = Math.round(crop.w * srcW);
-        const cropH = Math.round(crop.h * srcH);
+        activeRecordCropRef.current = crop;
+        setActiveRecordCrop(crop);
 
         const canvas = document.createElement("canvas");
-        canvas.width = cropW;
-        canvas.height = cropH;
+        canvas.width = srcW;
+        canvas.height = srcH;
         recordCanvasRef.current = canvas;
 
         const ctx = canvas.getContext("2d")!;
-        const video = document.createElement("video");
-        video.srcObject = screenStream;
-        video.muted = true;
-        video.playsInline = true;
-        video.play();
 
         const drawFrame = () => {
-          ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+          const c = activeRecordCropRef.current;
+          if (c && recordCanvasRef.current) {
+            const cX = Math.round(c.x * srcW);
+            const cY = Math.round(c.y * srcH);
+            const cW = Math.round(c.w * srcW);
+            const cH = Math.round(c.h * srcH);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(video, cX, cY, cW, cH, 0, 0, canvas.width, canvas.height);
+          }
           recordAnimFrameRef.current = requestAnimationFrame(drawFrame);
         };
         drawFrame();
@@ -604,6 +619,8 @@ export default function TeacherLessonLive() {
         recordStream = new MediaStream();
         canvasStream.getVideoTracks().forEach(t => recordStream.addTrack(t));
       } else {
+        activeRecordCropRef.current = null;
+        setActiveRecordCrop(null);
         recordStream = new MediaStream();
         screenStream.getVideoTracks().forEach(t => recordStream.addTrack(t));
       }
@@ -631,9 +648,12 @@ export default function TeacherLessonLive() {
         URL.revokeObjectURL(url);
         setIsRecording(false);
         setRecordingTime(0);
+        setActiveRecordCrop(null);
+        activeRecordCropRef.current = null;
         if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
         if (recordAnimFrameRef.current) cancelAnimationFrame(recordAnimFrameRef.current);
         recordCanvasRef.current = null;
+        recordVideoElRef.current = null;
         recordScreenStreamRef.current?.getTracks().forEach(t => t.stop());
         recordScreenStreamRef.current = null;
       };
@@ -655,6 +675,11 @@ export default function TeacherLessonLive() {
     }
   };
 
+  const handleActiveRecordCropChange = useCallback((newCrop: CropRegion) => {
+    activeRecordCropRef.current = newCrop;
+    setActiveRecordCrop(newCrop);
+  }, []);
+
   const handleRecordCropCancel = () => {
     setShowRecordCropSelector(false);
     setRecordSnapshot(null);
@@ -672,6 +697,9 @@ export default function TeacherLessonLive() {
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     if (recordAnimFrameRef.current) cancelAnimationFrame(recordAnimFrameRef.current);
     recordCanvasRef.current = null;
+    recordVideoElRef.current = null;
+    setActiveRecordCrop(null);
+    activeRecordCropRef.current = null;
     if (recordScreenStreamRef.current) {
       recordScreenStreamRef.current.getTracks().forEach(t => t.stop());
       recordScreenStreamRef.current = null;
@@ -1180,6 +1208,13 @@ export default function TeacherLessonLive() {
       )}
 
       <LessonChat socket={socketState} isHost />
+
+      {isRecording && activeRecordCrop && (
+        <RecordingCropOverlay
+          crop={activeRecordCrop}
+          onChange={handleActiveRecordCropChange}
+        />
+      )}
 
       {showRecordCropSelector && recordSnapshot && (
         <RecordCropSelector
