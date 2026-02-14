@@ -152,7 +152,8 @@ export default function LessonJoin() {
         socket.emit("lesson:request-stream", { lessonId: lesson.id });
         if (res.mode === "screen" || res.isScreenSharing) {
           setLessonMode("screen");
-          socket.emit("lesson:request-screen-stream", { lessonId: lesson.id });
+          const deviceType = window.innerWidth < 768 ? "mobile" : "desktop";
+          socket.emit("lesson:request-screen-stream", { lessonId: lesson.id, deviceType });
         } else if (res.mode && res.mode !== "pdf") {
           setLessonMode(res.mode);
         }
@@ -180,7 +181,8 @@ export default function LessonJoin() {
     socket.on("lesson:mode-changed", ({ mode }) => {
       setLessonMode(mode);
       if (mode === "screen") {
-        socket.emit("lesson:request-screen-stream", { lessonId: lesson.id });
+        const deviceType = window.innerWidth < 768 ? "mobile" : "desktop";
+        socket.emit("lesson:request-screen-stream", { lessonId: lesson.id, deviceType });
       }
       if (mode === "pdf") {
         screenPeerConnectionRef.current?.close();

@@ -5,6 +5,7 @@ import { useRoute, useLocation } from "wouter";
 import { io, Socket } from "socket.io-client";
 import PDFViewer from "@/components/pdf-viewer";
 import LessonChat from "@/components/lesson-chat";
+import ScreenCropSelector, { type CropRegion } from "@/components/screen-crop-selector";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -21,7 +22,7 @@ import {
   Circle, RectangleHorizontal, ArrowLeft, Lock, Unlock,
   Presentation, GripVertical, Download, StopCircle, Settings2,
   Monitor, MonitorOff, ZoomIn, ZoomOut, Maximize2, ChevronLeft, ChevronRight,
-  Minimize2,
+  Minimize2, Crop,
 } from "lucide-react";
 import type { LiveLesson } from "@shared/schema";
 
@@ -76,6 +77,16 @@ export default function TeacherLessonLive() {
   const screenPeerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const screenVideoRef = useRef<HTMLVideoElement>(null);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [showCropSelector, setShowCropSelector] = useState(false);
+  const rawScreenStreamRef = useRef<MediaStream | null>(null);
+  const desktopCropRef = useRef<CropRegion>({ x: 0, y: 0, w: 1, h: 1 });
+  const mobileCropRef = useRef<CropRegion>({ x: 0, y: 0, w: 1, h: 1 });
+  const desktopCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const mobileCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cropVideoRef = useRef<HTMLVideoElement | null>(null);
+  const cropAnimFrameRef = useRef<number>(0);
+  const desktopCanvasStreamRef = useRef<MediaStream | null>(null);
+  const mobileCanvasStreamRef = useRef<MediaStream | null>(null);
 
   const { data: lesson, isLoading } = useQuery<LiveLesson>({
     queryKey: ["/api/live-lessons", lessonId],
@@ -147,9 +158,9 @@ export default function TeacherLessonLive() {
       await createPeerConnection(socketId);
     });
 
-    socket.on("lesson:screen-stream-requested", async ({ socketId }) => {
-      if (!screenStreamRef.current) return;
-      await createScreenPeerConnection(socketId);
+    socket.on("lesson:screen-stream-requested", async ({ socketId, deviceType }) => {
+      if (!desktopCanvasStreamRef.current && !screenStreamRef.current) return;
+      await createScreenPeerConnection(socketId, deviceType);
     });
 
     socket.on("lesson:screen-answer", async ({ answer, senderSocketId }) => {
@@ -185,7 +196,9 @@ export default function TeacherLessonLive() {
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       peerConnectionsRef.current.forEach(pc => pc.close());
       screenStreamRef.current?.getTracks().forEach(t => t.stop());
+      rawScreenStreamRef.current?.getTracks().forEach(t => t.stop());
       screenPeerConnectionsRef.current.forEach(pc => pc.close());
+      if (cropAnimFrameRef.current) cancelAnimationFrame(cropAnimFrameRef.current);
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
         mediaRecorderRef.current.stop();
         mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
@@ -239,17 +252,19 @@ export default function TeacherLessonLive() {
     socket.emit("lesson:webrtc-offer", { lessonId, offer, targetSocketId });
   };
 
-  const createScreenPeerConnection = async (targetSocketId: string) => {
+  const createScreenPeerConnection = async (targetSocketId: string, deviceType?: string) => {
     const socket = socketRef.current;
-    if (!socket || !screenStreamRef.current) return;
+    const isMobile = deviceType === "mobile";
+    const stream = isMobile ? mobileCanvasStreamRef.current : desktopCanvasStreamRef.current;
+    if (!socket || !stream) return;
 
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
     screenPeerConnectionsRef.current.set(targetSocketId, pc);
 
-    screenStreamRef.current.getTracks().forEach(track => {
-      pc.addTrack(track, screenStreamRef.current!);
+    stream.getTracks().forEach(track => {
+      pc.addTrack(track, stream);
     });
 
     pc.onicecandidate = (e) => {
@@ -274,41 +289,90 @@ export default function TeacherLessonLive() {
     socket.emit("lesson:screen-offer", { lessonId, offer, targetSocketId });
   };
 
+  const stopCropLoop = useCallback(() => {
+    if (cropAnimFrameRef.current) {
+      cancelAnimationFrame(cropAnimFrameRef.current);
+      cropAnimFrameRef.current = 0;
+    }
+  }, []);
+
+  const startCropLoop = useCallback(() => {
+    stopCropLoop();
+    const video = cropVideoRef.current;
+    const dCanvas = desktopCanvasRef.current;
+    const mCanvas = mobileCanvasRef.current;
+    if (!video || !dCanvas || !mCanvas) return;
+
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return;
+
+    const dc = desktopCropRef.current;
+    const mc = mobileCropRef.current;
+
+    const dW = Math.round(dc.w * vw);
+    const dH = Math.round(dc.h * vh);
+    dCanvas.width = dW || 1;
+    dCanvas.height = dH || 1;
+    const dCtx = dCanvas.getContext("2d")!;
+
+    const mW = Math.round(mc.w * vw);
+    const mH = Math.round(mc.h * vh);
+    mCanvas.width = mW || 1;
+    mCanvas.height = mH || 1;
+    const mCtx = mCanvas.getContext("2d")!;
+
+    const draw = () => {
+      if (!video.paused && !video.ended) {
+        const dcr = desktopCropRef.current;
+        const mcr = mobileCropRef.current;
+        dCtx.drawImage(
+          video,
+          Math.round(dcr.x * vw), Math.round(dcr.y * vh), Math.round(dcr.w * vw), Math.round(dcr.h * vh),
+          0, 0, dCanvas.width, dCanvas.height
+        );
+        mCtx.drawImage(
+          video,
+          Math.round(mcr.x * vw), Math.round(mcr.y * vh), Math.round(mcr.w * vw), Math.round(mcr.h * vh),
+          0, 0, mCanvas.width, mCanvas.height
+        );
+      }
+      cropAnimFrameRef.current = requestAnimationFrame(draw);
+    };
+    draw();
+  }, [stopCropLoop]);
+
+  const stopScreenSharingCleanup = useCallback(() => {
+    stopCropLoop();
+    rawScreenStreamRef.current?.getTracks().forEach(t => t.stop());
+    rawScreenStreamRef.current = null;
+    screenStreamRef.current = null;
+    desktopCanvasStreamRef.current = null;
+    mobileCanvasStreamRef.current = null;
+    screenPeerConnectionsRef.current.forEach(pc => pc.close());
+    screenPeerConnectionsRef.current.clear();
+    setIsScreenSharing(false);
+    setLessonMode("pdf");
+    socketRef.current?.emit("lesson:mode-change", { lessonId, mode: "pdf" });
+    socketRef.current?.emit("lesson:screen-sharing-status", { isScreenSharing: false });
+  }, [lessonId, stopCropLoop]);
+
   const toggleScreenShare = async () => {
     if (isScreenSharing) {
-      screenStreamRef.current?.getTracks().forEach(t => t.stop());
-      screenStreamRef.current = null;
-      screenPeerConnectionsRef.current.forEach(pc => pc.close());
-      screenPeerConnectionsRef.current.clear();
-      setIsScreenSharing(false);
-      setLessonMode("pdf");
-      socketRef.current?.emit("lesson:mode-change", { lessonId, mode: "pdf" });
-      socketRef.current?.emit("lesson:screen-sharing-status", { isScreenSharing: false });
+      stopScreenSharingCleanup();
     } else {
       try {
         const stream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
           audio: false,
         });
-        screenStreamRef.current = stream;
-        setIsScreenSharing(true);
-        setLessonMode("screen");
-        socketRef.current?.emit("lesson:mode-change", { lessonId, mode: "screen" });
-        socketRef.current?.emit("lesson:screen-sharing-status", { isScreenSharing: true });
+        rawScreenStreamRef.current = stream;
 
         stream.getVideoTracks()[0].onended = () => {
-          screenStreamRef.current = null;
-          screenPeerConnectionsRef.current.forEach(pc => pc.close());
-          screenPeerConnectionsRef.current.clear();
-          setIsScreenSharing(false);
-          setLessonMode("pdf");
-          socketRef.current?.emit("lesson:mode-change", { lessonId, mode: "pdf" });
-          socketRef.current?.emit("lesson:screen-sharing-status", { isScreenSharing: false });
+          stopScreenSharingCleanup();
         };
 
-        if (screenVideoRef.current) {
-          screenVideoRef.current.srcObject = stream;
-        }
+        setShowCropSelector(true);
       } catch (err: any) {
         if (err?.name !== "NotAllowedError") {
           toast({ title: "Ekranni ulashib bo'lmadi", variant: "destructive" });
@@ -317,9 +381,67 @@ export default function TeacherLessonLive() {
     }
   };
 
+  const handleCropConfirm = useCallback((desktopCrop: CropRegion, mobileCrop: CropRegion) => {
+    setShowCropSelector(false);
+    desktopCropRef.current = desktopCrop;
+    mobileCropRef.current = mobileCrop;
+
+    if (desktopCanvasRef.current && mobileCanvasRef.current && cropVideoRef.current) {
+      stopCropLoop();
+      startCropLoop();
+      if (screenVideoRef.current && desktopCanvasStreamRef.current) {
+        screenVideoRef.current.srcObject = desktopCanvasStreamRef.current;
+      }
+      return;
+    }
+
+    const rawStream = rawScreenStreamRef.current;
+    if (!rawStream) return;
+
+    const hiddenVideo = document.createElement("video");
+    hiddenVideo.srcObject = rawStream;
+    hiddenVideo.muted = true;
+    hiddenVideo.playsInline = true;
+    cropVideoRef.current = hiddenVideo;
+
+    hiddenVideo.onloadedmetadata = () => {
+      hiddenVideo.play();
+
+      const dCanvas = document.createElement("canvas");
+      const mCanvas = document.createElement("canvas");
+      desktopCanvasRef.current = dCanvas;
+      mobileCanvasRef.current = mCanvas;
+
+      startCropLoop();
+
+      const dStream = dCanvas.captureStream(24);
+      const mStream = mCanvas.captureStream(24);
+      desktopCanvasStreamRef.current = dStream;
+      mobileCanvasStreamRef.current = mStream;
+
+      screenStreamRef.current = dStream;
+      setIsScreenSharing(true);
+      setLessonMode("screen");
+      socketRef.current?.emit("lesson:mode-change", { lessonId, mode: "screen" });
+      socketRef.current?.emit("lesson:screen-sharing-status", { isScreenSharing: true });
+
+      if (screenVideoRef.current) {
+        screenVideoRef.current.srcObject = dStream;
+      }
+    };
+  }, [lessonId, startCropLoop, stopCropLoop]);
+
+  const handleCropCancel = useCallback(() => {
+    setShowCropSelector(false);
+    if (!isScreenSharing) {
+      rawScreenStreamRef.current?.getTracks().forEach(t => t.stop());
+      rawScreenStreamRef.current = null;
+    }
+  }, [isScreenSharing]);
+
   useEffect(() => {
-    if (isScreenSharing && screenVideoRef.current && screenStreamRef.current) {
-      screenVideoRef.current.srcObject = screenStreamRef.current;
+    if (isScreenSharing && screenVideoRef.current && desktopCanvasStreamRef.current) {
+      screenVideoRef.current.srcObject = desktopCanvasStreamRef.current;
     }
   }, [isScreenSharing]);
 
@@ -935,6 +1057,11 @@ export default function TeacherLessonLive() {
           <Button size="icon" variant="ghost" className={`toggle-elevate ${isScreenSharing ? "toggle-elevated bg-white/20 text-white" : "text-white/60"}`} onClick={toggleScreenShare} data-testid="button-toggle-screen-share">
             {isScreenSharing ? <Monitor className="w-4 h-4" /> : <MonitorOff className="w-4 h-4" />}
           </Button>
+          {isScreenSharing && (
+            <Button size="icon" variant="ghost" className="text-white/60" onClick={() => { if (rawScreenStreamRef.current) setShowCropSelector(true); }} data-testid="button-recrop-screen">
+              <Crop className="w-4 h-4" />
+            </Button>
+          )}
           <Button size="icon" variant="ghost" className={`toggle-elevate ${showDeviceSettings ? "toggle-elevated bg-white/20 text-white" : "text-white/60"}`} onClick={() => setShowDeviceSettings(v => !v)} data-testid="button-device-settings">
             <Settings2 className="w-4 h-4" />
           </Button>
@@ -1111,6 +1238,14 @@ export default function TeacherLessonLive() {
       )}
 
       <LessonChat socket={socketState} isHost />
+
+      {showCropSelector && rawScreenStreamRef.current && (
+        <ScreenCropSelector
+          videoStream={rawScreenStreamRef.current}
+          onConfirm={handleCropConfirm}
+          onCancel={handleCropCancel}
+        />
+      )}
     </div>
   );
 }

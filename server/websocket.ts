@@ -420,8 +420,8 @@ export function setupWebSocket(httpServer: HttpServer) {
 
     socket.on("lesson:request-screen-stream", (data) => {
       if (socket.data.lessonRole !== "student") return;
-      const { lessonId } = data;
-      socket.to(`lesson:${lessonId}`).emit("lesson:screen-stream-requested", { socketId: socket.id });
+      const { lessonId, deviceType } = data;
+      socket.to(`lesson:${lessonId}`).emit("lesson:screen-stream-requested", { socketId: socket.id, deviceType: deviceType || "desktop" });
     });
 
     socket.on("lesson:start", async (data) => {
