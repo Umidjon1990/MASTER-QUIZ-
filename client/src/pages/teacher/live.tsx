@@ -17,14 +17,68 @@ import type { Quiz, LiveSession } from "@shared/schema";
 
 let socket: Socket | null = null;
 
-const MEDAL_STYLES = [
-  { bg: "from-yellow-400 to-amber-500", ring: "ring-yellow-400/60", text: "text-yellow-400", label: "Oltin", shadow: "shadow-yellow-400/30" },
-  { bg: "from-gray-300 to-gray-400", ring: "ring-gray-300/60", text: "text-gray-300", label: "Kumush", shadow: "shadow-gray-300/30" },
-  { bg: "from-amber-600 to-amber-700", ring: "ring-amber-600/60", text: "text-amber-600", label: "Bronza", shadow: "shadow-amber-600/30" },
+const PODIUM_CONFIG = [
+  {
+    gradient: "from-yellow-300 via-yellow-400 to-amber-500",
+    glow: "0 0 40px rgba(251,191,36,0.5), 0 0 80px rgba(251,191,36,0.2)",
+    avatarGradient: "from-yellow-300 to-amber-500",
+    ringColor: "ring-yellow-400/80",
+    height: 220,
+    icon: Crown,
+    iconSize: "w-12 h-12",
+    iconColor: "text-yellow-400",
+    avatarSize: "w-24 h-24",
+    fontSize: "text-6xl",
+    label: "1",
+  },
+  {
+    gradient: "from-slate-300 via-gray-300 to-slate-400",
+    glow: "0 0 30px rgba(148,163,184,0.4), 0 0 60px rgba(148,163,184,0.15)",
+    avatarGradient: "from-slate-300 to-gray-400",
+    ringColor: "ring-slate-300/80",
+    height: 170,
+    icon: Medal,
+    iconSize: "w-9 h-9",
+    iconColor: "text-slate-400",
+    avatarSize: "w-20 h-20",
+    fontSize: "text-5xl",
+    label: "2",
+  },
+  {
+    gradient: "from-amber-500 via-amber-600 to-orange-700",
+    glow: "0 0 25px rgba(217,119,6,0.4), 0 0 50px rgba(217,119,6,0.15)",
+    avatarGradient: "from-amber-500 to-orange-700",
+    ringColor: "ring-amber-600/80",
+    height: 130,
+    icon: Award,
+    iconSize: "w-9 h-9",
+    iconColor: "text-amber-600",
+    avatarSize: "w-20 h-20",
+    fontSize: "text-5xl",
+    label: "3",
+  },
 ];
-
-const PODIUM_HEIGHTS = [180, 220, 140];
 const PODIUM_ORDER = [1, 0, 2];
+
+function AnimatedScore({ value, delay }: { value: number; delay: number }) {
+  const [display, setDisplay] = useState(0);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const duration = 1200;
+      const start = performance.now();
+      const animate = (now: number) => {
+        const elapsed = now - start;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        setDisplay(Math.round(eased * value));
+        if (progress < 1) requestAnimationFrame(animate);
+      };
+      requestAnimationFrame(animate);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return <>{display}</>;
+}
 
 export default function TeacherLive() {
   const { toast } = useToast();
@@ -424,7 +478,6 @@ export default function TeacherLive() {
               <p className="text-sm text-muted-foreground">{participants.length} o'quvchi</p>
             </div>
             {leaderboard.slice(0, 10).map((entry, i) => {
-              const medal = MEDAL_STYLES[i];
               return (
                 <motion.div key={entry.participantId} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }}>
                   <Card className={`p-3 ${i === 0 ? "ring-2 ring-yellow-400/40" : ""}`} data-testid={`card-rank-${i}`}>
@@ -445,8 +498,10 @@ export default function TeacherLive() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-xl font-bold">{entry.score}</p>
-                        {i < 3 && medal && (
-                          <span className={`text-xs font-medium ${medal.text}`}>{medal.label}</span>
+                        {i < 3 && (
+                          <span className={`text-xs font-medium ${i === 0 ? "text-yellow-400" : i === 1 ? "text-slate-400" : "text-amber-600"}`}>
+                            {i === 0 ? "Oltin" : i === 1 ? "Kumush" : "Bronza"}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -468,84 +523,138 @@ export default function TeacherLive() {
         )}
 
         {phase === "finished" && (
-          <motion.div key="finished" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-2xl mx-auto space-y-6">
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center">
-              <h2 className="text-3xl font-bold mb-1" data-testid="text-final-results">Yakuniy Natijalar</h2>
+          <motion.div key="finished" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-3xl mx-auto space-y-8">
+            <motion.div initial={{ opacity: 0, y: -30 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", damping: 15 }} className="text-center">
+              <motion.div
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ delay: 0.2, type: "spring", damping: 10 }}
+                className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 mb-3"
+                style={{ boxShadow: "0 0 30px rgba(251,191,36,0.4)" }}
+              >
+                <Trophy className="w-8 h-8 text-white" />
+              </motion.div>
+              <h2 className="text-3xl font-black tracking-tight mb-1" data-testid="text-final-results">Yakuniy Natijalar</h2>
               <p className="text-muted-foreground">{participants.length} o'quvchi ishtirok etdi</p>
             </motion.div>
 
             {leaderboard.length >= 1 && (
-              <div className="flex items-end justify-center gap-3 md:gap-6 pt-4 pb-2" data-testid="podium-container">
-                {PODIUM_ORDER.map((pos) => {
-                  const entry = leaderboard[pos];
-                  if (!entry) return <div key={pos} className="w-28 md:w-32" />;
-                  const medal = MEDAL_STYLES[pos];
-                  const height = PODIUM_HEIGHTS[pos];
-                  return (
-                    <motion.div
-                      key={pos}
-                      initial={{ opacity: 0, y: 60 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: pos === 0 ? 0.6 : pos === 1 ? 0.3 : 0.9, type: "spring", damping: 12 }}
-                      className="flex flex-col items-center"
-                      data-testid={`podium-place-${pos + 1}`}
-                    >
-                      <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ delay: pos === 0 ? 0.8 : pos === 1 ? 0.5 : 1.1, type: "spring" }}
-                        className="mb-2"
-                      >
-                        {pos === 0 && <Crown className="w-10 h-10 text-yellow-400 mx-auto drop-shadow-lg" />}
-                        {pos === 1 && <Medal className="w-8 h-8 text-gray-400 mx-auto" />}
-                        {pos === 2 && <Award className="w-8 h-8 text-amber-600 mx-auto" />}
-                      </motion.div>
+              <div className="relative" data-testid="podium-container" style={{ perspective: "1000px" }}>
+                <div className="flex items-end justify-center gap-2 md:gap-4 pt-8 pb-2 px-2">
+                  {PODIUM_ORDER.map((pos) => {
+                    const entry = leaderboard[pos];
+                    if (!entry) return <div key={pos} className="w-28 md:w-36" />;
+                    const config = PODIUM_CONFIG[pos];
+                    const IconComp = config.icon;
+                    const baseDelay = pos === 0 ? 0.5 : pos === 1 ? 0.2 : 0.8;
 
+                    return (
                       <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ delay: pos === 0 ? 0.9 : pos === 1 ? 0.6 : 1.2, type: "spring" }}
-                        className={`w-16 h-16 md:w-20 md:h-20 rounded-full bg-gradient-to-br ${medal.bg} flex items-center justify-center shadow-lg ${medal.shadow} ring-2 ${medal.ring}`}
+                        key={pos}
+                        initial={{ opacity: 0, y: 80 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: baseDelay, type: "spring", damping: 12, stiffness: 100 }}
+                        className="flex flex-col items-center"
+                        data-testid={`podium-place-${pos + 1}`}
                       >
-                        <span className="text-white font-bold text-xl md:text-2xl">{entry.name.charAt(0).toUpperCase()}</span>
-                      </motion.div>
+                        <motion.div
+                          initial={{ scale: 0, rotate: -30 }}
+                          animate={{ scale: 1, rotate: 0 }}
+                          transition={{ delay: baseDelay + 0.3, type: "spring", damping: 8 }}
+                          className="mb-1"
+                        >
+                          {pos === 0 ? (
+                            <motion.div
+                              animate={{ y: [0, -6, 0] }}
+                              transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+                            >
+                              <IconComp className={`${config.iconSize} ${config.iconColor} mx-auto`} style={{ filter: "drop-shadow(0 0 12px rgba(251,191,36,0.6))" }} />
+                            </motion.div>
+                          ) : (
+                            <IconComp className={`${config.iconSize} ${config.iconColor} mx-auto`} />
+                          )}
+                        </motion.div>
 
-                      <p className="text-sm font-semibold mt-1.5 truncate max-w-[6rem] text-center">{entry.name}</p>
-                      <p className="font-bold text-lg">{entry.score}</p>
-                      <p className="text-xs text-muted-foreground">{entry.correctAnswers} to'g'ri</p>
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ delay: baseDelay + 0.4, type: "spring", damping: 10 }}
+                          className={`${config.avatarSize} rounded-full bg-gradient-to-br ${config.avatarGradient} flex items-center justify-center ring-4 ${config.ringColor} relative`}
+                          style={{ boxShadow: config.glow }}
+                        >
+                          <span className="text-white font-black text-2xl md:text-3xl" style={{ textShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>
+                            {entry.name.charAt(0).toUpperCase()}
+                          </span>
+                        </motion.div>
 
-                      <motion.div
-                        initial={{ height: 0 }}
-                        animate={{ height }}
-                        transition={{ delay: pos === 0 ? 1.0 : pos === 1 ? 0.7 : 1.3, duration: 0.6, type: "spring" }}
-                        className={`w-28 md:w-32 rounded-t-md bg-gradient-to-t ${medal.bg} flex items-start justify-center pt-4 mt-1`}
-                        style={{ minHeight: 0 }}
-                      >
-                        <span className="text-white text-4xl md:text-5xl font-black drop-shadow">{pos + 1}</span>
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: baseDelay + 0.6 }}
+                          className="text-center mt-2 mb-1"
+                        >
+                          <p className="text-sm font-bold truncate max-w-[7rem]">{entry.name}</p>
+                          <p className="font-black text-xl tabular-nums">
+                            <AnimatedScore value={entry.score} delay={(baseDelay + 0.8) * 1000} />
+                          </p>
+                          <p className="text-xs text-muted-foreground">{entry.correctAnswers} to'g'ri</p>
+                        </motion.div>
+
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: config.height, opacity: 1 }}
+                          transition={{ delay: baseDelay + 0.5, duration: 0.8, type: "spring", damping: 14 }}
+                          className="w-28 md:w-36 rounded-t-xl relative overflow-hidden"
+                          style={{ minHeight: 0, transformStyle: "preserve-3d" }}
+                        >
+                          <div className={`absolute inset-0 bg-gradient-to-t ${config.gradient}`} />
+                          <div className="absolute inset-0 bg-gradient-to-r from-white/20 via-transparent to-transparent" />
+                          <div className="absolute bottom-0 left-0 right-0 h-1/3 bg-gradient-to-t from-black/20 to-transparent" />
+                          <div className="relative flex items-center justify-center h-full">
+                            <motion.span
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ delay: baseDelay + 1.0, type: "spring", damping: 8 }}
+                              className={`text-white ${config.fontSize} font-black`}
+                              style={{ textShadow: "0 4px 20px rgba(0,0,0,0.3)" }}
+                            >
+                              {pos + 1}
+                            </motion.span>
+                          </div>
+                        </motion.div>
                       </motion.div>
-                    </motion.div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+
+                <motion.div
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: 1 }}
+                  transition={{ delay: 1.2, duration: 0.5 }}
+                  className="h-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent mx-8"
+                />
               </div>
             )}
 
             {leaderboard.length > 3 && (
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-muted-foreground text-center">To'liq reyting</h3>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.5 }} className="space-y-2">
+                <h3 className="text-sm font-bold text-muted-foreground text-center uppercase tracking-wider mb-3">To'liq reyting</h3>
                 {leaderboard.slice(3).map((entry, i) => {
                   const rank = i + 4;
                   return (
-                    <motion.div key={entry.participantId} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.4 + i * 0.05 }}>
+                    <motion.div key={entry.participantId} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.6 + i * 0.06, type: "spring", damping: 15 }}>
                       <Card className="p-3" data-testid={`card-rank-${rank}`}>
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-sm text-muted-foreground shrink-0">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-muted to-muted/60 flex items-center justify-center font-bold text-sm text-muted-foreground shrink-0 ring-1 ring-border">
                             {rank}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium truncate text-sm">{entry.name}</p>
+                            <p className="font-semibold truncate text-sm">{entry.name}</p>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="font-bold">{entry.score}</p>
+                            <p className="font-bold tabular-nums">
+                              <AnimatedScore value={entry.score} delay={(1.6 + i * 0.06) * 1000} />
+                            </p>
                             <p className="text-xs text-muted-foreground">{entry.correctAnswers} to'g'ri</p>
                           </div>
                         </div>
@@ -553,10 +662,10 @@ export default function TeacherLive() {
                     </motion.div>
                   );
                 })}
-              </div>
+              </motion.div>
             )}
 
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.8 }} className="flex gap-3 justify-center flex-wrap">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 2.0, type: "spring" }} className="flex gap-3 justify-center flex-wrap">
               <Button variant="outline" onClick={() => { setPhase("setup"); setSession(null); setParticipants([]); setLeaderboard([]); }} data-testid="button-new-session">
                 Yangi sessiya
               </Button>

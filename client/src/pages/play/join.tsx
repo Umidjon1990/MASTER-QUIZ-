@@ -22,14 +22,68 @@ const optionColors = [
   "quiz-option-d",
 ];
 
-const MEDAL_STYLES = [
-  { bg: "from-yellow-400 to-amber-500", ring: "ring-yellow-400/60", text: "text-yellow-400", label: "Oltin", shadow: "shadow-yellow-400/30" },
-  { bg: "from-gray-300 to-gray-400", ring: "ring-gray-300/60", text: "text-gray-300", label: "Kumush", shadow: "shadow-gray-300/30" },
-  { bg: "from-amber-600 to-amber-700", ring: "ring-amber-600/60", text: "text-amber-600", label: "Bronza", shadow: "shadow-amber-600/30" },
+const PODIUM_CONFIG = [
+  {
+    gradient: "from-yellow-300 via-yellow-400 to-amber-500",
+    glow: "0 0 40px rgba(251,191,36,0.5), 0 0 80px rgba(251,191,36,0.2)",
+    avatarGradient: "from-yellow-300 to-amber-500",
+    ringColor: "ring-yellow-400/80",
+    height: 200,
+    icon: Crown,
+    iconSize: "w-10 h-10",
+    iconColor: "text-yellow-400",
+    avatarSize: "w-20 h-20",
+    fontSize: "text-5xl",
+    medalBg: "from-yellow-400 to-amber-500",
+  },
+  {
+    gradient: "from-slate-300 via-gray-300 to-slate-400",
+    glow: "0 0 30px rgba(148,163,184,0.4), 0 0 60px rgba(148,163,184,0.15)",
+    avatarGradient: "from-slate-300 to-gray-400",
+    ringColor: "ring-slate-300/80",
+    height: 150,
+    icon: Medal,
+    iconSize: "w-8 h-8",
+    iconColor: "text-slate-400",
+    avatarSize: "w-16 h-16",
+    fontSize: "text-4xl",
+    medalBg: "from-gray-300 to-gray-400",
+  },
+  {
+    gradient: "from-amber-500 via-amber-600 to-orange-700",
+    glow: "0 0 25px rgba(217,119,6,0.4), 0 0 50px rgba(217,119,6,0.15)",
+    avatarGradient: "from-amber-500 to-orange-700",
+    ringColor: "ring-amber-600/80",
+    height: 110,
+    icon: Award,
+    iconSize: "w-8 h-8",
+    iconColor: "text-amber-600",
+    avatarSize: "w-16 h-16",
+    fontSize: "text-4xl",
+    medalBg: "from-amber-600 to-amber-700",
+  },
 ];
-
-const PODIUM_HEIGHTS = [160, 200, 120];
 const PODIUM_ORDER = [1, 0, 2];
+
+function AnimatedScore({ value, delay }: { value: number; delay: number }) {
+  const [display, setDisplay] = useState(0);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const duration = 1200;
+      const start = performance.now();
+      const animate = (now: number) => {
+        const elapsed = now - start;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        setDisplay(Math.round(eased * value));
+        if (progress < 1) requestAnimationFrame(animate);
+      };
+      requestAnimationFrame(animate);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return <>{display}</>;
+}
 
 export default function JoinPlay() {
   const { user } = useAuth();
@@ -434,7 +488,6 @@ export default function JoinPlay() {
             </div>
             {leaderboard.slice(0, 10).map((entry, i) => {
               const isMe = entry.participantId === participantId;
-              const medal = MEDAL_STYLES[i];
               return (
                 <motion.div key={entry.participantId} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.08 }}>
                   <Card className={`p-3 ${isMe ? "ring-2 ring-purple-500" : ""}`} data-testid={`card-lb-${i}`}>
@@ -457,8 +510,10 @@ export default function JoinPlay() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-xl font-bold">{entry.score}</p>
-                        {i < 3 && medal && (
-                          <span className={`text-xs font-medium ${medal.text}`}>{medal.label}</span>
+                        {i < 3 && (
+                          <span className={`text-xs font-medium ${i === 0 ? "text-yellow-400" : i === 1 ? "text-slate-400" : "text-amber-600"}`}>
+                            {i === 0 ? "Oltin" : i === 1 ? "Kumush" : "Bronza"}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -479,65 +534,92 @@ export default function JoinPlay() {
             </motion.div>
 
             {leaderboard.length >= 1 && (
-              <div className="flex items-end justify-center gap-3 md:gap-6 pt-4 pb-2" data-testid="podium-container">
-                {PODIUM_ORDER.map((pos) => {
-                  const entry = leaderboard[pos];
-                  if (!entry) return <div key={pos} className="w-24 md:w-28" />;
-                  const medal = MEDAL_STYLES[pos];
-                  const isMe = entry.participantId === participantId;
-                  const height = PODIUM_HEIGHTS[pos];
-                  return (
-                    <motion.div
-                      key={pos}
-                      initial={{ opacity: 0, y: 60 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: pos === 0 ? 0.6 : pos === 1 ? 0.3 : 0.9, type: "spring", damping: 12 }}
-                      className="flex flex-col items-center"
-                      data-testid={`podium-place-${pos + 1}`}
-                    >
-                      <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ delay: pos === 0 ? 0.8 : pos === 1 ? 0.5 : 1.1, type: "spring" }}
-                        className="mb-2"
-                      >
-                        {pos === 0 && <Crown className="w-8 h-8 text-yellow-400 mx-auto drop-shadow-lg" />}
-                        {pos === 1 && <Medal className="w-7 h-7 text-gray-400 mx-auto" />}
-                        {pos === 2 && <Award className="w-7 h-7 text-amber-600 mx-auto" />}
-                      </motion.div>
+              <div className="relative" data-testid="podium-container" style={{ perspective: "1000px" }}>
+                <div className="flex items-end justify-center gap-2 md:gap-4 pt-8 pb-2 px-2">
+                  {PODIUM_ORDER.map((pos) => {
+                    const entry = leaderboard[pos];
+                    if (!entry) return <div key={pos} className="w-24 md:w-32" />;
+                    const config = PODIUM_CONFIG[pos];
+                    const IconComp = config.icon;
+                    const isMe = entry.participantId === participantId;
+                    const baseDelay = pos === 0 ? 0.5 : pos === 1 ? 0.2 : 0.8;
 
+                    return (
                       <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        transition={{ delay: pos === 0 ? 0.9 : pos === 1 ? 0.6 : 1.2, type: "spring" }}
-                        className={`w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br ${medal.bg} flex items-center justify-center shadow-lg ${medal.shadow} ${isMe ? "ring-4 ring-purple-500" : `ring-2 ${medal.ring}`}`}
+                        key={pos}
+                        initial={{ opacity: 0, y: 80 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: baseDelay, type: "spring", damping: 12, stiffness: 100 }}
+                        className="flex flex-col items-center"
+                        data-testid={`podium-place-${pos + 1}`}
                       >
-                        <span className="text-white font-bold text-lg md:text-xl">{entry.name.charAt(0).toUpperCase()}</span>
-                      </motion.div>
+                        <motion.div
+                          initial={{ scale: 0, rotate: -30 }}
+                          animate={{ scale: 1, rotate: 0 }}
+                          transition={{ delay: baseDelay + 0.3, type: "spring", damping: 8 }}
+                          className="mb-1"
+                        >
+                          {pos === 0 ? (
+                            <motion.div animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}>
+                              <IconComp className={`${config.iconSize} ${config.iconColor} mx-auto`} style={{ filter: "drop-shadow(0 0 12px rgba(251,191,36,0.6))" }} />
+                            </motion.div>
+                          ) : (
+                            <IconComp className={`${config.iconSize} ${config.iconColor} mx-auto`} />
+                          )}
+                        </motion.div>
 
-                      <p className={`text-sm font-semibold mt-1.5 truncate max-w-[5.5rem] text-center ${isMe ? "text-gradient" : ""}`}>
-                        {entry.name}
-                      </p>
-                      <p className="font-bold text-lg">{entry.score}</p>
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ delay: baseDelay + 0.4, type: "spring", damping: 10 }}
+                          className={`${config.avatarSize} rounded-full bg-gradient-to-br ${config.avatarGradient} flex items-center justify-center ${isMe ? "ring-4 ring-purple-500" : `ring-4 ${config.ringColor}`} relative`}
+                          style={{ boxShadow: isMe ? "0 0 30px rgba(168,85,247,0.5)" : config.glow }}
+                        >
+                          <span className="text-white font-black text-xl md:text-2xl" style={{ textShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>
+                            {entry.name.charAt(0).toUpperCase()}
+                          </span>
+                        </motion.div>
 
-                      <motion.div
-                        initial={{ height: 0 }}
-                        animate={{ height }}
-                        transition={{ delay: pos === 0 ? 1.0 : pos === 1 ? 0.7 : 1.3, duration: 0.6, type: "spring" }}
-                        className={`w-24 md:w-28 rounded-t-md bg-gradient-to-t ${medal.bg} flex items-start justify-center pt-3 mt-1`}
-                        style={{ minHeight: 0 }}
-                      >
-                        <span className="text-white text-3xl md:text-4xl font-black drop-shadow">{pos + 1}</span>
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: baseDelay + 0.6 }} className="text-center mt-2 mb-1">
+                          <p className={`text-sm font-bold truncate max-w-[6rem] ${isMe ? "text-gradient" : ""}`}>{entry.name}</p>
+                          <p className="font-black text-lg tabular-nums">
+                            <AnimatedScore value={entry.score} delay={(baseDelay + 0.8) * 1000} />
+                          </p>
+                        </motion.div>
+
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: config.height, opacity: 1 }}
+                          transition={{ delay: baseDelay + 0.5, duration: 0.8, type: "spring", damping: 14 }}
+                          className="w-24 md:w-32 rounded-t-xl relative overflow-hidden"
+                          style={{ minHeight: 0 }}
+                        >
+                          <div className={`absolute inset-0 bg-gradient-to-t ${config.gradient}`} />
+                          <div className="absolute inset-0 bg-gradient-to-r from-white/20 via-transparent to-transparent" />
+                          <div className="absolute bottom-0 left-0 right-0 h-1/3 bg-gradient-to-t from-black/20 to-transparent" />
+                          <div className="relative flex items-center justify-center h-full">
+                            <motion.span
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ delay: baseDelay + 1.0, type: "spring", damping: 8 }}
+                              className={`text-white ${config.fontSize} font-black`}
+                              style={{ textShadow: "0 4px 20px rgba(0,0,0,0.3)" }}
+                            >
+                              {pos + 1}
+                            </motion.span>
+                          </div>
+                        </motion.div>
                       </motion.div>
-                    </motion.div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+                <motion.div initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ delay: 1.2, duration: 0.5 }} className="h-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent mx-8" />
               </div>
             )}
 
             {myRank <= 3 && myRank >= 1 && (
               <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 1.5 }} className="text-center" data-testid="text-medal-message">
-                <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-md bg-gradient-to-r ${MEDAL_STYLES[myRank - 1].bg} text-white font-bold shadow-lg`}>
+                <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-md bg-gradient-to-r ${PODIUM_CONFIG[myRank - 1].medalBg} text-white font-bold shadow-lg`}>
                   <Flame className="w-5 h-5" />
                   {myRank === 1 ? "Tabriklaymiz! Siz g'olib bo'ldingiz!" : myRank === 2 ? "Ajoyib! 2-o'rin!" : "Zo'r! 3-o'rin!"}
                   <Flame className="w-5 h-5" />
@@ -546,20 +628,20 @@ export default function JoinPlay() {
             )}
 
             {leaderboard.length > 3 && (
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-muted-foreground text-center">To'liq reyting</h3>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.5 }} className="space-y-2">
+                <h3 className="text-sm font-bold text-muted-foreground text-center uppercase tracking-wider mb-3">To'liq reyting</h3>
                 {leaderboard.slice(3).map((entry, i) => {
                   const isMe = entry.participantId === participantId;
                   const rank = i + 4;
                   return (
-                    <motion.div key={entry.participantId} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.4 + i * 0.05 }}>
+                    <motion.div key={entry.participantId} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 1.6 + i * 0.06, type: "spring", damping: 15 }}>
                       <Card className={`p-3 ${isMe ? "ring-2 ring-purple-500" : ""}`} data-testid={`card-rank-${rank}`}>
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-sm text-muted-foreground shrink-0">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-muted to-muted/60 flex items-center justify-center font-bold text-sm text-muted-foreground shrink-0 ring-1 ring-border">
                             {rank}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className={`font-medium truncate text-sm ${isMe ? "text-gradient" : ""}`}>
+                            <p className={`font-semibold truncate text-sm ${isMe ? "text-gradient" : ""}`}>
                               {entry.name} {isMe ? "(Siz)" : ""}
                             </p>
                           </div>
@@ -572,7 +654,7 @@ export default function JoinPlay() {
                     </motion.div>
                   );
                 })}
-              </div>
+              </motion.div>
             )}
 
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2 }}>
