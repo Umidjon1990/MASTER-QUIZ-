@@ -454,13 +454,13 @@ export default function TeacherLessonLive() {
   }, [stopAudioLevelMonitor]);
 
   useEffect(() => {
-    if (showDeviceSettings && audioEnabled && localStreamRef.current) {
+    if ((showDeviceSettings || isRecording) && audioEnabled && localStreamRef.current) {
       startAudioLevelMonitor();
     } else {
       stopAudioLevelMonitor();
     }
     return () => { stopAudioLevelMonitor(); };
-  }, [showDeviceSettings, audioEnabled, startAudioLevelMonitor, stopAudioLevelMonitor]);
+  }, [showDeviceSettings, isRecording, audioEnabled, startAudioLevelMonitor, stopAudioLevelMonitor]);
 
   const switchVideoDevice = async (deviceId: string) => {
     setSelectedVideoDevice(deviceId);
@@ -994,9 +994,31 @@ export default function TeacherLessonLive() {
             </Button>
           )}
           {isRecording && (
-            <Badge variant="destructive" className="gap-1 animate-pulse" data-testid="badge-recording-time">
-              <span className="w-2 h-2 rounded-full bg-white" /> {formatRecTime(recordingTime)}
-            </Badge>
+            <>
+              <Badge variant="destructive" className="gap-1 animate-pulse" data-testid="badge-recording-time">
+                <span className="w-2 h-2 rounded-full bg-white" /> {formatRecTime(recordingTime)}
+              </Badge>
+              {audioEnabled && (
+                <div className="flex items-center gap-0.5" data-testid="recording-audio-level">
+                  {[...Array(5)].map((_, i) => {
+                    const threshold = (i + 1) * 20;
+                    const active = audioLevel >= threshold;
+                    return (
+                      <div
+                        key={i}
+                        className="w-1 rounded-full transition-all duration-75"
+                        style={{
+                          height: `${6 + i * 2}px`,
+                          backgroundColor: active
+                            ? audioLevel > 80 ? "#ef4444" : audioLevel > 50 ? "#eab308" : "#22c55e"
+                            : "rgba(255,255,255,0.3)",
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
           <Button size="icon" variant="ghost" className="text-white" onClick={copyLink} data-testid="button-copy-link">
             <Link2 className="w-4 h-4" />
