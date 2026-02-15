@@ -67,6 +67,8 @@ export default function TeacherLessonLive() {
   const [selectedAudioDevice, setSelectedAudioDevice] = useState<string>("");
   const [selectedVideoDevice, setSelectedVideoDevice] = useState<string>("");
   const [showDeviceSettings, setShowDeviceSettings] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const audioAnalyserRef = useRef<{ ctx: AudioContext; analyser: AnalyserNode; source: MediaStreamAudioSourceNode; animId: number } | null>(null);
 
   const [lessonMode, setLessonMode] = useState<"pdf" | "screen" | "voice">("pdf");
   const [showControls, setShowControls] = useState(true);
@@ -403,11 +405,62 @@ export default function TeacherLessonLive() {
           const newTrack = newStream.getAudioTracks()[0];
           if (sender && newTrack) sender.replaceTrack(newTrack);
         });
+        if (showDeviceSettings) startAudioLevelMonitor();
       } catch {
         toast({ title: "Qurilmani almashtirish xatoligi", variant: "destructive" });
       }
     }
   };
+
+  const stopAudioLevelMonitor = useCallback(() => {
+    if (audioAnalyserRef.current) {
+      cancelAnimationFrame(audioAnalyserRef.current.animId);
+      audioAnalyserRef.current.source.disconnect();
+      audioAnalyserRef.current.ctx.close().catch(() => {});
+      audioAnalyserRef.current = null;
+    }
+    setAudioLevel(0);
+  }, []);
+
+  const startAudioLevelMonitor = useCallback(() => {
+    stopAudioLevelMonitor();
+    const stream = localStreamRef.current;
+    if (!stream || stream.getAudioTracks().length === 0) {
+      setAudioLevel(0);
+      return;
+    }
+    try {
+      const ctx = new AudioContext();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.5;
+      source.connect(analyser);
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+        const avg = sum / dataArray.length;
+        setAudioLevel(Math.min(100, Math.round((avg / 128) * 100)));
+        const id = requestAnimationFrame(tick);
+        if (audioAnalyserRef.current) audioAnalyserRef.current.animId = id;
+      };
+      const animId = requestAnimationFrame(tick);
+      audioAnalyserRef.current = { ctx, analyser, source, animId };
+    } catch {
+      setAudioLevel(0);
+    }
+  }, [stopAudioLevelMonitor]);
+
+  useEffect(() => {
+    if (showDeviceSettings && audioEnabled && localStreamRef.current) {
+      startAudioLevelMonitor();
+    } else {
+      stopAudioLevelMonitor();
+    }
+    return () => { stopAudioLevelMonitor(); };
+  }, [showDeviceSettings, audioEnabled, startAudioLevelMonitor, stopAudioLevelMonitor]);
 
   const switchVideoDevice = async (deviceId: string) => {
     setSelectedVideoDevice(deviceId);
@@ -976,6 +1029,24 @@ export default function TeacherLessonLive() {
                 ))}
               </SelectContent>
             </Select>
+            <div className="flex items-center gap-1" data-testid="audio-level-meter">
+              {[...Array(5)].map((_, i) => {
+                const threshold = (i + 1) * 20;
+                const active = audioLevel >= threshold;
+                return (
+                  <div
+                    key={i}
+                    className="w-1 rounded-full transition-all duration-75"
+                    style={{
+                      height: `${8 + i * 3}px`,
+                      backgroundColor: active
+                        ? audioLevel > 80 ? "#ef4444" : audioLevel > 50 ? "#eab308" : "#22c55e"
+                        : "rgba(255,255,255,0.2)",
+                    }}
+                  />
+                );
+              })}
+            </div>
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <Video className="w-3.5 h-3.5 text-white/70 shrink-0" />
