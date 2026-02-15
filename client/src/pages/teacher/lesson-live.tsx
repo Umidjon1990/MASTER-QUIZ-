@@ -607,6 +607,15 @@ export default function TeacherLessonLive() {
 
         const ctx = canvas.getContext("2d")!;
 
+        const testStream = canvas.captureStream(0);
+        const testTrack = testStream.getVideoTracks()[0] as any;
+        const hasRequestFrame = testTrack && typeof testTrack.requestFrame === "function";
+        testStream.getTracks().forEach(t => t.stop());
+
+        const canvasStream = hasRequestFrame
+          ? canvas.captureStream(0)
+          : canvas.captureStream(30);
+
         const drawFrame = () => {
           const c = activeRecordCropRef.current;
           if (c && recordCanvasRef.current) {
@@ -617,11 +626,13 @@ export default function TeacherLessonLive() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(video, cX, cY, cW, cH, 0, 0, canvas.width, canvas.height);
           }
-          recordAnimFrameRef.current = requestAnimationFrame(drawFrame);
+          if (hasRequestFrame) {
+            (canvasStream.getVideoTracks()[0] as any)?.requestFrame?.();
+          }
         };
+        recordAnimFrameRef.current = setInterval(drawFrame, 33) as unknown as number;
         drawFrame();
 
-        const canvasStream = canvas.captureStream(30);
         recordStream = new MediaStream();
         canvasStream.getVideoTracks().forEach(t => recordStream.addTrack(t));
       } else {
@@ -637,7 +648,7 @@ export default function TeacherLessonLive() {
       screenStream.getAudioTracks().forEach(t => recordStream.addTrack(t));
 
       const { mime, ext } = getRecordingMimeType();
-      const recorder = new MediaRecorder(recordStream, { mimeType: mime, videoBitsPerSecond: 5_000_000 });
+      const recorder = new MediaRecorder(recordStream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
       recordedChunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
@@ -657,7 +668,7 @@ export default function TeacherLessonLive() {
         setActiveRecordCrop(null);
         activeRecordCropRef.current = null;
         if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-        if (recordAnimFrameRef.current) cancelAnimationFrame(recordAnimFrameRef.current);
+        if (recordAnimFrameRef.current) clearInterval(recordAnimFrameRef.current);
         recordCanvasRef.current = null;
         recordVideoElRef.current = null;
         recordScreenStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -701,7 +712,7 @@ export default function TeacherLessonLive() {
       mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
     }
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-    if (recordAnimFrameRef.current) cancelAnimationFrame(recordAnimFrameRef.current);
+    if (recordAnimFrameRef.current) clearInterval(recordAnimFrameRef.current);
     recordCanvasRef.current = null;
     recordVideoElRef.current = null;
     setActiveRecordCrop(null);
