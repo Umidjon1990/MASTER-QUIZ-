@@ -5,8 +5,6 @@ import { useRoute, useLocation } from "wouter";
 import { io, Socket } from "socket.io-client";
 import PDFViewer from "@/components/pdf-viewer";
 import LessonChat from "@/components/lesson-chat";
-import RecordCropSelector, { type CropRegion } from "@/components/record-crop-selector";
-import RecordingCropOverlay from "@/components/recording-crop-overlay";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -62,15 +60,7 @@ export default function TeacherLessonLive() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [showRecordCropSelector, setShowRecordCropSelector] = useState(false);
   const recordScreenStreamRef = useRef<MediaStream | null>(null);
-  const recordCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const recordAnimFrameRef = useRef<number>(0);
-  const [recordSnapshot, setRecordSnapshot] = useState<{ url: string; w: number; h: number } | null>(null);
-  const [activeRecordCrop, setActiveRecordCrop] = useState<CropRegion | null>(null);
-  const activeRecordCropRef = useRef<CropRegion | null>(null);
-  const recordVideoElRef = useRef<HTMLVideoElement | null>(null);
-  const recordSrcSizeRef = useRef<{ w: number; h: number }>({ w: 1920, h: 1080 });
 
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
@@ -513,7 +503,7 @@ export default function TeacherLessonLive() {
           if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
         };
 
-        recorder.start(10000);
+        recorder.start();
         mediaRecorderRef.current = recorder;
         setIsRecording(true);
         setRecordingTime(0);
@@ -533,119 +523,12 @@ export default function TeacherLessonLive() {
 
       recordScreenStreamRef.current = screenStream;
 
-      screenStream.getVideoTracks()[0].onended = () => {
-        if (showRecordCropSelector) {
-          setShowRecordCropSelector(false);
-          setRecordSnapshot(null);
-          recordScreenStreamRef.current = null;
-        } else {
-          stopRecording();
-        }
-      };
-
-      const snapVideo = document.createElement("video");
-      snapVideo.srcObject = screenStream;
-      snapVideo.muted = true;
-      snapVideo.playsInline = true;
-      await new Promise<void>((resolve) => {
-        snapVideo.onloadedmetadata = () => { snapVideo.play(); resolve(); };
-      });
-      await new Promise(r => setTimeout(r, 500));
-      const snapCanvas = document.createElement("canvas");
-      snapCanvas.width = snapVideo.videoWidth;
-      snapCanvas.height = snapVideo.videoHeight;
-      const snapCtx = snapCanvas.getContext("2d");
-      if (snapCtx) {
-        snapCtx.drawImage(snapVideo, 0, 0);
-      }
-      snapVideo.pause();
-      snapVideo.srcObject = null;
-      const snapUrl = snapCanvas.toDataURL("image/jpeg", 0.9);
-      setRecordSnapshot({ url: snapUrl, w: snapCanvas.width, h: snapCanvas.height });
-      setShowRecordCropSelector(true);
-    } catch (err: any) {
-      if (err?.name !== "NotAllowedError") {
-        toast({ title: "Yozib olishni boshlab bo'lmadi", variant: "destructive" });
-      }
-    }
-  };
-
-  const handleRecordCropConfirm = (crop: CropRegion | null) => {
-    setShowRecordCropSelector(false);
-    setRecordSnapshot(null);
-    const screenStream = recordScreenStreamRef.current;
-    if (!screenStream) return;
-
-    try {
-      const videoTrack = screenStream.getVideoTracks()[0];
-      if (!videoTrack) return;
-
-      const settings = videoTrack.getSettings();
-      const srcW = settings.width || 1920;
-      const srcH = settings.height || 1080;
-      recordSrcSizeRef.current = { w: srcW, h: srcH };
-
-      const video = document.createElement("video");
-      video.srcObject = screenStream;
-      video.muted = true;
-      video.playsInline = true;
-      video.play();
-      recordVideoElRef.current = video;
-
-      let recordStream: MediaStream;
-
-      if (crop) {
-        activeRecordCropRef.current = crop;
-        setActiveRecordCrop(crop);
-
-        const initW = Math.round(crop.w * srcW);
-        const initH = Math.round(crop.h * srcH);
-        const canvas = document.createElement("canvas");
-        canvas.width = initW;
-        canvas.height = initH;
-        recordCanvasRef.current = canvas;
-
-        const ctx = canvas.getContext("2d")!;
-
-        const testStream = canvas.captureStream(0);
-        const testTrack = testStream.getVideoTracks()[0] as any;
-        const hasRequestFrame = testTrack && typeof testTrack.requestFrame === "function";
-        testStream.getTracks().forEach(t => t.stop());
-
-        const canvasStream = hasRequestFrame
-          ? canvas.captureStream(0)
-          : canvas.captureStream(30);
-
-        const drawFrame = () => {
-          const c = activeRecordCropRef.current;
-          if (c && recordCanvasRef.current) {
-            const cX = Math.round(c.x * srcW);
-            const cY = Math.round(c.y * srcH);
-            const cW = Math.round(c.w * srcW);
-            const cH = Math.round(c.h * srcH);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(video, cX, cY, cW, cH, 0, 0, canvas.width, canvas.height);
-          }
-          if (hasRequestFrame) {
-            (canvasStream.getVideoTracks()[0] as any)?.requestFrame?.();
-          }
-        };
-        recordAnimFrameRef.current = setInterval(drawFrame, 33) as unknown as number;
-        drawFrame();
-
-        recordStream = new MediaStream();
-        canvasStream.getVideoTracks().forEach(t => recordStream.addTrack(t));
-      } else {
-        activeRecordCropRef.current = null;
-        setActiveRecordCrop(null);
-        recordStream = new MediaStream();
-        screenStream.getVideoTracks().forEach(t => recordStream.addTrack(t));
-      }
-
+      const recordStream = new MediaStream();
+      screenStream.getVideoTracks().forEach(t => recordStream.addTrack(t));
+      screenStream.getAudioTracks().forEach(t => recordStream.addTrack(t));
       if (localStreamRef.current) {
         localStreamRef.current.getAudioTracks().forEach(t => recordStream.addTrack(t));
       }
-      screenStream.getAudioTracks().forEach(t => recordStream.addTrack(t));
 
       const { mime, ext } = getRecordingMimeType();
       const recorder = new MediaRecorder(recordStream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
@@ -665,44 +548,25 @@ export default function TeacherLessonLive() {
         URL.revokeObjectURL(url);
         setIsRecording(false);
         setRecordingTime(0);
-        setActiveRecordCrop(null);
-        activeRecordCropRef.current = null;
         if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-        if (recordAnimFrameRef.current) clearInterval(recordAnimFrameRef.current);
-        recordCanvasRef.current = null;
-        recordVideoElRef.current = null;
         recordScreenStreamRef.current?.getTracks().forEach(t => t.stop());
         recordScreenStreamRef.current = null;
       };
 
-      videoTrack.onended = () => {
+      screenStream.getVideoTracks()[0].onended = () => {
         stopRecording();
       };
 
-      recorder.start(10000);
+      recorder.start();
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
       setRecordingTime(0);
       recordingTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
       toast({ title: "Yozib olish boshlandi" });
-    } catch (err) {
-      toast({ title: "Yozib olishni boshlab bo'lmadi", variant: "destructive" });
-      screenStream.getTracks().forEach(t => t.stop());
-      recordScreenStreamRef.current = null;
-    }
-  };
-
-  const handleActiveRecordCropChange = useCallback((newCrop: CropRegion) => {
-    activeRecordCropRef.current = newCrop;
-    setActiveRecordCrop(newCrop);
-  }, []);
-
-  const handleRecordCropCancel = () => {
-    setShowRecordCropSelector(false);
-    setRecordSnapshot(null);
-    if (recordScreenStreamRef.current) {
-      recordScreenStreamRef.current.getTracks().forEach(t => t.stop());
-      recordScreenStreamRef.current = null;
+    } catch (err: any) {
+      if (err?.name !== "NotAllowedError") {
+        toast({ title: "Yozib olishni boshlab bo'lmadi", variant: "destructive" });
+      }
     }
   };
 
@@ -712,11 +576,6 @@ export default function TeacherLessonLive() {
       mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
     }
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-    if (recordAnimFrameRef.current) clearInterval(recordAnimFrameRef.current);
-    recordCanvasRef.current = null;
-    recordVideoElRef.current = null;
-    setActiveRecordCrop(null);
-    activeRecordCropRef.current = null;
     if (recordScreenStreamRef.current) {
       recordScreenStreamRef.current.getTracks().forEach(t => t.stop());
       recordScreenStreamRef.current = null;
@@ -1226,15 +1085,6 @@ export default function TeacherLessonLive() {
 
       <LessonChat socket={socketState} isHost />
 
-      {showRecordCropSelector && recordSnapshot && (
-        <RecordCropSelector
-          snapshotUrl={recordSnapshot.url}
-          snapshotWidth={recordSnapshot.w}
-          snapshotHeight={recordSnapshot.h}
-          onConfirm={handleRecordCropConfirm}
-          onCancel={handleRecordCropCancel}
-        />
-      )}
     </div>
   );
 }
