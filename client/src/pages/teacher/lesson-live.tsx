@@ -319,7 +319,7 @@ export default function TeacherLessonLive() {
     const constraints: MediaStreamConstraints = {};
     if (audio) {
       constraints.audio = selectedAudioDevice
-        ? { deviceId: { exact: selectedAudioDevice }, echoCancellation: true, noiseSuppression: true }
+        ? { deviceId: { ideal: selectedAudioDevice }, echoCancellation: true, noiseSuppression: true }
         : { echoCancellation: true, noiseSuppression: true };
     }
     if (video) {
@@ -328,7 +328,7 @@ export default function TeacherLessonLive() {
         height: { ideal: 720 },
         frameRate: { ideal: 30 },
       };
-      if (selectedVideoDevice) videoConstraints.deviceId = { exact: selectedVideoDevice };
+      if (selectedVideoDevice) videoConstraints.deviceId = { ideal: selectedVideoDevice };
       constraints.video = videoConstraints;
     }
     return navigator.mediaDevices.getUserMedia(constraints);
@@ -398,7 +398,7 @@ export default function TeacherLessonLive() {
         localStreamRef.current!.removeTrack(t);
       });
       try {
-        const newStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId } } });
+        const newStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { ideal: deviceId }, echoCancellation: true, noiseSuppression: true } });
         newStream.getAudioTracks().forEach(t => localStreamRef.current!.addTrack(t));
         peerConnectionsRef.current.forEach(pc => {
           const sender = pc.getSenders().find(s => s.track?.kind === "audio");
@@ -470,7 +470,7 @@ export default function TeacherLessonLive() {
         localStreamRef.current!.removeTrack(t);
       });
       try {
-        const newStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } });
+        const newStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { ideal: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } });
         newStream.getVideoTracks().forEach(t => localStreamRef.current!.addTrack(t));
         if (videoRef.current) videoRef.current.srcObject = localStreamRef.current;
         peerConnectionsRef.current.forEach(pc => {
