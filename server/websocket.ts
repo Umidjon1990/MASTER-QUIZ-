@@ -8,6 +8,150 @@ export function getIO() {
   return io;
 }
 
+interface PublicRoomPlayer {
+  socketId: string;
+  name: string;
+  score: number;
+  correctAnswers: number;
+  totalAnswered: number;
+  playerId: string;
+}
+
+interface PublicRoom {
+  id: string;
+  quizId: string;
+  code: string;
+  hostSocketId: string;
+  hostPlayerId: string;
+  status: "waiting" | "playing" | "finished";
+  players: Map<string, PublicRoomPlayer>;
+  questions: any[];
+  quiz: any;
+  currentQuestionIndex: number;
+  questionTimer: ReturnType<typeof setTimeout> | null;
+  questionStartTime: number;
+  currentEffectiveTimeLimit: number;
+  answeredThisQuestion: Set<string>;
+}
+
+const publicRooms = new Map<string, PublicRoom>();
+const codeToRoomId = new Map<string, string>();
+
+function generateRoomCode(): string {
+  let code: string;
+  do {
+    code = String(Math.floor(100000 + Math.random() * 900000));
+  } while (codeToRoomId.has(code));
+  return code;
+}
+
+function cleanupRoom(roomId: string) {
+  const room = publicRooms.get(roomId);
+  if (room) {
+    if (room.questionTimer) clearTimeout(room.questionTimer);
+    codeToRoomId.delete(room.code);
+    publicRooms.delete(roomId);
+  }
+}
+
+function sendPublicQuestion(roomId: string) {
+  const room = publicRooms.get(roomId);
+  if (!room || !io) return;
+
+  const q = room.questions[room.currentQuestionIndex];
+  if (!q) return;
+
+  room.answeredThisQuestion = new Set();
+
+  let questionOptions = q.options ? [...(q.options as string[])] : null;
+  if (room.quiz.shuffleOptions && questionOptions) {
+    for (let i = questionOptions.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [questionOptions[i], questionOptions[j]] = [questionOptions[j], questionOptions[i]];
+    }
+  }
+
+  const timeLimit = q.timeLimit || room.quiz.timePerQuestion || 30;
+  room.currentEffectiveTimeLimit = timeLimit;
+  room.questionStartTime = Date.now();
+
+  io.to(`pubroom:${roomId}`).emit("public:question", {
+    index: room.currentQuestionIndex,
+    total: room.questions.length,
+    question: {
+      id: q.id,
+      type: q.type,
+      questionText: q.questionText,
+      mediaType: q.mediaType,
+      mediaUrl: q.mediaUrl,
+      options: questionOptions,
+      timeLimit,
+      points: q.type === "poll" ? 0 : q.points,
+    },
+  });
+
+  room.questionTimer = setTimeout(() => {
+    showPublicLeaderboard(roomId);
+  }, (timeLimit + 2) * 1000);
+}
+
+function showPublicLeaderboard(roomId: string) {
+  const room = publicRooms.get(roomId);
+  if (!room || !io) return;
+
+  const q = room.questions[room.currentQuestionIndex];
+  const leaderboard = Array.from(room.players.values())
+    .sort((a, b) => b.score - a.score)
+    .map((p, i) => ({
+      rank: i + 1,
+      name: p.name,
+      score: p.score,
+      correctAnswers: p.correctAnswers,
+      playerId: p.playerId,
+    }));
+
+  io.to(`pubroom:${roomId}`).emit("public:leaderboard", {
+    leaderboard,
+    correctAnswer: q?.correctAnswer || "",
+    questionIndex: room.currentQuestionIndex,
+    isLast: room.currentQuestionIndex >= room.questions.length - 1,
+  });
+}
+
+function finishPublicGame(roomId: string) {
+  const room = publicRooms.get(roomId);
+  if (!room || !io) return;
+
+  room.status = "finished";
+  if (room.questionTimer) {
+    clearTimeout(room.questionTimer);
+    room.questionTimer = null;
+  }
+
+  const leaderboard = Array.from(room.players.values())
+    .sort((a, b) => b.score - a.score)
+    .map((p, i) => ({
+      rank: i + 1,
+      name: p.name,
+      score: p.score,
+      correctAnswers: p.correctAnswers,
+      totalAnswered: p.totalAnswered,
+      playerId: p.playerId,
+    }));
+
+  const totalQuestions = room.questions.length;
+  const maxScore = room.questions.reduce((sum: number, q: any) => sum + (q.type === "poll" ? 0 : (q.points || 100)), 0);
+
+  io.to(`pubroom:${roomId}`).emit("public:game-finished", {
+    leaderboard,
+    totalQuestions,
+    maxScore,
+    quizTitle: room.quiz.title,
+  });
+
+  setTimeout(() => cleanupRoom(roomId), 5 * 60 * 1000);
+}
+
 export function setupWebSocket(httpServer: HttpServer) {
   io = new SocketServer(httpServer, {
     cors: { origin: "*" },
@@ -468,6 +612,243 @@ export function setupWebSocket(httpServer: HttpServer) {
       socket.to(`lesson:${lessonId}`).emit("lesson:stream-requested", { socketId: socket.id });
     });
 
+    socket.on("public:create-room", async (data, callback) => {
+      try {
+        const { quizId, playerName } = data;
+        if (!quizId || !playerName) return callback?.({ success: false, error: "Ma'lumotlar to'liq emas" });
+
+        const quiz = await storage.getQuiz(quizId);
+        if (!quiz || !quiz.isPublic) return callback?.({ success: false, error: "Quiz topilmadi yoki ommaviy emas" });
+
+        const questionsList = await storage.getQuestionsByQuiz(quizId);
+        if (questionsList.length === 0) return callback?.({ success: false, error: "Quizda savollar yo'q" });
+
+        const roomId = `pr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const code = generateRoomCode();
+        const hostPlayerId = `p_${socket.id}_${Date.now()}`;
+
+        const room: PublicRoom = {
+          id: roomId,
+          quizId,
+          code,
+          hostSocketId: socket.id,
+          hostPlayerId,
+          status: "waiting",
+          players: new Map(),
+          questions: questionsList,
+          quiz,
+          currentQuestionIndex: -1,
+          questionTimer: null,
+          questionStartTime: 0,
+          currentEffectiveTimeLimit: 30,
+          answeredThisQuestion: new Set(),
+        };
+
+        room.players.set(hostPlayerId, {
+          socketId: socket.id,
+          name: playerName,
+          score: 0,
+          correctAnswers: 0,
+          totalAnswered: 0,
+          playerId: hostPlayerId,
+        });
+
+        publicRooms.set(roomId, room);
+        codeToRoomId.set(code, roomId);
+
+        socket.join(`pubroom:${roomId}`);
+        socket.data.publicRoomId = roomId;
+        socket.data.publicPlayerId = hostPlayerId;
+        socket.data.isPublicHost = true;
+
+        callback?.({
+          success: true,
+          roomId,
+          code,
+          playerId: hostPlayerId,
+          quizTitle: quiz.title,
+          totalQuestions: questionsList.length,
+        });
+      } catch (err) {
+        console.error("Create public room error:", err);
+        callback?.({ success: false, error: "Xona yaratishda xatolik" });
+      }
+    });
+
+    socket.on("public:join-room", async (data, callback) => {
+      try {
+        const { code, playerName } = data;
+        if (!code || !playerName) return callback?.({ success: false, error: "Ma'lumotlar to'liq emas" });
+
+        const roomId = codeToRoomId.get(code);
+        if (!roomId) return callback?.({ success: false, error: "Xona topilmadi" });
+
+        const room = publicRooms.get(roomId);
+        if (!room) return callback?.({ success: false, error: "Xona topilmadi" });
+        if (room.status !== "waiting") return callback?.({ success: false, error: "O'yin allaqachon boshlangan" });
+
+        const playerId = `p_${socket.id}_${Date.now()}`;
+
+        room.players.set(playerId, {
+          socketId: socket.id,
+          name: playerName,
+          score: 0,
+          correctAnswers: 0,
+          totalAnswered: 0,
+          playerId,
+        });
+
+        socket.join(`pubroom:${roomId}`);
+        socket.data.publicRoomId = roomId;
+        socket.data.publicPlayerId = playerId;
+        socket.data.isPublicHost = false;
+
+        const playerList = Array.from(room.players.values()).map(p => ({ playerId: p.playerId, name: p.name }));
+
+        io.to(`pubroom:${roomId}`).emit("public:player-joined", {
+          playerId,
+          name: playerName,
+          players: playerList,
+          count: room.players.size,
+        });
+
+        callback?.({
+          success: true,
+          roomId,
+          playerId,
+          quizTitle: room.quiz.title,
+          totalQuestions: room.questions.length,
+          players: playerList,
+        });
+      } catch (err) {
+        console.error("Join public room error:", err);
+        callback?.({ success: false, error: "Qo'shilishda xatolik" });
+      }
+    });
+
+    socket.on("public:start-game", async (data, callback) => {
+      try {
+        const roomId = socket.data.publicRoomId;
+        if (!roomId || !socket.data.isPublicHost) return callback?.({ success: false, error: "Faqat host boshlashi mumkin" });
+
+        const room = publicRooms.get(roomId);
+        if (!room || room.status !== "waiting") return callback?.({ success: false, error: "Xona tayyor emas" });
+
+        room.status = "playing";
+        room.currentQuestionIndex = 0;
+
+        const quiz = room.quiz;
+        let questionsList = [...room.questions];
+        if (quiz.shuffleQuestions) {
+          for (let i = questionsList.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [questionsList[i], questionsList[j]] = [questionsList[j], questionsList[i]];
+          }
+          room.questions = questionsList;
+        }
+
+        io.to(`pubroom:${roomId}`).emit("public:game-started", {
+          totalQuestions: room.questions.length,
+        });
+
+        sendPublicQuestion(roomId);
+        callback?.({ success: true });
+      } catch (err) {
+        console.error("Start public game error:", err);
+        callback?.({ success: false, error: "O'yinni boshlashda xatolik" });
+      }
+    });
+
+    socket.on("public:answer", async (data) => {
+      try {
+        const roomId = socket.data.publicRoomId;
+        const playerId = socket.data.publicPlayerId;
+        if (!roomId || !playerId) return;
+
+        const room = publicRooms.get(roomId);
+        if (!room || room.status !== "playing") return;
+
+        const { questionId, answer } = data;
+        const question = room.questions[room.currentQuestionIndex];
+        if (!question || question.id !== questionId) return;
+
+        if (room.answeredThisQuestion.has(playerId)) return;
+
+        const elapsed = (Date.now() - room.questionStartTime) / 1000;
+        if (elapsed > room.currentEffectiveTimeLimit + 2) return;
+
+        room.answeredThisQuestion.add(playerId);
+
+        const player = room.players.get(playerId);
+        if (!player) return;
+
+        const timeSpent = Math.floor(elapsed);
+
+        let isCorrect = false;
+        let points = 0;
+
+        if (question.type === "poll") {
+          isCorrect = true;
+          points = 0;
+        } else if (question.type === "multiple_select") {
+          const correctArr = question.correctAnswer.split(",").map((s: string) => s.trim().toLowerCase());
+          const correctSet = new Set(correctArr);
+          const answerArr = Array.from(new Set(String(answer).split(",").map((s: string) => s.trim().toLowerCase())));
+          const correctCount = answerArr.filter((a: string) => correctSet.has(a)).length;
+          const wrongCount = answerArr.filter((a: string) => !correctSet.has(a)).length;
+          const totalCorrect = correctSet.size;
+          if (wrongCount === 0 && correctCount > 0) {
+            const ratio = correctCount / totalCorrect;
+            const timeBonus = Math.max(0, room.currentEffectiveTimeLimit - timeSpent);
+            points = Math.floor(((question.points || 100) + Math.floor(timeBonus * 2)) * ratio);
+            isCorrect = correctCount === totalCorrect;
+          }
+        } else {
+          isCorrect = question.correctAnswer.toLowerCase().trim() === String(answer).toLowerCase().trim();
+          const timeBonus = Math.max(0, room.currentEffectiveTimeLimit - timeSpent);
+          points = isCorrect ? (question.points || 100) + Math.floor(timeBonus * 2) : 0;
+        }
+
+        player.score += points;
+        player.correctAnswers += isCorrect ? 1 : 0;
+        player.totalAnswered += 1;
+
+        socket.emit("public:answer-result", {
+          isCorrect,
+          points,
+          correctAnswer: question.correctAnswer,
+          totalScore: player.score,
+        });
+
+        io.to(`pubroom:${roomId}`).emit("public:answer-received", {
+          playerId,
+          answeredCount: Array.from(room.players.values()).filter(p => p.totalAnswered > room.currentQuestionIndex).length,
+          totalPlayers: room.players.size,
+        });
+      } catch (err) {
+        console.error("Public answer error:", err);
+      }
+    });
+
+    socket.on("public:next-question", (data) => {
+      const roomId = socket.data.publicRoomId;
+      if (!roomId || !socket.data.isPublicHost) return;
+      const room = publicRooms.get(roomId);
+      if (!room || room.status !== "playing") return;
+
+      if (room.questionTimer) {
+        clearTimeout(room.questionTimer);
+        room.questionTimer = null;
+      }
+
+      room.currentQuestionIndex++;
+      if (room.currentQuestionIndex >= room.questions.length) {
+        finishPublicGame(roomId);
+      } else {
+        sendPublicQuestion(roomId);
+      }
+    });
+
     socket.on("lesson:chat-send", (data) => {
       if (!socket.data.lessonId) return;
       const { message, replyTo, name } = data;
@@ -511,6 +892,46 @@ export function setupWebSocket(httpServer: HttpServer) {
             name: socket.data.studentName,
             count,
           });
+        }
+      }
+      if (socket.data.publicRoomId) {
+        const pubRoom = publicRooms.get(socket.data.publicRoomId);
+        if (pubRoom) {
+          const playerId = socket.data.publicPlayerId;
+          if (playerId) {
+            pubRoom.players.delete(playerId);
+          }
+
+          if (pubRoom.players.size === 0) {
+            cleanupRoom(pubRoom.id);
+          } else if (socket.data.isPublicHost) {
+            const nextPlayer = Array.from(pubRoom.players.values())[0];
+            if (nextPlayer) {
+              pubRoom.hostSocketId = nextPlayer.socketId;
+              pubRoom.hostPlayerId = nextPlayer.playerId;
+              const nextSocket = io.sockets.sockets.get(nextPlayer.socketId);
+              if (nextSocket) {
+                nextSocket.data.isPublicHost = true;
+              }
+              io.to(`pubroom:${pubRoom.id}`).emit("public:host-changed", {
+                newHostId: nextPlayer.playerId,
+                newHostName: nextPlayer.name,
+              });
+            }
+            const playerList = Array.from(pubRoom.players.values()).map(p => ({ playerId: p.playerId, name: p.name }));
+            io.to(`pubroom:${pubRoom.id}`).emit("public:player-left", {
+              playerId,
+              players: playerList,
+              count: pubRoom.players.size,
+            });
+          } else {
+            const playerList = Array.from(pubRoom.players.values()).map(p => ({ playerId: p.playerId, name: p.name }));
+            io.to(`pubroom:${pubRoom.id}`).emit("public:player-left", {
+              playerId,
+              players: playerList,
+              count: pubRoom.players.size,
+            });
+          }
         }
       }
     });

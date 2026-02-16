@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { io as socketIO, Socket } from "socket.io-client";
 import {
   CheckCircle2,
   XCircle,
@@ -23,6 +24,13 @@ import {
   ArrowLeft,
   Copy,
   Check,
+  Users,
+  Crown,
+  Medal,
+  Loader2,
+  Gamepad2,
+  UserPlus,
+  Play,
 } from "lucide-react";
 
 interface QuizQuestion {
@@ -55,18 +63,50 @@ interface SubmitResult {
   results: Record<string, { answer: string | string[]; isCorrect: boolean; correctAnswer: string; points: number }>;
 }
 
+interface LeaderboardEntry {
+  rank: number;
+  name: string;
+  score: number;
+  correctAnswers: number;
+  playerId: string;
+  totalAnswered?: number;
+}
+
+type GameStage = "mode-select" | "name" | "create-or-join" | "lobby" | "playing" | "leaderboard" | "result" | "multi-result";
+
 export default function QuizPlayPage() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const socketRef = useRef<Socket | null>(null);
 
-  const [stage, setStage] = useState<"name" | "playing" | "result">("name");
+  const [stage, setStage] = useState<GameStage>("mode-select");
+  const [gameMode, setGameMode] = useState<"solo" | "multi">("solo");
   const [playerName, setPlayerName] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [timeLeft, setTimeLeft] = useState(0);
   const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+
+  const [roomCode, setRoomCode] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [roomId, setRoomId] = useState("");
+  const [playerId, setPlayerId] = useState("");
+  const [isHost, setIsHost] = useState(false);
+  const [players, setPlayers] = useState<{ playerId: string; name: string }[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<QuizQuestion | null>(null);
+  const [totalQuestions, setTotalQuestions] = useState(0);
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [myScore, setMyScore] = useState(0);
+  const [lastAnswerResult, setLastAnswerResult] = useState<{ isCorrect: boolean; points: number; correctAnswer: string } | null>(null);
+  const [hasAnswered, setHasAnswered] = useState(false);
+  const [answeredCount, setAnsweredCount] = useState(0);
+  const [totalPlayers, setTotalPlayers] = useState(0);
+  const [multiResult, setMultiResult] = useState<{ leaderboard: LeaderboardEntry[]; totalQuestions: number; maxScore: number; quizTitle: string } | null>(null);
+  const [isLastQuestion, setIsLastQuestion] = useState(false);
+  const [connecting, setConnecting] = useState(false);
 
   const { data, isLoading, error } = useQuery<QuizData>({
     queryKey: ["/api/quizzes", id, "play"],
@@ -100,59 +140,200 @@ export default function QuizPlayPage() {
     },
   });
 
-  const currentQuestion = data?.questions?.[currentIndex];
+  useEffect(() => {
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
+  }, []);
+
+  const connectSocket = useCallback(() => {
+    if (socketRef.current?.connected) return socketRef.current;
+    const s = socketIO({ path: "/socket.io", transports: ["websocket", "polling"] });
+    socketRef.current = s;
+
+    s.on("public:player-joined", (data) => {
+      setPlayers(data.players);
+    });
+
+    s.on("public:player-left", (data) => {
+      setPlayers(data.players);
+    });
+
+    s.on("public:game-started", (data) => {
+      setTotalQuestions(data.totalQuestions);
+      setStage("playing");
+    });
+
+    s.on("public:question", (data) => {
+      setCurrentQuestion(data.question);
+      setQuestionIndex(data.index);
+      setTotalQuestions(data.total);
+      setTimeLeft(data.question.timeLimit || 30);
+      setHasAnswered(false);
+      setLastAnswerResult(null);
+      setAnsweredCount(0);
+      setStage("playing");
+    });
+
+    s.on("public:answer-result", (data) => {
+      setLastAnswerResult({ isCorrect: data.isCorrect, points: data.points, correctAnswer: data.correctAnswer });
+      setMyScore(data.totalScore);
+    });
+
+    s.on("public:answer-received", (data) => {
+      setAnsweredCount(data.answeredCount);
+      setTotalPlayers(data.totalPlayers);
+    });
+
+    s.on("public:leaderboard", (data) => {
+      setLeaderboard(data.leaderboard);
+      setIsLastQuestion(data.isLast);
+      setStage("leaderboard");
+    });
+
+    s.on("public:game-finished", (data) => {
+      setMultiResult(data);
+      setStage("multi-result");
+    });
+
+    s.on("public:host-changed", (data) => {
+      setPlayerId((currentPid) => {
+        if (data.newHostId === currentPid) {
+          setIsHost(true);
+        }
+        return currentPid;
+      });
+    });
+
+    return s;
+  }, []);
+
+  const handleCreateRoom = () => {
+    if (!playerName.trim()) return;
+    setConnecting(true);
+    const s = connectSocket();
+    s.emit("public:create-room", { quizId: id, playerName: playerName.trim() }, (res: any) => {
+      setConnecting(false);
+      if (res.success) {
+        setRoomCode(res.code);
+        setRoomId(res.roomId);
+        setPlayerId(res.playerId);
+        setIsHost(true);
+        setPlayers([{ playerId: res.playerId, name: playerName.trim() }]);
+        setTotalQuestions(res.totalQuestions);
+        setStage("lobby");
+      } else {
+        toast({ title: res.error || "Xona yaratishda xatolik", variant: "destructive" });
+      }
+    });
+  };
+
+  const handleJoinRoom = () => {
+    if (!playerName.trim() || !joinCode.trim()) return;
+    setConnecting(true);
+    const s = connectSocket();
+    s.emit("public:join-room", { code: joinCode.trim(), playerName: playerName.trim() }, (res: any) => {
+      setConnecting(false);
+      if (res.success) {
+        setRoomCode(joinCode.trim());
+        setRoomId(res.roomId);
+        setPlayerId(res.playerId);
+        setIsHost(false);
+        setPlayers(res.players);
+        setTotalQuestions(res.totalQuestions);
+        setStage("lobby");
+      } else {
+        toast({ title: res.error || "Qo'shilishda xatolik", variant: "destructive" });
+      }
+    });
+  };
+
+  const handleStartGame = () => {
+    socketRef.current?.emit("public:start-game", {}, (res: any) => {
+      if (!res.success) {
+        toast({ title: res.error || "O'yinni boshlashda xatolik", variant: "destructive" });
+      }
+    });
+  };
+
+  const handleMultiAnswer = (questionId: string, answer: string) => {
+    if (hasAnswered || !currentQuestion) return;
+    if (currentQuestion.type === "multiple_select") {
+      setAnswers((prev) => {
+        const current = Array.isArray(prev[questionId]) ? (prev[questionId] as string[]) : [];
+        const updated = current.includes(answer) ? current.filter(a => a !== answer) : [...current, answer];
+        return { ...prev, [questionId]: updated };
+      });
+    } else {
+      setAnswers((prev) => ({ ...prev, [questionId]: answer }));
+      setHasAnswered(true);
+      socketRef.current?.emit("public:answer", { questionId, answer });
+    }
+  };
+
+  const handleSubmitMultiSelect = () => {
+    if (!currentQuestion || hasAnswered) return;
+    const ans = answers[currentQuestion.id];
+    if (!ans) return;
+    setHasAnswered(true);
+    socketRef.current?.emit("public:answer", {
+      questionId: currentQuestion.id,
+      answer: Array.isArray(ans) ? ans.join(",") : ans,
+    });
+  };
+
+  const handleNextQuestion = () => {
+    socketRef.current?.emit("public:next-question", {});
+  };
 
   useEffect(() => {
-    if (stage !== "playing" || !currentQuestion) return;
-    setTimeLeft(currentQuestion.timeLimit || 30);
-  }, [currentIndex, stage, currentQuestion]);
-
-  useEffect(() => {
-    if (stage !== "playing" || timeLeft <= 0) return;
+    if (stage !== "playing" || !currentQuestion || gameMode !== "multi") return;
+    if (timeLeft <= 0) return;
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
+        if (prev <= 1) { clearInterval(timer); return 0; }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [stage, timeLeft > 0]);
+  }, [stage, timeLeft > 0, currentQuestion, gameMode]);
 
-  const handleAnswer = useCallback(
+  const soloCurrentQuestion = data?.questions?.[currentIndex];
+
+  useEffect(() => {
+    if (stage !== "playing" || !soloCurrentQuestion || gameMode !== "solo") return;
+    setTimeLeft(soloCurrentQuestion.timeLimit || 30);
+  }, [currentIndex, stage, soloCurrentQuestion, gameMode]);
+
+  useEffect(() => {
+    if (stage !== "playing" || gameMode !== "solo" || timeLeft <= 0) return;
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) { clearInterval(timer); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [stage, timeLeft > 0, gameMode]);
+
+  const handleSoloAnswer = useCallback(
     (questionId: string, answer: string) => {
-      if (!currentQuestion) return;
-      if (currentQuestion.type === "multiple_select") {
+      if (!soloCurrentQuestion) return;
+      if (soloCurrentQuestion.type === "multiple_select") {
         setAnswers((prev) => {
           const current = Array.isArray(prev[questionId]) ? (prev[questionId] as string[]) : [];
-          const updated = current.includes(answer) ? current.filter((a) => a !== answer) : [...current, answer];
+          const updated = current.includes(answer) ? current.filter(a => a !== answer) : [...current, answer];
           return { ...prev, [questionId]: updated };
         });
       } else {
         setAnswers((prev) => ({ ...prev, [questionId]: answer }));
       }
     },
-    [currentQuestion]
+    [soloCurrentQuestion]
   );
-
-  const goNext = () => {
-    if (!data) return;
-    if (currentIndex < data.questions.length - 1) {
-      setCurrentIndex((i) => i + 1);
-    }
-  };
-
-  const goPrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex((i) => i - 1);
-    }
-  };
-
-  const handleSubmit = () => {
-    submitMutation.mutate();
-  };
 
   const handleCopyLink = () => {
     const url = window.location.href;
@@ -163,11 +344,30 @@ export default function QuizPlayPage() {
     });
   };
 
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(roomCode).then(() => {
+      toast({ title: "Kod nusxalandi!" });
+    });
+  };
+
   const handlePlayAgain = () => {
-    setStage("name");
+    setStage("mode-select");
+    setGameMode("solo");
     setCurrentIndex(0);
     setAnswers({});
     setSubmitResult(null);
+    setMultiResult(null);
+    setLeaderboard([]);
+    setMyScore(0);
+    setPlayers([]);
+    setRoomCode("");
+    setJoinCode("");
+    setHasAnswered(false);
+    setCurrentQuestion(null);
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
   };
 
   if (isLoading) {
@@ -198,20 +398,76 @@ export default function QuizPlayPage() {
     );
   }
 
+  if (stage === "mode-select") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted/30">
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
+          <Card className="p-8 space-y-6">
+            <div className="text-center space-y-2">
+              <h1 className="text-2xl font-bold" data-testid="text-quiz-title">{data.quiz.title}</h1>
+              {data.quiz.description && <p className="text-sm text-muted-foreground">{data.quiz.description}</p>}
+              <div className="flex gap-2 justify-center flex-wrap">
+                {data.quiz.category && <Badge variant="secondary">{data.quiz.category}</Badge>}
+                <Badge variant="outline">{data.quiz.totalQuestions} savol</Badge>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Button
+                className="w-full h-auto py-4"
+                variant="outline"
+                onClick={() => { setGameMode("solo"); setStage("name"); }}
+                data-testid="button-solo-mode"
+              >
+                <div className="flex items-center gap-3 w-full">
+                  <div className="w-10 h-10 rounded-md gradient-purple flex items-center justify-center shrink-0">
+                    <Play className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-semibold">Yakka o'ynash</p>
+                    <p className="text-xs text-muted-foreground">O'zingiz mustaqil o'ynang</p>
+                  </div>
+                </div>
+              </Button>
+
+              <Button
+                className="w-full h-auto py-4"
+                variant="outline"
+                onClick={() => { setGameMode("multi"); setStage("name"); }}
+                data-testid="button-multi-mode"
+              >
+                <div className="flex items-center gap-3 w-full">
+                  <div className="w-10 h-10 rounded-md gradient-teal flex items-center justify-center shrink-0">
+                    <Users className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-semibold">Ko'p kishilik</p>
+                    <p className="text-xs text-muted-foreground">Do'stlaringiz bilan birga o'ynang</p>
+                  </div>
+                </div>
+              </Button>
+            </div>
+
+            <Button variant="ghost" onClick={() => navigate("/discover")} className="w-full" data-testid="button-back-discover">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Orqaga
+            </Button>
+          </Card>
+        </motion.div>
+      </div>
+    );
+  }
+
   if (stage === "name") {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted/30">
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
           <Card className="p-8 w-full max-w-md space-y-6">
             <div className="text-center space-y-2">
-              <h1 className="text-2xl font-bold" data-testid="text-quiz-title">{data.quiz.title}</h1>
-              {data.quiz.description && (
-                <p className="text-sm text-muted-foreground">{data.quiz.description}</p>
-              )}
-              <div className="flex gap-2 justify-center flex-wrap">
-                {data.quiz.category && <Badge variant="secondary">{data.quiz.category}</Badge>}
-                <Badge variant="outline">{data.quiz.totalQuestions} savol</Badge>
-              </div>
+              <h1 className="text-2xl font-bold">{data.quiz.title}</h1>
+              <Badge variant={gameMode === "multi" ? "default" : "secondary"}>
+                {gameMode === "multi" ? "Ko'p kishilik" : "Yakka o'yin"}
+              </Badge>
             </div>
             <div className="space-y-3">
               <label className="text-sm font-medium">Ismingiz</label>
@@ -222,24 +478,286 @@ export default function QuizPlayPage() {
                 data-testid="input-player-name"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && playerName.trim()) {
-                    setStage("playing");
+                    if (gameMode === "solo") setStage("playing");
+                    else setStage("create-or-join");
                   }
                 }}
               />
             </div>
             <div className="flex gap-3">
-              <Button variant="outline" onClick={() => navigate("/discover")} data-testid="button-back">
+              <Button variant="outline" onClick={() => setStage("mode-select")} data-testid="button-back">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Orqaga
               </Button>
               <Button
                 className="flex-1"
-                onClick={() => setStage("playing")}
+                onClick={() => {
+                  if (gameMode === "solo") setStage("playing");
+                  else setStage("create-or-join");
+                }}
                 disabled={!playerName.trim()}
-                data-testid="button-start-quiz"
+                data-testid="button-continue"
               >
-                Boshlash
+                Davom etish
                 <ChevronRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          </Card>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (stage === "create-or-join") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted/30">
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
+          <Card className="p-8 space-y-6">
+            <div className="text-center space-y-2">
+              <h1 className="text-xl font-bold">{data.quiz.title}</h1>
+              <p className="text-sm text-muted-foreground">Salom, {playerName}!</p>
+            </div>
+
+            <div className="space-y-4">
+              <Button
+                className="w-full h-auto py-4"
+                onClick={handleCreateRoom}
+                disabled={connecting}
+                data-testid="button-create-room"
+              >
+                <div className="flex items-center gap-3 w-full">
+                  <div className="w-10 h-10 rounded-md gradient-purple flex items-center justify-center shrink-0">
+                    {connecting ? <Loader2 className="w-5 h-5 text-white animate-spin" /> : <Gamepad2 className="w-5 h-5 text-white" />}
+                  </div>
+                  <div className="text-left">
+                    <p className="font-semibold">Xona yaratish</p>
+                    <p className="text-xs opacity-80">Yangi o'yin boshlang va do'stlarni taklif qiling</p>
+                  </div>
+                </div>
+              </Button>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+                <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">yoki</span></div>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-sm font-medium">Mavjud xonaga qo'shilish</p>
+                <Input
+                  placeholder="6-raqamli kod"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  maxLength={6}
+                  data-testid="input-join-code"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && joinCode.length === 6) handleJoinRoom();
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleJoinRoom}
+                  disabled={joinCode.length !== 6 || connecting}
+                  data-testid="button-join-room"
+                >
+                  {connecting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
+                  Qo'shilish
+                </Button>
+              </div>
+            </div>
+
+            <Button variant="ghost" onClick={() => setStage("name")} className="w-full" data-testid="button-back-name">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Orqaga
+            </Button>
+          </Card>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (stage === "lobby") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted/30">
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
+          <Card className="p-8 space-y-6">
+            <div className="text-center space-y-3">
+              <h1 className="text-xl font-bold">{data.quiz.title}</h1>
+              <div className="flex items-center justify-center gap-2">
+                <Badge variant="secondary" className="text-lg px-4 py-1 font-mono tracking-widest" data-testid="text-room-code">
+                  {roomCode}
+                </Badge>
+                <Button size="icon" variant="ghost" onClick={handleCopyCode} data-testid="button-copy-code">
+                  <Copy className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground">Kodni do'stlaringizga yuboring</p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                O'yinchilar ({players.length})
+              </p>
+              <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                {players.map((p, i) => (
+                  <div key={p.playerId} className="flex items-center gap-2 p-2 rounded-md bg-muted/50" data-testid={`player-${p.playerId}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${i === 0 ? "gradient-purple" : "gradient-teal"}`}>
+                      {p.name[0].toUpperCase()}
+                    </div>
+                    <span className="text-sm font-medium flex-1">{p.name}</span>
+                    {p.playerId === playerId && isHost && (
+                      <Badge variant="secondary" className="text-xs">
+                        <Crown className="w-3 h-3 mr-1" />
+                        Host
+                      </Badge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {isHost ? (
+              <Button className="w-full" onClick={handleStartGame} disabled={players.length < 1} data-testid="button-start-game">
+                <Play className="w-4 h-4 mr-2" />
+                O'yinni boshlash
+              </Button>
+            ) : (
+              <div className="text-center space-y-2">
+                <Loader2 className="w-6 h-6 mx-auto animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Host o'yinni boshlashini kutilmoqda...</p>
+              </div>
+            )}
+          </Card>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (stage === "leaderboard") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted/30">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-lg">
+          <Card className="p-6 space-y-5">
+            <div className="text-center space-y-1">
+              <h2 className="text-lg font-bold">Reyting jadvali</h2>
+              <p className="text-sm text-muted-foreground">{questionIndex + 1}/{totalQuestions} savoldan keyin</p>
+            </div>
+
+            <div className="space-y-2">
+              {leaderboard.map((entry) => {
+                const isMe = entry.playerId === playerId;
+                return (
+                  <motion.div
+                    key={entry.playerId}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: entry.rank * 0.05 }}
+                    className={`flex items-center gap-3 p-3 rounded-md ${isMe ? "bg-primary/10 border border-primary/30" : "bg-muted/50"}`}
+                    data-testid={`leaderboard-entry-${entry.playerId}`}
+                  >
+                    <div className="w-8 text-center shrink-0">
+                      {entry.rank === 1 ? <Trophy className="w-5 h-5 text-yellow-500 mx-auto" /> :
+                       entry.rank === 2 ? <Medal className="w-5 h-5 text-gray-400 mx-auto" /> :
+                       entry.rank === 3 ? <Medal className="w-5 h-5 text-amber-600 mx-auto" /> :
+                       <span className="text-sm font-bold text-muted-foreground">{entry.rank}</span>}
+                    </div>
+                    <span className="text-sm font-medium flex-1 truncate">{entry.name} {isMe && "(Siz)"}</span>
+                    <span className="text-sm font-bold">{entry.score}</span>
+                  </motion.div>
+                );
+              })}
+            </div>
+
+            {isHost && (
+              <Button className="w-full" onClick={isLastQuestion ? () => socketRef.current?.emit("public:next-question", {}) : handleNextQuestion} data-testid="button-next-question">
+                {isLastQuestion ? "Natijalarni ko'rsatish" : "Keyingi savol"}
+                <ChevronRight className="w-4 h-4 ml-2" />
+              </Button>
+            )}
+            {!isHost && (
+              <div className="text-center">
+                <Loader2 className="w-5 h-5 mx-auto animate-spin text-muted-foreground" />
+                <p className="text-xs text-muted-foreground mt-1">Keyingi savol kutilmoqda...</p>
+              </div>
+            )}
+          </Card>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (stage === "multi-result" && multiResult) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted/30">
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-lg">
+          <Card className="p-8 space-y-6">
+            <div className="text-center space-y-3">
+              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", delay: 0.2 }}>
+                <Trophy className="w-20 h-20 mx-auto text-yellow-500" />
+              </motion.div>
+              <h1 className="text-2xl font-bold" data-testid="text-final-title">Yakuniy natijalar</h1>
+              <p className="text-muted-foreground">{multiResult.quizTitle}</p>
+            </div>
+
+            <div className="space-y-3">
+              {multiResult.leaderboard.map((entry, i) => {
+                const isMe = entry.playerId === playerId;
+                const percentage = multiResult.totalQuestions > 0 ? Math.round((entry.correctAnswers / multiResult.totalQuestions) * 100) : 0;
+                return (
+                  <motion.div
+                    key={entry.playerId}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.1 }}
+                    className={`p-4 rounded-md ${isMe ? "bg-primary/10 border-2 border-primary/40" : i === 0 ? "bg-yellow-500/10 border border-yellow-500/30" : "bg-muted/50"}`}
+                    data-testid={`result-entry-${entry.playerId}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 text-center shrink-0">
+                        {entry.rank === 1 ? (
+                          <div className="w-10 h-10 rounded-full gradient-purple flex items-center justify-center">
+                            <Trophy className="w-5 h-5 text-white" />
+                          </div>
+                        ) : entry.rank === 2 ? (
+                          <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                            <Medal className="w-5 h-5 text-gray-500" />
+                          </div>
+                        ) : entry.rank === 3 ? (
+                          <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                            <Medal className="w-5 h-5 text-amber-600" />
+                          </div>
+                        ) : (
+                          <span className="text-lg font-bold text-muted-foreground">{entry.rank}</span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold truncate">{entry.name} {isMe && "(Siz)"}</p>
+                        <p className="text-xs text-muted-foreground">{entry.correctAnswers}/{multiResult.totalQuestions} to'g'ri ({percentage}%)</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-lg font-bold">{entry.score}</p>
+                        <p className="text-xs text-muted-foreground">ball</p>
+                      </div>
+                    </div>
+                    <Progress value={percentage} className="h-1.5 mt-2" />
+                  </motion.div>
+                );
+              })}
+            </div>
+
+            <div className="flex gap-3 flex-wrap">
+              <Button variant="outline" onClick={handlePlayAgain} data-testid="button-play-again">
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Qayta o'ynash
+              </Button>
+              <Button variant="outline" onClick={handleCopyLink} data-testid="button-share-result">
+                {linkCopied ? <Check className="w-4 h-4 mr-2" /> : <Share2 className="w-4 h-4 mr-2" />}
+                {linkCopied ? "Nusxalandi" : "Ulashish"}
+              </Button>
+              <Button onClick={() => navigate("/discover")} data-testid="button-discover">
+                <Home className="w-4 h-4 mr-2" />
+                Discover
               </Button>
             </div>
           </Card>
@@ -285,9 +803,7 @@ export default function QuizPlayPage() {
                       {r.isCorrect ? <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 shrink-0" /> : <XCircle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />}
                       <div className="min-w-0">
                         <p className="text-sm font-medium">{i + 1}. {q.questionText}</p>
-                        {!r.isCorrect && r.correctAnswer && (
-                          <p className="text-xs text-muted-foreground mt-1">To'g'ri javob: {r.correctAnswer}</p>
-                        )}
+                        {!r.isCorrect && r.correctAnswer && <p className="text-xs text-muted-foreground mt-1">To'g'ri javob: {r.correctAnswer}</p>}
                       </div>
                     </div>
                   </div>
@@ -302,7 +818,7 @@ export default function QuizPlayPage() {
               </Button>
               <Button variant="outline" onClick={handleCopyLink} data-testid="button-share-result">
                 {linkCopied ? <Check className="w-4 h-4 mr-2" /> : <Share2 className="w-4 h-4 mr-2" />}
-                {linkCopied ? "Nusxalandi" : "Link ulashish"}
+                {linkCopied ? "Nusxalandi" : "Ulashish"}
               </Button>
               <Button onClick={() => navigate("/discover")} data-testid="button-discover">
                 <Home className="w-4 h-4 mr-2" />
@@ -315,128 +831,279 @@ export default function QuizPlayPage() {
     );
   }
 
-  if (!currentQuestion) return null;
+  if (gameMode === "multi" && stage === "playing" && currentQuestion) {
+    const multiCurrentAnswer = answers[currentQuestion.id];
+    const progressPercent = ((questionIndex + 1) / totalQuestions) * 100;
 
-  const isLastQuestion = currentIndex === data.questions.length - 1;
-  const currentAnswer = answers[currentQuestion.id];
-  const progressPercent = ((currentIndex + 1) / data.questions.length) * 100;
-
-  return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-background to-muted/30">
-      <div className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b p-3">
-        <div className="max-w-2xl mx-auto flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2 min-w-0">
-            <Badge variant="outline" className="shrink-0">{currentIndex + 1}/{data.questions.length}</Badge>
-            <span className="text-sm font-medium truncate">{data.quiz.title}</span>
+    return (
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-background to-muted/30">
+        <div className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b p-3">
+          <div className="max-w-2xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0">
+              <Badge variant="outline" className="shrink-0">{questionIndex + 1}/{totalQuestions}</Badge>
+              <span className="text-sm font-medium truncate">{data.quiz.title}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">{answeredCount}/{totalPlayers}</span>
+              <div className="flex items-center gap-1">
+                <Clock className="w-4 h-4 text-muted-foreground" />
+                <span className={`text-sm font-mono font-bold ${timeLeft <= 5 ? "text-red-500" : ""}`}>{timeLeft}s</span>
+              </div>
+              <Badge variant="secondary" className="text-xs">{myScore} ball</Badge>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-muted-foreground" />
-            <span className={`text-sm font-mono font-bold ${timeLeft <= 5 ? "text-red-500" : ""}`}>{timeLeft}s</span>
+          <div className="max-w-2xl mx-auto mt-2">
+            <Progress value={progressPercent} className="h-1.5" />
           </div>
         </div>
-        <div className="max-w-2xl mx-auto mt-2">
-          <Progress value={progressPercent} className="h-1.5" />
+
+        <div className="flex-1 flex items-center justify-center p-4">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentQuestion.id}
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -50 }}
+              className="w-full max-w-2xl"
+            >
+              <Card className="p-6 space-y-5">
+                {currentQuestion.mediaUrl && (
+                  <div className="rounded-md overflow-hidden">
+                    {currentQuestion.mediaType === "image" ? (
+                      <img src={currentQuestion.mediaUrl} alt="" className="w-full max-h-64 object-contain" />
+                    ) : currentQuestion.mediaType === "video" ? (
+                      <video src={currentQuestion.mediaUrl} controls className="w-full max-h-64" />
+                    ) : null}
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-lg font-semibold" data-testid="text-question">{currentQuestion.questionText}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge variant="secondary" className="text-xs">{currentQuestion.points} ball</Badge>
+                    {currentQuestion.type === "multiple_select" && <Badge variant="outline" className="text-xs">Bir nechta tanlang</Badge>}
+                  </div>
+                </div>
+
+                {hasAnswered && lastAnswerResult ? (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className={`p-4 rounded-md text-center ${lastAnswerResult.isCorrect ? "bg-green-50 dark:bg-green-950/30 border border-green-500/30" : "bg-red-50 dark:bg-red-950/30 border border-red-500/30"}`}
+                  >
+                    {lastAnswerResult.isCorrect ? (
+                      <div className="space-y-1">
+                        <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto" />
+                        <p className="font-semibold text-green-700 dark:text-green-400">To'g'ri! +{lastAnswerResult.points} ball</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <XCircle className="w-8 h-8 text-red-600 mx-auto" />
+                        <p className="font-semibold text-red-700 dark:text-red-400">Noto'g'ri</p>
+                        <p className="text-xs text-muted-foreground">To'g'ri javob: {lastAnswerResult.correctAnswer}</p>
+                      </div>
+                    )}
+                  </motion.div>
+                ) : (
+                  <div className="space-y-2">
+                    {currentQuestion.type === "true_false" ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        {["true", "false"].map(opt => (
+                          <Button
+                            key={opt}
+                            variant={multiCurrentAnswer === opt ? "default" : "outline"}
+                            className="h-14 text-base"
+                            onClick={() => handleMultiAnswer(currentQuestion.id, opt)}
+                            disabled={hasAnswered}
+                            data-testid={`button-answer-${opt}`}
+                          >
+                            {opt === "true" ? "To'g'ri" : "Noto'g'ri"}
+                          </Button>
+                        ))}
+                      </div>
+                    ) : currentQuestion.type === "open_ended" ? (
+                      <div className="space-y-2">
+                        <Input
+                          placeholder="Javobingizni yozing..."
+                          value={(multiCurrentAnswer as string) || ""}
+                          onChange={(e) => setAnswers(prev => ({ ...prev, [currentQuestion.id]: e.target.value }))}
+                          disabled={hasAnswered}
+                          data-testid="input-open-answer"
+                        />
+                        <Button
+                          onClick={() => {
+                            if (!multiCurrentAnswer) return;
+                            setHasAnswered(true);
+                            socketRef.current?.emit("public:answer", { questionId: currentQuestion.id, answer: multiCurrentAnswer });
+                          }}
+                          disabled={!multiCurrentAnswer || hasAnswered}
+                          className="w-full"
+                          data-testid="button-submit-open"
+                        >
+                          <Send className="w-4 h-4 mr-2" />
+                          Yuborish
+                        </Button>
+                      </div>
+                    ) : currentQuestion.options ? (
+                      <div className="space-y-2">
+                        {currentQuestion.options.map((opt, optIdx) => {
+                          const isSelected = currentQuestion.type === "multiple_select"
+                            ? Array.isArray(multiCurrentAnswer) && multiCurrentAnswer.includes(opt)
+                            : multiCurrentAnswer === opt;
+                          return (
+                            <Button
+                              key={optIdx}
+                              variant={isSelected ? "default" : "outline"}
+                              className="w-full justify-start text-left h-auto min-h-[2.75rem] py-3 px-4"
+                              onClick={() => handleMultiAnswer(currentQuestion.id, opt)}
+                              disabled={hasAnswered && currentQuestion.type !== "multiple_select"}
+                              data-testid={`button-option-${optIdx}`}
+                            >
+                              <span className="mr-3 font-semibold shrink-0">{String.fromCharCode(65 + optIdx)}</span>
+                              <span className="break-words">{opt}</span>
+                            </Button>
+                          );
+                        })}
+                        {currentQuestion.type === "multiple_select" && !hasAnswered && (
+                          <Button onClick={handleSubmitMultiSelect} disabled={!multiCurrentAnswer || (Array.isArray(multiCurrentAnswer) && multiCurrentAnswer.length === 0)} className="w-full mt-2" data-testid="button-submit-multi">
+                            <Send className="w-4 h-4 mr-2" />
+                            Tasdiqlash
+                          </Button>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </Card>
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
+    );
+  }
 
-      <div className="flex-1 flex items-center justify-center p-4">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentIndex}
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -50 }}
-            className="w-full max-w-2xl"
-          >
-            <Card className="p-6 space-y-5">
-              {currentQuestion.mediaUrl && (
-                <div className="rounded-md overflow-hidden">
-                  {currentQuestion.mediaType === "image" ? (
-                    <img src={currentQuestion.mediaUrl} alt="" className="w-full max-h-64 object-contain" />
-                  ) : currentQuestion.mediaType === "video" ? (
-                    <video src={currentQuestion.mediaUrl} controls className="w-full max-h-64" />
+  if (gameMode === "solo" && soloCurrentQuestion) {
+    const soloAnswer = answers[soloCurrentQuestion.id];
+    const soloIsLast = currentIndex === data.questions.length - 1;
+    const progressPercent = ((currentIndex + 1) / data.questions.length) * 100;
+
+    return (
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-background to-muted/30">
+        <div className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b p-3">
+          <div className="max-w-2xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0">
+              <Badge variant="outline" className="shrink-0">{currentIndex + 1}/{data.questions.length}</Badge>
+              <span className="text-sm font-medium truncate">{data.quiz.title}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <span className={`text-sm font-mono font-bold ${timeLeft <= 5 ? "text-red-500" : ""}`}>{timeLeft}s</span>
+            </div>
+          </div>
+          <div className="max-w-2xl mx-auto mt-2">
+            <Progress value={progressPercent} className="h-1.5" />
+          </div>
+        </div>
+
+        <div className="flex-1 flex items-center justify-center p-4">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentIndex}
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -50 }}
+              className="w-full max-w-2xl"
+            >
+              <Card className="p-6 space-y-5">
+                {soloCurrentQuestion.mediaUrl && (
+                  <div className="rounded-md overflow-hidden">
+                    {soloCurrentQuestion.mediaType === "image" ? (
+                      <img src={soloCurrentQuestion.mediaUrl} alt="" className="w-full max-h-64 object-contain" />
+                    ) : soloCurrentQuestion.mediaType === "video" ? (
+                      <video src={soloCurrentQuestion.mediaUrl} controls className="w-full max-h-64" />
+                    ) : null}
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-lg font-semibold" data-testid="text-question">{soloCurrentQuestion.questionText}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge variant="secondary" className="text-xs">{soloCurrentQuestion.points} ball</Badge>
+                    {soloCurrentQuestion.type === "multiple_select" && <Badge variant="outline" className="text-xs">Bir nechta tanlang</Badge>}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {soloCurrentQuestion.type === "true_false" ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      {["true", "false"].map(opt => (
+                        <Button
+                          key={opt}
+                          variant={soloAnswer === opt ? "default" : "outline"}
+                          className="h-14 text-base"
+                          onClick={() => handleSoloAnswer(soloCurrentQuestion.id, opt)}
+                          data-testid={`button-answer-${opt}`}
+                        >
+                          {opt === "true" ? "To'g'ri" : "Noto'g'ri"}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : soloCurrentQuestion.type === "open_ended" ? (
+                    <Input
+                      placeholder="Javobingizni yozing..."
+                      value={(soloAnswer as string) || ""}
+                      onChange={(e) => handleSoloAnswer(soloCurrentQuestion.id, e.target.value)}
+                      data-testid="input-open-answer"
+                    />
+                  ) : soloCurrentQuestion.options ? (
+                    <div className="space-y-2">
+                      {soloCurrentQuestion.options.map((opt, optIdx) => {
+                        const isSelected = soloCurrentQuestion.type === "multiple_select"
+                          ? Array.isArray(soloAnswer) && soloAnswer.includes(opt)
+                          : soloAnswer === opt;
+                        return (
+                          <Button
+                            key={optIdx}
+                            variant={isSelected ? "default" : "outline"}
+                            className="w-full justify-start text-left h-auto min-h-[2.75rem] py-3 px-4"
+                            onClick={() => handleSoloAnswer(soloCurrentQuestion.id, opt)}
+                            data-testid={`button-option-${optIdx}`}
+                          >
+                            <span className="mr-3 font-semibold shrink-0">{String.fromCharCode(65 + optIdx)}</span>
+                            <span className="break-words">{opt}</span>
+                          </Button>
+                        );
+                      })}
+                    </div>
                   ) : null}
                 </div>
-              )}
+              </Card>
+            </motion.div>
+          </AnimatePresence>
+        </div>
 
-              <div>
-                <p className="text-lg font-semibold" data-testid="text-question">{currentQuestion.questionText}</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <Badge variant="secondary" className="text-xs">{currentQuestion.points} ball</Badge>
-                  {currentQuestion.type === "multiple_select" && (
-                    <Badge variant="outline" className="text-xs">Bir nechta tanlang</Badge>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {currentQuestion.type === "true_false" ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    {["true", "false"].map((opt) => (
-                      <Button
-                        key={opt}
-                        variant={currentAnswer === opt ? "default" : "outline"}
-                        className="h-14 text-base"
-                        onClick={() => handleAnswer(currentQuestion.id, opt)}
-                        data-testid={`button-answer-${opt}`}
-                      >
-                        {opt === "true" ? "To'g'ri" : "Noto'g'ri"}
-                      </Button>
-                    ))}
-                  </div>
-                ) : currentQuestion.type === "open_ended" ? (
-                  <Input
-                    placeholder="Javobingizni yozing..."
-                    value={(currentAnswer as string) || ""}
-                    onChange={(e) => handleAnswer(currentQuestion.id, e.target.value)}
-                    data-testid="input-open-answer"
-                  />
-                ) : currentQuestion.options ? (
-                  <div className="space-y-2">
-                    {currentQuestion.options.map((opt, optIdx) => {
-                      const isSelected = currentQuestion.type === "multiple_select"
-                        ? Array.isArray(currentAnswer) && currentAnswer.includes(opt)
-                        : currentAnswer === opt;
-                      return (
-                        <Button
-                          key={optIdx}
-                          variant={isSelected ? "default" : "outline"}
-                          className="w-full justify-start text-left h-auto min-h-[2.75rem] py-3 px-4"
-                          onClick={() => handleAnswer(currentQuestion.id, opt)}
-                          data-testid={`button-option-${optIdx}`}
-                        >
-                          <span className="mr-3 font-semibold shrink-0">{String.fromCharCode(65 + optIdx)}</span>
-                          <span className="break-words">{opt}</span>
-                        </Button>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </div>
-            </Card>
-          </motion.div>
-        </AnimatePresence>
-      </div>
-
-      <div className="sticky bottom-0 bg-background/95 backdrop-blur border-t p-3">
-        <div className="max-w-2xl mx-auto flex justify-between gap-3">
-          <Button variant="outline" onClick={goPrev} disabled={currentIndex === 0} data-testid="button-prev">
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            Oldingi
-          </Button>
-          {isLastQuestion ? (
-            <Button onClick={handleSubmit} disabled={submitMutation.isPending} data-testid="button-submit">
-              <Send className="w-4 h-4 mr-2" />
-              {submitMutation.isPending ? "Yuborilmoqda..." : "Yakunlash"}
+        <div className="sticky bottom-0 bg-background/95 backdrop-blur border-t p-3">
+          <div className="max-w-2xl mx-auto flex justify-between gap-3">
+            <Button variant="outline" onClick={() => setCurrentIndex(i => i - 1)} disabled={currentIndex === 0} data-testid="button-prev">
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Oldingi
             </Button>
-          ) : (
-            <Button onClick={goNext} data-testid="button-next">
-              Keyingi
-              <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          )}
+            {soloIsLast ? (
+              <Button onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending} data-testid="button-submit">
+                <Send className="w-4 h-4 mr-2" />
+                {submitMutation.isPending ? "Yuborilmoqda..." : "Yakunlash"}
+              </Button>
+            ) : (
+              <Button onClick={() => setCurrentIndex(i => i + 1)} data-testid="button-next">
+                Keyingi
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  return null;
 }
