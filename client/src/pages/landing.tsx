@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import type { Quiz } from "@shared/schema";
+import siteLogo from "@assets/photo_2024-09-08_23-13-48-removebg-preview_1771243223962.png";
 
 const container = {
   hidden: { opacity: 0 },
@@ -49,10 +50,8 @@ export default function Landing() {
       <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-md gradient-purple flex items-center justify-center">
-              <Zap className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-bold text-lg" data-testid="text-logo">QuizLive</span>
+            <img src={siteLogo} alt="Zamonaviy Ta'lim" className="w-9 h-9 rounded-md object-contain" />
+            <span className="font-bold text-lg" data-testid="text-logo">Zamonaviy Ta'lim</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Button size="icon" variant="ghost" onClick={toggleTheme} data-testid="button-theme-toggle">
@@ -236,7 +235,7 @@ export default function Landing() {
 
       <footer className="border-t py-8">
         <div className="max-w-7xl mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>QuizLive - Interaktiv ta'lim platformasi</p>
+          <p>Zamonaviy Ta'lim - Interaktiv ta'lim platformasi</p>
         </div>
       </footer>
     </div>

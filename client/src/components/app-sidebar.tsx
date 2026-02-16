@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Zap, LayoutDashboard, BookOpen, Users, Trophy, Settings, LogOut, Play, Upload, Send, ClipboardList, GraduationCap, Library, Search, Bot, Presentation } from "lucide-react";
 import type { UserProfile } from "@shared/schema";
+import siteLogo from "@assets/photo_2024-09-08_23-13-48-removebg-preview_1771243223962.png";
 
 const adminMenu = [
   { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
@@ -65,11 +66,9 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-md gradient-purple flex items-center justify-center">
-            <Zap className="w-5 h-5 text-white" />
-          </div>
+          <img src={siteLogo} alt="Zamonaviy Ta'lim" className="w-9 h-9 rounded-md object-contain" />
           <div>
-            <span className="font-bold text-base" data-testid="text-sidebar-logo">QuizLive</span>
+            <span className="font-bold text-base" data-testid="text-sidebar-logo">Zamonaviy Ta'lim</span>
             <div className={`text-[10px] px-1.5 py-0.5 rounded-sm ${roleColor} text-white inline-block ml-1`}>
               {roleLabel}
             </div>
