@@ -188,24 +188,6 @@ export default function AuthPage() {
               </Button>
             </motion.form>
           </AnimatePresence>
-
-          <div className="mt-6 p-4 rounded-md bg-muted/50">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Test foydalanuvchilar:</p>
-            <div className="space-y-1.5 text-xs">
-              <div className="flex justify-between gap-2">
-                <span className="font-medium">Admin:</span>
-                <span className="font-mono text-muted-foreground">admin@quizlive.uz / admin123</span>
-              </div>
-              <div className="flex justify-between gap-2">
-                <span className="font-medium">O'qituvchi:</span>
-                <span className="font-mono text-muted-foreground">teacher@quizlive.uz / teacher123</span>
-              </div>
-              <div className="flex justify-between gap-2">
-                <span className="font-medium">O'quvchi:</span>
-                <span className="font-mono text-muted-foreground">student@quizlive.uz / student123</span>
-              </div>
-            </div>
-          </div>
         </Card>
       </motion.div>
     </div>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,15 +9,26 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { Search, Heart, Eye, Play, BookOpen, Filter } from "lucide-react";
+import { Search, Heart, Play, BookOpen, Filter, Share2, Copy, Check } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Quiz } from "@shared/schema";
 
 export default function DiscoverPage() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleShareQuiz = (quizId: string) => {
+    const url = `${window.location.origin}/quiz/play/${quizId}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedId(quizId);
+      setTimeout(() => setCopiedId(null), 2000);
+      toast({ title: "Quiz linki nusxalandi!" });
+    });
+  };
 
   const params = new URLSearchParams();
   if (searchQuery) params.set("q", searchQuery);
@@ -125,11 +137,27 @@ export default function DiscoverPage() {
                   {quiz.category && <Badge variant="secondary" className="text-xs">{quiz.category}</Badge>}
                   <Badge variant="outline" className="text-xs">{quiz.totalQuestions} savol</Badge>
                 </div>
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1"><Play className="w-3 h-3" /> {quiz.totalPlays}</span>
-                    <span className="flex items-center gap-1"><Heart className="w-3 h-3" /> {quiz.totalLikes ?? 0}</span>
-                  </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1"><Play className="w-3 h-3" /> {quiz.totalPlays}</span>
+                  <span className="flex items-center gap-1"><Heart className="w-3 h-3" /> {quiz.totalLikes ?? 0}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    className="flex-1"
+                    onClick={() => navigate(`/quiz/play/${quiz.id}`)}
+                    data-testid={`button-play-${quiz.id}`}
+                  >
+                    <Play className="w-4 h-4 mr-2" />
+                    O'ynash
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleShareQuiz(quiz.id)}
+                    data-testid={`button-share-${quiz.id}`}
+                  >
+                    {copiedId === quiz.id ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"

@@ -1313,6 +1313,106 @@ export async function registerRoutes(
     }
   });
 
+  // === Public Quiz Play Routes ===
+  app.get("/api/quizzes/:id/play", async (req, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (!quiz.isPublic) return res.status(403).json({ message: "Bu quiz ommaviy emas" });
+
+      let questionsList = await storage.getQuestionsByQuiz(req.params.id);
+
+      if (quiz.shuffleQuestions) {
+        for (let i = questionsList.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [questionsList[i], questionsList[j]] = [questionsList[j], questionsList[i]];
+        }
+      }
+
+      if (quiz.shuffleOptions) {
+        questionsList = questionsList.map(q => {
+          if (!q.options || q.options.length < 2) return q;
+          const opts = [...q.options];
+          for (let i = opts.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [opts[i], opts[j]] = [opts[j], opts[i]];
+          }
+          return { ...q, options: opts };
+        });
+      }
+
+      const safeQuestions = questionsList.map(q => ({
+        id: q.id,
+        questionText: q.questionText,
+        type: q.type,
+        options: q.options,
+        points: q.points,
+        timeLimit: q.timeLimit,
+        mediaUrl: q.mediaUrl,
+        mediaType: q.mediaType,
+      }));
+
+      res.json({
+        quiz: { id: quiz.id, title: quiz.title, description: quiz.description, category: quiz.category, totalQuestions: quiz.totalQuestions },
+        questions: safeQuestions,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/quizzes/:id/submit-public", async (req, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (!quiz.isPublic) return res.status(403).json({ message: "Bu quiz ommaviy emas" });
+
+      const questionsList = await storage.getQuestionsByQuiz(req.params.id);
+      const userAnswers: Record<string, string | string[]> = req.body.answers || {};
+      const playerName = req.body.playerName || "Mehmon";
+      let score = 0;
+      let correctCount = 0;
+      const results: Record<string, { answer: string | string[]; isCorrect: boolean; correctAnswer: string; points: number }> = {};
+
+      for (const q of questionsList) {
+        const userAnswer = userAnswers[q.id];
+
+        if (q.type === "poll") {
+          results[q.id] = { answer: userAnswer || "", isCorrect: true, correctAnswer: "", points: 0 };
+          continue;
+        }
+
+        if (q.type === "multiple_select") {
+          const selected = Array.isArray(userAnswer) ? userAnswer : [];
+          const correctAnswers = q.correctAnswer ? q.correctAnswer.split(",").map((s: string) => s.trim()) : [];
+          const isCorrect = correctAnswers.length > 0 &&
+            selected.length === correctAnswers.length &&
+            selected.every((a: string) => correctAnswers.includes(a));
+          if (isCorrect) { correctCount++; score += (q.points || 10); }
+          results[q.id] = { answer: selected, isCorrect, correctAnswer: q.correctAnswer || "", points: isCorrect ? (q.points || 10) : 0 };
+          continue;
+        }
+
+        const isCorrect = userAnswer !== undefined && userAnswer !== null &&
+          String(userAnswer).trim().toLowerCase() === String(q.correctAnswer || "").trim().toLowerCase();
+        if (isCorrect) { correctCount++; score += (q.points || 10); }
+        results[q.id] = { answer: userAnswer || "", isCorrect, correctAnswer: q.correctAnswer || "", points: isCorrect ? (q.points || 10) : 0 };
+      }
+
+      await storage.incrementQuizPlays(req.params.id);
+
+      res.json({
+        score,
+        correctAnswers: correctCount,
+        totalQuestions: questionsList.length,
+        playerName,
+        results,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   // === CSV Export Routes ===
   app.get("/api/sessions/:id/export-csv", requireAuth, async (req: any, res) => {
     try {
