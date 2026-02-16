@@ -15,7 +15,7 @@ import { motion } from "framer-motion";
 import {
   Presentation, ArrowRight, Users, Volume2, VolumeX,
   GripVertical, Circle, RectangleHorizontal, Monitor, Mic,
-  Minimize2, Square, Maximize2,
+  Minimize2, Square, Maximize2, Wifi, WifiOff,
 } from "lucide-react";
 
 const ICE_SERVERS: RTCConfiguration = {
@@ -30,7 +30,17 @@ const ICE_SERVERS: RTCConfiguration = {
   ],
   iceCandidatePoolSize: 10,
   iceTransportPolicy: "all",
+  bundlePolicy: "max-bundle",
 };
+
+type NetworkQuality = "excellent" | "good" | "fair" | "poor";
+
+function getQualityFromStats(rtt: number, packetLoss: number): NetworkQuality {
+  if (rtt < 100 && packetLoss < 1) return "excellent";
+  if (rtt < 200 && packetLoss < 3) return "good";
+  if (rtt < 400 && packetLoss < 8) return "fair";
+  return "poor";
+}
 
 interface LessonInfo {
   id: string;
@@ -92,6 +102,8 @@ export default function LessonJoin() {
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const dragStart = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
+  const [networkQuality, setNetworkQuality] = useState<NetworkQuality>("good");
+  const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (params?.code && !joined) {
@@ -254,19 +266,20 @@ export default function LessonJoin() {
           }
         };
 
-        let screenReconnectAttempted = false;
+        let screenReconnectAttempts = 0;
         const currentScreenPc = pc;
         pc.onconnectionstatechange = () => {
           if (currentScreenPc !== screenPeerConnectionRef.current) return;
           if (currentScreenPc.connectionState === "connected") {
-            screenReconnectAttempted = false;
+            screenReconnectAttempts = 0;
             if (screenReconnectTimerRef.current) { clearTimeout(screenReconnectTimerRef.current); screenReconnectTimerRef.current = null; }
-          } else if (currentScreenPc.connectionState === "failed" && !screenReconnectAttempted) {
-            screenReconnectAttempted = true;
-            console.log("Screen share connection failed - re-requesting stream");
+          } else if ((currentScreenPc.connectionState === "failed" || currentScreenPc.connectionState === "disconnected") && screenReconnectAttempts < 4) {
+            screenReconnectAttempts++;
+            const backoff = Math.min(2000 * screenReconnectAttempts, 8000);
             if (screenReconnectTimerRef.current) clearTimeout(screenReconnectTimerRef.current);
             screenReconnectTimerRef.current = setTimeout(() => {
-              if (screenPeerConnectionRef.current === currentScreenPc && currentScreenPc.connectionState === "failed") {
+              if (screenPeerConnectionRef.current === currentScreenPc &&
+                  (currentScreenPc.connectionState === "failed" || currentScreenPc.connectionState === "disconnected")) {
                 currentScreenPc.close();
                 screenPeerConnectionRef.current = null;
                 screenStreamRef.current = null;
@@ -274,7 +287,7 @@ export default function LessonJoin() {
                 const deviceType = window.innerWidth < 768 ? "mobile" : "desktop";
                 socket.emit("lesson:request-screen-stream", { lessonId: lesson.id, deviceType });
               }
-            }, 3000);
+            }, backoff);
           }
         };
 
@@ -358,6 +371,7 @@ export default function LessonJoin() {
         };
 
         let streamReconnectAttempts = 0;
+        const MAX_RECONNECTS = 4;
         const currentPc = pc;
         pc.onconnectionstatechange = () => {
           if (currentPc !== peerConnectionRef.current) return;
@@ -367,20 +381,21 @@ export default function LessonJoin() {
               clearTimeout(reconnectTimerRef.current);
               reconnectTimerRef.current = null;
             }
-          } else if (currentPc.connectionState === "failed") {
-            if (streamReconnectAttempts < 2) {
+          } else if (currentPc.connectionState === "failed" || currentPc.connectionState === "disconnected") {
+            if (streamReconnectAttempts < MAX_RECONNECTS) {
               streamReconnectAttempts++;
+              const backoff = Math.min(2000 * streamReconnectAttempts, 8000);
               if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
               reconnectTimerRef.current = setTimeout(() => {
-                if (peerConnectionRef.current === currentPc && currentPc.connectionState === "failed") {
-                  console.log("Audio/video failed - re-requesting stream (attempt", streamReconnectAttempts, ")");
+                if (peerConnectionRef.current === currentPc &&
+                    (currentPc.connectionState === "failed" || currentPc.connectionState === "disconnected")) {
                   currentPc.close();
                   peerConnectionRef.current = null;
                   remoteStreamRef.current = null;
                   setHasRemoteVideo(false);
                   socket.emit("lesson:request-stream", { lessonId: lesson.id });
                 }
-              }, 3000 * streamReconnectAttempts);
+              }, backoff);
             }
           }
         };
@@ -407,6 +422,48 @@ export default function LessonJoin() {
       }
     });
   };
+
+  useEffect(() => {
+    if (!joined) {
+      if (statsIntervalRef.current) { clearInterval(statsIntervalRef.current); statsIntervalRef.current = null; }
+      return;
+    }
+    statsIntervalRef.current = setInterval(async () => {
+      const pc = peerConnectionRef.current || screenPeerConnectionRef.current;
+      if (!pc || pc.connectionState !== "connected") return;
+      try {
+        const stats = await pc.getStats();
+        let rtt = 0;
+        let packetLoss = 0;
+        let rttFound = false;
+        let lossFound = false;
+        stats.forEach((report: any) => {
+          if (report.type === "candidate-pair" && report.state === "succeeded" &&
+              typeof report.currentRoundTripTime === "number" && isFinite(report.currentRoundTripTime)) {
+            rtt = report.currentRoundTripTime * 1000;
+            rttFound = true;
+          }
+          if (report.type === "inbound-rtp" && report.kind === "video") {
+            const lost = report.packetsLost;
+            const received = report.packetsReceived;
+            if (typeof lost === "number" && typeof received === "number" && (lost + received) > 0) {
+              const loss = (lost / (lost + received)) * 100;
+              if (isFinite(loss)) {
+                packetLoss = loss;
+                lossFound = true;
+              }
+            }
+          }
+        });
+        if (rttFound) {
+          setNetworkQuality(getQualityFromStats(rtt, lossFound ? packetLoss : 0));
+        }
+      } catch {}
+    }, 5000);
+    return () => {
+      if (statsIntervalRef.current) { clearInterval(statsIntervalRef.current); statsIntervalRef.current = null; }
+    };
+  }, [joined]);
 
   const handleVideoDragStart = (e: React.MouseEvent | React.TouchEvent) => {
     if (isResizing) return;
@@ -580,6 +637,20 @@ export default function LessonJoin() {
             <Badge variant="outline" className="gap-1">
               <Users className="w-3 h-3" /> {participantCount}
             </Badge>
+            {(hasRemoteVideo || hasScreenStream) && (
+              <Badge
+                variant="outline"
+                className={`gap-1 ${
+                  networkQuality === "excellent" ? "text-green-600 border-green-300 dark:text-green-400 dark:border-green-700" :
+                  networkQuality === "good" ? "text-green-500 border-green-200 dark:text-green-400 dark:border-green-800" :
+                  networkQuality === "fair" ? "text-yellow-600 border-yellow-300 dark:text-yellow-400 dark:border-yellow-700" :
+                  "text-red-500 border-red-300 dark:text-red-400 dark:border-red-700"
+                }`}
+                data-testid="badge-student-network-quality"
+              >
+                {networkQuality === "poor" ? <WifiOff className="w-3 h-3" /> : <Wifi className="w-3 h-3" />}
+              </Badge>
+            )}
             {lessonMode === "screen" && (
               <Badge variant="secondary" className="gap-1" data-testid="badge-screen-mode">
                 <Monitor className="w-3 h-3" /> <span className="hidden sm:inline">Ekran</span>

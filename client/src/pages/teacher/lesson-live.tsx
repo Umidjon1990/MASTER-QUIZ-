@@ -21,7 +21,7 @@ import {
   Circle, RectangleHorizontal, ArrowLeft, Lock, Unlock,
   Presentation, GripVertical, Download, StopCircle, Settings2,
   Monitor, MonitorOff, ZoomIn, ZoomOut, Maximize2, ChevronLeft, ChevronRight,
-  Minimize2,
+  Minimize2, Wifi, WifiOff,
 } from "lucide-react";
 import type { LiveLesson } from "@shared/schema";
 
@@ -37,6 +37,48 @@ const ICE_SERVERS: RTCConfiguration = {
   ],
   iceCandidatePoolSize: 10,
   iceTransportPolicy: "all",
+  bundlePolicy: "max-bundle",
+};
+
+function preferH264(description: RTCSessionDescriptionInit): RTCSessionDescriptionInit {
+  if (!description.sdp) return description;
+  const lines = description.sdp.split("\r\n");
+  const h264Payloads: string[] = [];
+  for (const line of lines) {
+    const match = line.match(/^a=rtpmap:(\d+)\s+H264\//i);
+    if (match) h264Payloads.push(match[1]);
+  }
+  if (h264Payloads.length === 0) return description;
+  const modifiedLines = lines.map(line => {
+    if (line.startsWith("m=video")) {
+      const parts = line.split(" ");
+      const header = parts.slice(0, 3);
+      const payloads = parts.slice(3);
+      const reordered = [
+        ...h264Payloads.filter(p => payloads.includes(p)),
+        ...payloads.filter(p => !h264Payloads.includes(p)),
+      ];
+      return [...header, ...reordered].join(" ");
+    }
+    return line;
+  });
+  return { ...description, sdp: modifiedLines.join("\r\n") };
+}
+
+type NetworkQuality = "excellent" | "good" | "fair" | "poor";
+
+function getQualityFromStats(rtt: number, packetLoss: number): NetworkQuality {
+  if (rtt < 100 && packetLoss < 1) return "excellent";
+  if (rtt < 200 && packetLoss < 3) return "good";
+  if (rtt < 400 && packetLoss < 8) return "fair";
+  return "poor";
+}
+
+const QUALITY_PRESETS = {
+  excellent: { maxBitrate: 1500000, maxFramerate: 30, scaleDown: 1 },
+  good: { maxBitrate: 800000, maxFramerate: 24, scaleDown: 1 },
+  fair: { maxBitrate: 400000, maxFramerate: 15, scaleDown: 2 },
+  poor: { maxBitrate: 150000, maxFramerate: 10, scaleDown: 4 },
 };
 
 export default function TeacherLessonLive() {
@@ -91,6 +133,9 @@ export default function TeacherLessonLive() {
   const screenPeerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const screenVideoRef = useRef<HTMLVideoElement>(null);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [networkQuality, setNetworkQuality] = useState<NetworkQuality>("good");
+  const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastQualityRef = useRef<NetworkQuality>("good");
 
   const { data: lesson, isLoading } = useQuery<LiveLesson>({
     queryKey: ["/api/live-lessons", lessonId],
@@ -196,6 +241,7 @@ export default function TeacherLessonLive() {
         mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
       }
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
     };
   }, [lessonId, lesson]);
 
@@ -208,6 +254,102 @@ export default function TeacherLessonLive() {
       }
     }
   }, [lesson]);
+
+  const applyBitrateLimit = useCallback(async (pc: RTCPeerConnection, quality: NetworkQuality) => {
+    const preset = QUALITY_PRESETS[quality];
+    const senders = pc.getSenders();
+    for (const sender of senders) {
+      if (sender.track?.kind === "video") {
+        const params = sender.getParameters();
+        if (!params.encodings || params.encodings.length === 0) {
+          params.encodings = [{}];
+        }
+        params.encodings[0].maxBitrate = preset.maxBitrate;
+        params.encodings[0].maxFramerate = preset.maxFramerate;
+        if (preset.scaleDown > 1) {
+          params.encodings[0].scaleResolutionDownBy = preset.scaleDown;
+        } else {
+          delete params.encodings[0].scaleResolutionDownBy;
+        }
+        try {
+          await sender.setParameters(params);
+        } catch {}
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!videoEnabled && !isScreenSharing) {
+      if (statsIntervalRef.current) {
+        clearInterval(statsIntervalRef.current);
+        statsIntervalRef.current = null;
+      }
+      return;
+    }
+    statsIntervalRef.current = setInterval(async () => {
+      const allConnections = videoEnabled
+        ? Array.from(peerConnectionsRef.current.values())
+        : Array.from(screenPeerConnectionsRef.current.values());
+
+      const connections = allConnections
+        .filter(pc => pc.connectionState === "connected")
+        .slice(0, 5);
+
+      if (connections.length === 0) return;
+
+      let totalRtt = 0;
+      let totalPacketLoss = 0;
+      let rttCount = 0;
+      let lossCount = 0;
+
+      const results = await Promise.allSettled(connections.map(pc => pc.getStats()));
+      for (const result of results) {
+        if (result.status !== "fulfilled") continue;
+        result.value.forEach((report: any) => {
+          if (report.type === "candidate-pair" && report.state === "succeeded") {
+            if (typeof report.currentRoundTripTime === "number" && isFinite(report.currentRoundTripTime)) {
+              totalRtt += report.currentRoundTripTime * 1000;
+              rttCount++;
+            }
+          }
+          if (report.type === "remote-inbound-rtp" && report.kind === "video") {
+            const lost = report.packetsLost;
+            const received = report.packetsReceived;
+            if (typeof lost === "number" && typeof received === "number" && (lost + received) > 0) {
+              const loss = (lost / (lost + received)) * 100;
+              if (isFinite(loss)) {
+                totalPacketLoss += loss;
+                lossCount++;
+              }
+            }
+          }
+        });
+      }
+
+      if (rttCount > 0) {
+        const avgRtt = totalRtt / rttCount;
+        const avgLoss = lossCount > 0 ? totalPacketLoss / lossCount : 0;
+        const quality = getQualityFromStats(avgRtt, avgLoss);
+
+        if (quality !== lastQualityRef.current) {
+          lastQualityRef.current = quality;
+          setNetworkQuality(quality);
+          for (const pc of connections) {
+            if (pc.connectionState === "connected") {
+              applyBitrateLimit(pc, quality);
+            }
+          }
+        }
+      }
+    }, 5000);
+
+    return () => {
+      if (statsIntervalRef.current) {
+        clearInterval(statsIntervalRef.current);
+        statsIntervalRef.current = null;
+      }
+    };
+  }, [videoEnabled, isScreenSharing, applyBitrateLimit]);
 
   const createPeerConnection = async (targetSocketId: string) => {
     const socket = socketRef.current;
@@ -223,7 +365,16 @@ export default function TeacherLessonLive() {
     peerConnectionsRef.current.set(targetSocketId, pc);
 
     localStreamRef.current.getTracks().forEach(track => {
-      pc.addTrack(track, localStreamRef.current!);
+      const sender = pc.addTrack(track, localStreamRef.current!);
+      if (track.kind === "video" && sender) {
+        const params = sender.getParameters();
+        if (!params.encodings || params.encodings.length === 0) {
+          params.encodings = [{}];
+        }
+        params.encodings[0].maxBitrate = QUALITY_PRESETS[lastQualityRef.current].maxBitrate;
+        params.encodings[0].maxFramerate = QUALITY_PRESETS[lastQualityRef.current].maxFramerate;
+        sender.setParameters(params).catch(() => {});
+      }
     });
 
     pc.onicecandidate = (e) => {
@@ -236,26 +387,31 @@ export default function TeacherLessonLive() {
       }
     };
 
-    let iceRestartAttempted = false;
+    let iceRestartCount = 0;
+    const MAX_ICE_RESTARTS = 3;
     let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
-        iceRestartAttempted = false;
+        iceRestartCount = 0;
         if (disconnectTimer) { clearTimeout(disconnectTimer); disconnectTimer = null; }
       } else if (pc.connectionState === "failed") {
         if (disconnectTimer) { clearTimeout(disconnectTimer); disconnectTimer = null; }
-        if (!iceRestartAttempted) {
-          iceRestartAttempted = true;
-          console.log("WebRTC failed for", targetSocketId, "- one ICE restart attempt");
-          pc.restartIce();
-          pc.createOffer({ iceRestart: true }).then(offer => {
+        if (iceRestartCount < MAX_ICE_RESTARTS) {
+          iceRestartCount++;
+          const backoff = 1000 * iceRestartCount;
+          setTimeout(() => {
             if (peerConnectionsRef.current.get(targetSocketId) !== pc) return;
-            pc.setLocalDescription(offer);
-            socket.emit("lesson:webrtc-offer", { lessonId, offer, targetSocketId });
-          }).catch(() => {
-            pc.close();
-            peerConnectionsRef.current.delete(targetSocketId);
-          });
+            pc.restartIce();
+            pc.createOffer({ iceRestart: true }).then(offer => {
+              if (peerConnectionsRef.current.get(targetSocketId) !== pc) return;
+              const h264Offer = preferH264(offer);
+              pc.setLocalDescription(h264Offer);
+              socket.emit("lesson:webrtc-offer", { lessonId, offer: h264Offer, targetSocketId });
+            }).catch(() => {
+              pc.close();
+              peerConnectionsRef.current.delete(targetSocketId);
+            });
+          }, backoff);
         } else {
           pc.close();
           peerConnectionsRef.current.delete(targetSocketId);
@@ -264,22 +420,24 @@ export default function TeacherLessonLive() {
         if (disconnectTimer) clearTimeout(disconnectTimer);
         disconnectTimer = setTimeout(() => {
           if (peerConnectionsRef.current.get(targetSocketId) !== pc) return;
-          if (pc.connectionState === "disconnected" && !iceRestartAttempted) {
-            iceRestartAttempted = true;
+          if (pc.connectionState === "disconnected" && iceRestartCount < MAX_ICE_RESTARTS) {
+            iceRestartCount++;
             pc.restartIce();
             pc.createOffer({ iceRestart: true }).then(offer => {
               if (peerConnectionsRef.current.get(targetSocketId) !== pc) return;
-              pc.setLocalDescription(offer);
-              socket.emit("lesson:webrtc-offer", { lessonId, offer, targetSocketId });
+              const h264Offer = preferH264(offer);
+              pc.setLocalDescription(h264Offer);
+              socket.emit("lesson:webrtc-offer", { lessonId, offer: h264Offer, targetSocketId });
             }).catch(() => {});
           }
-        }, 5000);
+        }, 3000);
       }
     };
 
     const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    socket.emit("lesson:webrtc-offer", { lessonId, offer, targetSocketId });
+    const h264Offer = preferH264(offer);
+    await pc.setLocalDescription(h264Offer);
+    socket.emit("lesson:webrtc-offer", { lessonId, offer: h264Offer, targetSocketId });
   };
 
   const createScreenPeerConnection = async (targetSocketId: string, deviceType?: string) => {
@@ -297,7 +455,16 @@ export default function TeacherLessonLive() {
     screenPeerConnectionsRef.current.set(targetSocketId, pc);
 
     stream.getTracks().forEach(track => {
-      pc.addTrack(track, stream);
+      const sender = pc.addTrack(track, stream);
+      if (track.kind === "video" && sender) {
+        const params = sender.getParameters();
+        if (!params.encodings || params.encodings.length === 0) {
+          params.encodings = [{}];
+        }
+        params.encodings[0].maxBitrate = 2500000;
+        params.encodings[0].maxFramerate = 30;
+        sender.setParameters(params).catch(() => {});
+      }
     });
 
     pc.onicecandidate = (e) => {
@@ -310,26 +477,31 @@ export default function TeacherLessonLive() {
       }
     };
 
-    let screenIceRestarted = false;
+    let screenIceRestartCount = 0;
     let screenDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
     pc.onconnectionstatechange = () => {
       if (screenPeerConnectionsRef.current.get(targetSocketId) !== pc) return;
       if (pc.connectionState === "connected") {
-        screenIceRestarted = false;
+        screenIceRestartCount = 0;
         if (screenDisconnectTimer) { clearTimeout(screenDisconnectTimer); screenDisconnectTimer = null; }
       } else if (pc.connectionState === "failed") {
         if (screenDisconnectTimer) { clearTimeout(screenDisconnectTimer); screenDisconnectTimer = null; }
-        if (!screenIceRestarted) {
-          screenIceRestarted = true;
-          pc.restartIce();
-          pc.createOffer({ iceRestart: true }).then(offer => {
+        if (screenIceRestartCount < 3) {
+          screenIceRestartCount++;
+          const backoff = 1000 * screenIceRestartCount;
+          setTimeout(() => {
             if (screenPeerConnectionsRef.current.get(targetSocketId) !== pc) return;
-            pc.setLocalDescription(offer);
-            socket.emit("lesson:screen-offer", { lessonId, offer, targetSocketId });
-          }).catch(() => {
-            pc.close();
-            screenPeerConnectionsRef.current.delete(targetSocketId);
-          });
+            pc.restartIce();
+            pc.createOffer({ iceRestart: true }).then(offer => {
+              if (screenPeerConnectionsRef.current.get(targetSocketId) !== pc) return;
+              const h264Offer = preferH264(offer);
+              pc.setLocalDescription(h264Offer);
+              socket.emit("lesson:screen-offer", { lessonId, offer: h264Offer, targetSocketId });
+            }).catch(() => {
+              pc.close();
+              screenPeerConnectionsRef.current.delete(targetSocketId);
+            });
+          }, backoff);
         } else {
           pc.close();
           screenPeerConnectionsRef.current.delete(targetSocketId);
@@ -338,22 +510,24 @@ export default function TeacherLessonLive() {
         if (screenDisconnectTimer) clearTimeout(screenDisconnectTimer);
         screenDisconnectTimer = setTimeout(() => {
           if (screenPeerConnectionsRef.current.get(targetSocketId) !== pc) return;
-          if (pc.connectionState === "disconnected" && !screenIceRestarted) {
-            screenIceRestarted = true;
+          if (pc.connectionState === "disconnected" && screenIceRestartCount < 3) {
+            screenIceRestartCount++;
             pc.restartIce();
             pc.createOffer({ iceRestart: true }).then(offer => {
               if (screenPeerConnectionsRef.current.get(targetSocketId) !== pc) return;
-              pc.setLocalDescription(offer);
-              socket.emit("lesson:screen-offer", { lessonId, offer, targetSocketId });
+              const h264Offer = preferH264(offer);
+              pc.setLocalDescription(h264Offer);
+              socket.emit("lesson:screen-offer", { lessonId, offer: h264Offer, targetSocketId });
             }).catch(() => {});
           }
-        }, 5000);
+        }, 3000);
       }
     };
 
     const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    socket.emit("lesson:screen-offer", { lessonId, offer, targetSocketId });
+    const h264Offer = preferH264(offer);
+    await pc.setLocalDescription(h264Offer);
+    socket.emit("lesson:screen-offer", { lessonId, offer: h264Offer, targetSocketId });
   };
 
   const stopScreenSharingCleanup = useCallback(() => {
@@ -373,7 +547,11 @@ export default function TeacherLessonLive() {
     } else {
       try {
         const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
+          video: {
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30, max: 30 },
+          },
           audio: false,
         });
 
@@ -1046,6 +1224,23 @@ export default function TeacherLessonLive() {
           <Badge variant="secondary" className="gap-1 bg-white/20 text-white border-0" data-testid="badge-participants">
             <Users className="w-3 h-3" /> {participantCount}
           </Badge>
+          {(videoEnabled || isScreenSharing) && (
+            <Badge
+              variant="secondary"
+              className={`gap-1 border-0 text-white ${
+                networkQuality === "excellent" ? "bg-green-500/30" :
+                networkQuality === "good" ? "bg-green-500/20" :
+                networkQuality === "fair" ? "bg-yellow-500/30" :
+                "bg-red-500/30"
+              }`}
+              data-testid="badge-network-quality"
+            >
+              {networkQuality === "poor" ? <WifiOff className="w-3 h-3" /> : <Wifi className="w-3 h-3" />}
+              <span className="hidden sm:inline text-[10px]">
+                {networkQuality === "excellent" ? "A'lo" : networkQuality === "good" ? "Yaxshi" : networkQuality === "fair" ? "O'rtacha" : "Past"}
+              </span>
+            </Badge>
+          )}
           {lesson.requireCode && (
             <button onClick={copyCode} className="hidden sm:flex items-center gap-1 text-xs font-mono text-white/80" data-testid="button-lesson-code">
               <Lock className="w-3 h-3" /> {lesson.joinCode} <Copy className="w-3 h-3" />
