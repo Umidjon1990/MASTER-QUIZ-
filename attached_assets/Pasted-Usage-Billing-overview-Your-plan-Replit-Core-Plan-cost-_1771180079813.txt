@@ -1,0 +1,176 @@
+Usage
+Billing overview
+Your plan
+Replit Core
+Plan cost
+$25.00 month
+Manage
+Total available credits
+Remaining
+$0
+Resets
+in 26 days
+Credits used this month
+Used
+$1,125
+Additional usage
+Spent
+$100.50
+Alert: not set | Budget: not set
+Manage 
+Payment method
+2580
+Expires 10/2027
+Manage
+Credits
+Updates take up to 1 hour and may not reflect the latest usage data. Purchase credit pack.
+Credit Packs
+Name
+Issue date
+Expiry date
+Usage
+$100 credit pack	Nov 24, 2025	Feb 24, 2026	
+$100 / $100
+$100 credit pack	Nov 30, 2025	Feb 28, 2026	
+$100 / $100
+$100 credit pack	Dec 07, 2025	Mar 07, 2026	
+$100 / $100
+$300 credit pack	Dec 10, 2025	Mar 10, 2026	
+$300 / $300
+$100 credit pack	Dec 24, 2025	Jun 24, 2026	
+$100 / $100
+$300 credit pack	Dec 27, 2025	Jun 27, 2026	
+$300 / $300
+$100 credit pack	Jan 15, 2026	Jul 15, 2026	
+$100 / $100
+Resource usage
+Updates take up to 1 hour and may not reflect the latest usage data. See previous invoices.
+AI
+Usage Total
+Unit Price
+Cost Accrued
+Agent Usage
+122,04 $
+Variable	
+$122.04
+Replit AI Integrations
+0,00 $
+Variable	
+$0.00
+Assistant
+(Edit requests)
+0
+$0.05 / edit request	
+$0.00
+Workspace Development
+Quota Used
+Core Quota
+Usage Total
+Unit Price
+Cost Accrued
+Apps
+Unlimited
+17
+-	-
+Collaborators
+3
+0
+-	-
+Development Time
+(Minutes)
+0%
+-
+0
+-	-
+Published Apps
+Quota Used
+Core Quota
+Usage Total
+Unit Price
+Cost Accrued
+Outbound Data Transfer
+(GiB)
+1%
+100
+0.63 GiB
+$0.1 / GiB	
+$0.00
+Reserved VM Deployment
+(Compute hours)
+-
+38
+-	
+$1.06
+Autoscale Deployment
+(Deployments)
+-
+6
+$0.033 / day	
+$0.20
+Autoscale Deployment
+(Compute units)
+-
+70 382
+$3.20 / 1 million	
+$0.23
+Autoscale Deployment
+(Requests)
+-
+2 409
+$1.20 / 1 million	
+$0.00
+Scheduled Deployment
+(Deployments)
+-
+0
+$0.033 / day	
+$0.00
+Scheduled Deployment
+(Compute units)
+-
+0
+$3.20 / 1 million	
+$0.00
+Static Deployment
+(Count)
+0%
+200
+0
+-	
+$0.00
+PostgreSQL Storage
+(GiB)
+-
+0.97 GiB
+$1.5 / GiB	
+$1.45
+PostgreSQL Compute
+(Hours)
+-
+12,31
+$0.16 / hour	
+$1.97
+App Storage
+(GiB-months)
+-
+0.00
+$0.03 / GiB / month	
+$0.00
+App Storage Data Transfer
+(GiB)
+-
+0.00 GiB
+$0.1 / GiB	
+$0.00
+App Storage Basic Operations
+(Requests)
+-
+0
+$0.0006 / 1K	
+$0.00
+App Storage Advanced Operations
+(Requests)
+-
+0
+$0.0075 / 1K	
+$0.00
