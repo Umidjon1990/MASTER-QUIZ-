@@ -29,10 +29,26 @@ export default function LessonChat({ socket, isHost = false, studentName }: Less
   const [chatName, setChatName] = useState(studentName || "");
   const [nameSet, setNameSet] = useState(isHost || !!studentName);
   const [chatSize, setChatSize] = useState<"small" | "large">("small");
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const isOpenRef = useRef(false);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      const offset = window.innerHeight - vv.height - vv.offsetTop;
+      setKeyboardOffset(Math.max(0, offset));
+    };
+    vv.addEventListener("resize", onResize);
+    vv.addEventListener("scroll", onResize);
+    return () => {
+      vv.removeEventListener("resize", onResize);
+      vv.removeEventListener("scroll", onResize);
+    };
+  }, []);
 
   useEffect(() => {
     if (studentName) {
@@ -110,7 +126,7 @@ export default function LessonChat({ socket, isHost = false, studentName }: Less
   };
 
   return (
-    <div className="fixed bottom-0 right-0 z-40 flex flex-col items-end" style={{ maxWidth: chatSize === "large" ? "min(480px, calc(100vw - 16px))" : "min(340px, calc(100vw - 16px))" }}>
+    <div className="fixed right-0 z-[60] flex flex-col items-end" style={{ bottom: `calc(env(safe-area-inset-bottom, 0px) + ${keyboardOffset}px)`, maxWidth: chatSize === "large" ? "min(480px, calc(100vw - 16px))" : "min(340px, calc(100vw - 16px))" }}>
       {isOpen && (
         <div
           className={`${chatSize === "large" ? "w-[440px]" : "w-[300px]"} max-w-[calc(100vw-16px)] bg-background border border-border rounded-t-lg shadow-lg flex flex-col`}
@@ -220,6 +236,11 @@ export default function LessonChat({ socket, isHost = false, studentName }: Less
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
+                  onFocus={(e) => {
+                    setTimeout(() => {
+                      e.target.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }, 300);
+                  }}
                   placeholder="Xabar yozing..."
                   className="flex-1 text-xs"
                   maxLength={500}
