@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { queryClient } from "@/lib/queryClient";
-import { Zap, Mail, Lock, User, ArrowLeft } from "lucide-react";
+import { Mail, Lock, User, ArrowLeft } from "lucide-react";
+import siteLogo from "@assets/photo_2024-09-08_23-13-48-removebg-preview_1771243223962.png";
 import { useTheme } from "@/components/theme-provider";
 import { Moon, Sun } from "lucide-react";
 
@@ -87,10 +88,8 @@ export default function AuthPage() {
         className="w-full max-w-md relative z-10"
       >
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-md gradient-purple flex items-center justify-center mx-auto mb-4">
-            <Zap className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold" data-testid="text-auth-title">QuizLive</h1>
+          <img src={siteLogo} alt="Zamonaviy Ta'lim" className="w-16 h-16 rounded-md object-contain mx-auto mb-4" />
+          <h1 className="text-2xl font-bold" data-testid="text-auth-title">Zamonaviy Ta'lim</h1>
           <p className="text-muted-foreground mt-1">Interaktiv ta'lim platformasi</p>
         </div>
 

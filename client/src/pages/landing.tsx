@@ -57,15 +57,9 @@ export default function Landing() {
             <Button size="icon" variant="ghost" onClick={toggleTheme} data-testid="button-theme-toggle">
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
-            {authLoading ? (
-              <Skeleton className="h-9 w-20" />
-            ) : user ? (
+            {!authLoading && user && (
               <Button onClick={() => navigate("/dashboard")} data-testid="button-dashboard">
                 Dashboard
-              </Button>
-            ) : (
-              <Button onClick={() => navigate("/auth")} data-testid="button-login">
-                Kirish
               </Button>
             )}
           </div>
@@ -102,20 +96,14 @@ export default function Landing() {
             transition={{ duration: 0.7, delay: 0.3 }}
             className="flex items-center justify-center gap-4 mb-12 flex-wrap"
           >
-            {user ? (
+            {user && (
               <Button size="lg" onClick={() => navigate("/dashboard")} className="gradient-purple border-0" data-testid="button-hero-dashboard">
                 Dashboardga o'tish <ArrowRight className="w-4 h-4 ml-1" />
               </Button>
-            ) : (
-              <>
-                <Button size="lg" onClick={() => navigate("/auth")} className="gradient-purple border-0" data-testid="button-hero-register">
-                  Boshlash <ArrowRight className="w-4 h-4 ml-1" />
-                </Button>
-                <Button size="lg" variant="outline" onClick={() => navigate("/discover")} className="bg-white/5 backdrop-blur-sm border-white/20 text-white" data-testid="button-hero-discover">
-                  <Globe className="w-4 h-4 mr-1" /> Quizlarni ko'rish
-                </Button>
-              </>
             )}
+            <Button size="lg" variant="outline" onClick={() => navigate("/discover")} className="bg-white/5 backdrop-blur-sm border-white/20 text-white" data-testid="button-hero-discover">
+              <Globe className="w-4 h-4 mr-1" /> Quizlarni ko'rish
+            </Button>
           </motion.div>
 
           <motion.div
