@@ -37,6 +37,166 @@ interface PublicRoom {
 const publicRooms = new Map<string, PublicRoom>();
 const codeToRoomId = new Map<string, string>();
 
+interface LiveSessionTimer {
+  sessionId: string;
+  questionTimer: ReturnType<typeof setTimeout> | null;
+  leaderboardTimer: ReturnType<typeof setTimeout> | null;
+  autoAdvance: boolean;
+  questionStartTime: number;
+  effectiveTimeLimit: number;
+}
+
+const liveSessionTimers = new Map<string, LiveSessionTimer>();
+
+function clearLiveSessionTimers(sessionId: string) {
+  const st = liveSessionTimers.get(sessionId);
+  if (st) {
+    if (st.questionTimer) clearTimeout(st.questionTimer);
+    if (st.leaderboardTimer) clearTimeout(st.leaderboardTimer);
+  }
+}
+
+function cleanupLiveSessionTimer(sessionId: string) {
+  clearLiveSessionTimers(sessionId);
+  liveSessionTimers.delete(sessionId);
+}
+
+async function serverShowLeaderboard(sessionId: string) {
+  if (!io) return;
+  try {
+    const participants = await storage.getSessionParticipants(sessionId);
+    io.to(`session:${sessionId}`).emit("leaderboard:show", {
+      leaderboard: participants.map((p, i) => ({
+        rank: i + 1,
+        name: p.guestName || "Player",
+        score: p.score,
+        correctAnswers: p.correctAnswers,
+        participantId: p.id,
+      })),
+    });
+
+    const st = liveSessionTimers.get(sessionId);
+    if (st?.autoAdvance) {
+      if (st.leaderboardTimer) clearTimeout(st.leaderboardTimer);
+      st.leaderboardTimer = setTimeout(() => {
+        serverNextQuestion(sessionId);
+      }, 5500);
+    }
+  } catch (err) {
+    console.error("Server show leaderboard error:", err);
+  }
+}
+
+async function serverNextQuestion(sessionId: string) {
+  if (!io) return;
+  try {
+    const session = await storage.getLiveSession(sessionId);
+    if (!session || session.status === "finished") return;
+
+    const questionsList = await storage.getQuestionsByQuiz(session.quizId);
+    const quiz = await storage.getQuiz(session.quizId);
+    const nextIndex = session.currentQuestionIndex + 1;
+
+    if (nextIndex >= questionsList.length) {
+      await storage.updateLiveSession(sessionId, {
+        status: "finished",
+        endedAt: new Date(),
+      } as any);
+
+      const participants = await storage.getSessionParticipants(sessionId);
+      for (let i = 0; i < participants.length; i++) {
+        const p = participants[i];
+        await storage.saveQuizResult({
+          sessionId,
+          quizId: session.quizId,
+          participantId: p.id,
+          userId: p.userId,
+          guestName: p.guestName,
+          totalScore: p.score,
+          correctAnswers: p.correctAnswers,
+          totalQuestions: questionsList.length,
+          rank: i + 1,
+        });
+      }
+
+      io.to(`session:${sessionId}`).emit("quiz:finished", {
+        leaderboard: participants.map((p, i) => ({
+          rank: i + 1,
+          name: p.guestName || "Player",
+          score: p.score,
+          correctAnswers: p.correctAnswers,
+          participantId: p.id,
+        })),
+      });
+
+      cleanupLiveSessionTimer(sessionId);
+      return;
+    }
+
+    await storage.updateLiveSession(sessionId, {
+      currentQuestionIndex: nextIndex,
+    } as any);
+
+    const q = questionsList[nextIndex];
+    let questionOptions = q.options ? [...(q.options as string[])] : null;
+    if (quiz?.shuffleOptions && questionOptions) {
+      for (let i = questionOptions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [questionOptions[i], questionOptions[j]] = [questionOptions[j], questionOptions[i]];
+      }
+    }
+
+    const timerEnabled = quiz?.timerEnabled ?? true;
+    const effectiveTimeLimit = timerEnabled ? (q.timeLimit || quiz?.timePerQuestion || 30) : 0;
+
+    io.to(`session:${sessionId}`).emit("question:show", {
+      index: nextIndex,
+      total: questionsList.length,
+      timerEnabled,
+      question: {
+        id: q.id,
+        type: q.type,
+        questionText: q.questionText,
+        mediaType: q.mediaType,
+        mediaUrl: q.mediaUrl,
+        options: questionOptions,
+        timeLimit: effectiveTimeLimit,
+        points: q.type === "poll" ? 0 : q.points,
+      },
+    });
+
+    startServerQuestionTimer(sessionId, effectiveTimeLimit);
+  } catch (err) {
+    console.error("Server next question error:", err);
+  }
+}
+
+function startServerQuestionTimer(sessionId: string, timeLimit: number) {
+  let st = liveSessionTimers.get(sessionId);
+  if (!st) {
+    st = {
+      sessionId,
+      questionTimer: null,
+      leaderboardTimer: null,
+      autoAdvance: true,
+      questionStartTime: Date.now(),
+      effectiveTimeLimit: timeLimit,
+    };
+    liveSessionTimers.set(sessionId, st);
+  } else {
+    if (st.questionTimer) clearTimeout(st.questionTimer);
+    if (st.leaderboardTimer) clearTimeout(st.leaderboardTimer);
+    st.questionStartTime = Date.now();
+    st.effectiveTimeLimit = timeLimit;
+  }
+
+  if (timeLimit > 0) {
+    st.questionTimer = setTimeout(() => {
+      serverShowLeaderboard(sessionId);
+    }, (timeLimit + 2) * 1000);
+  }
+}
+
 function generateRoomCode(): string {
   let code: string;
   do {
@@ -193,6 +353,60 @@ export function setupWebSocket(httpServer: HttpServer) {
       }
     });
 
+    socket.on("player:rejoin", async (data, callback) => {
+      try {
+        const { sessionId, participantId, name } = data;
+        const session = await storage.getLiveSession(sessionId);
+        if (!session) return callback?.({ success: false, error: "Sessiya topilmadi" });
+
+        const participants = await storage.getSessionParticipants(sessionId);
+        const participant = participants.find(p => p.id === participantId);
+        if (!participant) return callback?.({ success: false, error: "Ishtirokchi topilmadi" });
+
+        socket.join(`session:${sessionId}`);
+        socket.data.role = "player";
+        socket.data.sessionId = sessionId;
+        socket.data.participantId = participantId;
+
+        if (session.status === "active") {
+          const questionsList = await storage.getQuestionsByQuiz(session.quizId);
+          const quiz = await storage.getQuiz(session.quizId);
+          const currentIdx = session.currentQuestionIndex;
+
+          if (currentIdx < questionsList.length) {
+            const q = questionsList[currentIdx];
+            const timerEnabled = quiz?.timerEnabled ?? true;
+            const st = liveSessionTimers.get(sessionId);
+            let remainingTime = 0;
+            if (timerEnabled && st && st.effectiveTimeLimit > 0) {
+              const elapsed = Math.floor((Date.now() - st.questionStartTime) / 1000);
+              remainingTime = Math.max(0, st.effectiveTimeLimit - elapsed);
+            }
+
+            socket.emit("question:show", {
+              index: currentIdx,
+              total: questionsList.length,
+              question: {
+                id: q.id,
+                text: q.text,
+                type: q.type,
+                options: q.options,
+                mediaUrl: q.mediaUrl,
+                mediaType: q.mediaType,
+                timeLimit: remainingTime > 0 ? remainingTime : (q.timeLimit || quiz?.timePerQuestion || 30),
+                points: q.points,
+              },
+              timerEnabled,
+            });
+          }
+        }
+
+        callback?.({ success: true, status: session.status });
+      } catch (err) {
+        callback?.({ success: false, error: "Qayta ulanishda xatolik" });
+      }
+    });
+
     socket.on("host:start-quiz", async (data, callback) => {
       try {
         const { sessionId } = data;
@@ -230,6 +444,15 @@ export function setupWebSocket(httpServer: HttpServer) {
         const timerEnabled = quiz?.timerEnabled ?? true;
         const effectiveTimeLimit = timerEnabled ? (q.timeLimit || quiz?.timePerQuestion || 30) : 0;
 
+        liveSessionTimers.set(sessionId, {
+          sessionId,
+          questionTimer: null,
+          leaderboardTimer: null,
+          autoAdvance: true,
+          questionStartTime: Date.now(),
+          effectiveTimeLimit,
+        });
+
         io.to(`session:${sessionId}`).emit("quiz:started", {
           totalQuestions: questionsList.length,
           timerEnabled,
@@ -250,6 +473,8 @@ export function setupWebSocket(httpServer: HttpServer) {
             points: q.type === "poll" ? 0 : q.points,
           },
         });
+
+        startServerQuestionTimer(sessionId, effectiveTimeLimit);
       } catch (err) {
         console.error("Start quiz error:", err);
       }
@@ -258,78 +483,8 @@ export function setupWebSocket(httpServer: HttpServer) {
     socket.on("host:next-question", async (data) => {
       try {
         const { sessionId } = data;
-        const session = await storage.getLiveSession(sessionId);
-        if (!session) return;
-
-        const questionsList = await storage.getQuestionsByQuiz(session.quizId);
-        const quiz = await storage.getQuiz(session.quizId);
-        const nextIndex = session.currentQuestionIndex + 1;
-
-        if (nextIndex >= questionsList.length) {
-          await storage.updateLiveSession(sessionId, {
-            status: "finished",
-            endedAt: new Date(),
-          } as any);
-
-          const participants = await storage.getSessionParticipants(sessionId);
-          for (let i = 0; i < participants.length; i++) {
-            const p = participants[i];
-            await storage.saveQuizResult({
-              sessionId,
-              quizId: session.quizId,
-              participantId: p.id,
-              userId: p.userId,
-              guestName: p.guestName,
-              totalScore: p.score,
-              correctAnswers: p.correctAnswers,
-              totalQuestions: questionsList.length,
-              rank: i + 1,
-            });
-          }
-
-          io.to(`session:${sessionId}`).emit("quiz:finished", {
-            leaderboard: participants.map((p, i) => ({
-              rank: i + 1,
-              name: p.guestName || "Player",
-              score: p.score,
-              correctAnswers: p.correctAnswers,
-              participantId: p.id,
-            })),
-          });
-          return;
-        }
-
-        await storage.updateLiveSession(sessionId, {
-          currentQuestionIndex: nextIndex,
-        } as any);
-
-        const q = questionsList[nextIndex];
-        let questionOptions = q.options ? [...(q.options as string[])] : null;
-        if (quiz?.shuffleOptions && questionOptions) {
-          for (let i = questionOptions.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [questionOptions[i], questionOptions[j]] = [questionOptions[j], questionOptions[i]];
-          }
-        }
-
-        const timerEnabled = quiz?.timerEnabled ?? true;
-        const effectiveTimeLimit = timerEnabled ? (q.timeLimit || quiz?.timePerQuestion || 30) : 0;
-
-        io.to(`session:${sessionId}`).emit("question:show", {
-          index: nextIndex,
-          total: questionsList.length,
-          timerEnabled,
-          question: {
-            id: q.id,
-            type: q.type,
-            questionText: q.questionText,
-            mediaType: q.mediaType,
-            mediaUrl: q.mediaUrl,
-            options: questionOptions,
-            timeLimit: effectiveTimeLimit,
-            points: q.type === "poll" ? 0 : q.points,
-          },
-        });
+        clearLiveSessionTimers(sessionId);
+        await serverNextQuestion(sessionId);
       } catch (err) {
         console.error("Next question error:", err);
       }
@@ -338,18 +493,52 @@ export function setupWebSocket(httpServer: HttpServer) {
     socket.on("host:show-leaderboard", async (data) => {
       try {
         const { sessionId } = data;
-        const participants = await storage.getSessionParticipants(sessionId);
-        io.to(`session:${sessionId}`).emit("leaderboard:show", {
-          leaderboard: participants.map((p, i) => ({
-            rank: i + 1,
-            name: p.guestName || "Player",
-            score: p.score,
-            correctAnswers: p.correctAnswers,
-            participantId: p.id,
-          })),
-        });
+        clearLiveSessionTimers(sessionId);
+        await serverShowLeaderboard(sessionId);
       } catch (err) {
         console.error("Leaderboard error:", err);
+      }
+    });
+
+    socket.on("host:set-auto-advance", (data) => {
+      const { sessionId, autoAdvance } = data;
+      const st = liveSessionTimers.get(sessionId);
+      if (st) {
+        st.autoAdvance = autoAdvance;
+        if (!autoAdvance) {
+          if (st.leaderboardTimer) {
+            clearTimeout(st.leaderboardTimer);
+            st.leaderboardTimer = null;
+          }
+        }
+      }
+    });
+
+    socket.on("host:rejoin-session", async (data, callback) => {
+      try {
+        const { sessionId } = data;
+        const session = await storage.getLiveSession(sessionId);
+        if (!session) return callback?.({ success: false, error: "Sessiya topilmadi" });
+
+        socket.join(`session:${sessionId}`);
+        socket.data.role = "host";
+        socket.data.sessionId = sessionId;
+
+        const participants = await storage.getSessionParticipants(sessionId);
+        const questionsList = await storage.getQuestionsByQuiz(session.quizId);
+        const quiz = await storage.getQuiz(session.quizId);
+
+        callback?.({
+          success: true,
+          session,
+          participants: participants.map((p, i) => ({ id: p.id, name: p.guestName || "Player", score: p.score })),
+          status: session.status,
+          currentQuestionIndex: session.currentQuestionIndex,
+          totalQuestions: questionsList.length,
+          quizTitle: quiz?.title,
+        });
+      } catch (err) {
+        callback?.({ success: false, error: "Qayta ulanishda xatolik" });
       }
     });
 

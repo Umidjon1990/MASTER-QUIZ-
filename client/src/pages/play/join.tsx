@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { io, Socket } from "socket.io-client";
 import confetti from "canvas-confetti";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Play, Trophy, Clock, CheckCircle, X, Zap, Star, Music, Lock, BarChart3, Medal, Crown, Award, Flame } from "lucide-react";
+import { Play, Trophy, Clock, CheckCircle, X, Zap, Star, Music, Lock, BarChart3, Medal, Crown, Award, Flame, WifiOff, Loader2 } from "lucide-react";
 
 let socket: Socket | null = null;
 
@@ -112,6 +112,13 @@ export default function JoinPlay() {
   const [myScore, setMyScore] = useState(0);
   const [myLiveRank, setMyLiveRank] = useState(0);
   const [totalPlayers, setTotalPlayers] = useState(0);
+  const [connectionStatus, setConnectionStatus] = useState<"connected" | "disconnected" | "reconnecting">("disconnected");
+  const sessionIdRef = React.useRef(sessionId);
+  const participantIdRef = React.useRef(participantId);
+  const nameRef = React.useRef(name);
+  sessionIdRef.current = sessionId;
+  participantIdRef.current = participantId;
+  nameRef.current = name;
 
   useEffect(() => {
     return () => {
@@ -128,7 +135,37 @@ export default function JoinPlay() {
 
   const connectSocket = useCallback(() => {
     if (socket) return socket;
-    socket = io({ path: "/socket.io" });
+    socket = io({
+      path: "/socket.io",
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 10000,
+    });
+
+    socket.on("connect", () => {
+      setConnectionStatus("connected");
+      if (sessionIdRef.current && participantIdRef.current) {
+        socket?.emit("player:rejoin", {
+          sessionId: sessionIdRef.current,
+          participantId: participantIdRef.current,
+          name: nameRef.current,
+        });
+      }
+    });
+
+    socket.on("disconnect", () => {
+      setConnectionStatus("disconnected");
+    });
+
+    socket.io.on("reconnect_attempt", () => {
+      setConnectionStatus("reconnecting");
+    });
+
+    socket.io.on("reconnect", () => {
+      setConnectionStatus("connected");
+    });
 
     socket.on("quiz:started", (data) => {
       setTotalQuestions(data.totalQuestions);
@@ -265,6 +302,26 @@ export default function JoinPlay() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
+      {phase !== "join" && connectionStatus !== "connected" && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center gap-2 p-3 bg-yellow-50 dark:bg-yellow-950/30 border-b border-yellow-500/30 text-yellow-700 dark:text-yellow-400"
+          data-testid="banner-player-connection"
+        >
+          {connectionStatus === "reconnecting" ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              <span className="text-sm font-medium">Qayta ulanilmoqda...</span>
+            </>
+          ) : (
+            <>
+              <WifiOff className="w-4 h-4 shrink-0" />
+              <span className="text-sm font-medium">Ulanish uzildi...</span>
+            </>
+          )}
+        </motion.div>
+      )}
       <AnimatePresence mode="wait">
         {phase === "join" && (
           <motion.div key="join" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="w-full max-w-md">

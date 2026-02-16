@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { io, Socket } from "socket.io-client";
 import confetti from "canvas-confetti";
-import { Play, SkipForward, Users, Trophy, Copy, Send, Music, Lock, Link2, Check, Crown, Medal, Award, Flame, BarChart3, Timer, Zap } from "lucide-react";
+import { Play, SkipForward, Users, Trophy, Copy, Send, Music, Lock, Link2, Check, Crown, Medal, Award, Flame, BarChart3, Timer, Zap, WifiOff, Loader2 } from "lucide-react";
 import type { Quiz, LiveSession } from "@shared/schema";
 
 let socket: Socket | null = null;
@@ -106,6 +106,7 @@ export default function TeacherLive() {
   const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionRef = useRef<LiveSession | null>(null);
   sessionRef.current = session;
+  const [connectionStatus, setConnectionStatus] = useState<"connected" | "disconnected" | "reconnecting">("disconnected");
 
   const { data: quizzes } = useQuery<Quiz[]>({ queryKey: ["/api/quizzes"] });
 
@@ -124,34 +125,72 @@ export default function TeacherLive() {
       const timer = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
       return () => clearTimeout(timer);
     }
-    if (phase === "question" && timeLeft === 0 && questionTimeLimit > 0 && autoAdvance && !autoTriggered && socket && sessionRef.current) {
-      setAutoTriggered(true);
-      socket.emit("host:show-leaderboard", { sessionId: sessionRef.current.id });
-    }
-  }, [timeLeft, phase, questionTimeLimit, autoAdvance, autoTriggered]);
+  }, [timeLeft, phase]);
 
   useEffect(() => {
-    if (phase !== "leaderboard" || !autoAdvance) return;
+    if (phase !== "leaderboard") return;
     if (leaderboardCountdown > 0) {
       const timer = setTimeout(() => setLeaderboardCountdown((t) => t - 1), 1000);
       return () => clearTimeout(timer);
     }
-    if (leaderboardCountdown === 0 && leaderboard.length > 0) {
-      autoTimerRef.current = setTimeout(() => {
-        if (socket && sessionRef.current) {
-          socket.emit("host:next-question", { sessionId: sessionRef.current.id });
-        }
-      }, 500);
-      return () => { if (autoTimerRef.current) clearTimeout(autoTimerRef.current); };
-    }
-  }, [leaderboardCountdown, phase, autoAdvance, leaderboard]);
+  }, [leaderboardCountdown, phase]);
 
   const connectSocket = useCallback(() => {
     if (socket) return socket;
-    socket = io({ path: "/socket.io" });
+    socket = io({
+      path: "/socket.io",
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 10000,
+    });
+
+    socket.on("connect", () => {
+      console.log("Socket connected:", socket?.id);
+      setConnectionStatus("connected");
+      if (sessionRef.current) {
+        socket?.emit("host:rejoin-session", { sessionId: sessionRef.current.id }, (res: any) => {
+          if (res?.success) {
+            console.log("Rejoined session successfully");
+            if (res.participants) {
+              setParticipants(res.participants.map((p: any) => ({ id: p.id, name: p.name })));
+            }
+          }
+        });
+      }
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason);
+      setConnectionStatus("disconnected");
+    });
+
+    socket.on("reconnecting", () => {
+      setConnectionStatus("reconnecting");
+    });
+
+    socket.on("reconnect_attempt", () => {
+      setConnectionStatus("reconnecting");
+    });
+
+    socket.on("reconnect", () => {
+      setConnectionStatus("connected");
+    });
+
+    socket.io.on("reconnect_attempt", () => {
+      setConnectionStatus("reconnecting");
+    });
+
+    socket.io.on("reconnect", () => {
+      setConnectionStatus("connected");
+    });
 
     socket.on("player:joined", (data) => {
-      setParticipants((prev) => [...prev, { id: data.participantId, name: data.name }]);
+      setParticipants((prev) => {
+        if (prev.some(p => p.id === data.participantId)) return prev;
+        return [...prev, { id: data.participantId, name: data.name }];
+      });
       toast({ title: `${data.name} qo'shildi!` });
     });
 
@@ -234,6 +273,13 @@ export default function TeacherLive() {
     });
   };
 
+  const handleAutoAdvanceChange = (value: boolean) => {
+    setAutoAdvance(value);
+    if (session && socket) {
+      socket.emit("host:set-auto-advance", { sessionId: session.id, autoAdvance: value });
+    }
+  };
+
   const nextQuestion = () => {
     if (!session || !socket) return;
     socket.emit("host:next-question", { sessionId: session.id });
@@ -284,6 +330,27 @@ export default function TeacherLive() {
         <p className="text-muted-foreground">Real vaqtda quiz o'tkazing</p>
       </motion.div>
 
+      {phase !== "setup" && connectionStatus !== "connected" && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-500/30 text-yellow-700 dark:text-yellow-400"
+          data-testid="banner-connection-status"
+        >
+          {connectionStatus === "reconnecting" ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              <span className="text-sm font-medium">Qayta ulanilmoqda... Quiz serverda davom etmoqda.</span>
+            </>
+          ) : (
+            <>
+              <WifiOff className="w-4 h-4 shrink-0" />
+              <span className="text-sm font-medium">Ulanish uzildi. Avtomatik qayta ulanish amalga oshirilmoqda...</span>
+            </>
+          )}
+        </motion.div>
+      )}
+
       <AnimatePresence mode="wait">
         {phase === "setup" && (
           <motion.div key="setup" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
@@ -324,7 +391,7 @@ export default function TeacherLive() {
                 <Switch
                   id="auto-advance"
                   checked={autoAdvance}
-                  onCheckedChange={setAutoAdvance}
+                  onCheckedChange={handleAutoAdvanceChange}
                   data-testid="switch-auto-advance"
                 />
               </div>

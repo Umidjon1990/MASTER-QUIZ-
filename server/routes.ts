@@ -261,6 +261,12 @@ export async function registerRoutes(
   app.patch("/api/quizzes/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const updated = await storage.updateQuiz(req.params.id, req.body);
+      if (req.body.timePerQuestion !== undefined) {
+        const questions = await storage.getQuestionsByQuiz(req.params.id);
+        for (const q of questions) {
+          await storage.updateQuestion(q.id, { timeLimit: req.body.timePerQuestion });
+        }
+      }
       res.json(updated);
     } catch (error) {
       res.status(500).json({ message: "Server error" });
