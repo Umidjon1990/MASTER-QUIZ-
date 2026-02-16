@@ -130,3 +130,9 @@ Preferred communication style: Simple, everyday language.
 - Quiz list page shows "Telegram" share button per quiz; dialog shows saved chats to choose from
 - Sends quiz title message first, then each question as Telegram quiz poll (type: "quiz", is_anonymous: true)
 - Ownership check: only quiz creator or admin can send
+
+### WebRTC Live Lesson Architecture
+- **ICE Servers**: 7 STUN servers (Google x4, Cloudflare, Mozilla) configured in ICE_SERVERS constant in both teacher and student files
+- **Reconnection Strategy**: Teacher-side performs one ICE restart attempt on failed/disconnected state; student-side re-requests stream from teacher with max 2 retry attempts and exponential backoff
+- **Audio Reliability**: Dedicated audio element ref with autoplay policy handling; shows "Ovozni yoqish" button when browser blocks autoplay
+- **Screen Share**: Students see full-size video with object-contain and pinch-to-zoom support on mobile; teacher's pointer overlay synchronized via percentage coordinates

@@ -18,6 +18,20 @@ import {
   Minimize2, Square, Maximize2,
 } from "lucide-react";
 
+const ICE_SERVERS: RTCConfiguration = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun3.l.google.com:19302" },
+    { urls: "stun:stun4.l.google.com:19302" },
+    { urls: "stun:stun.cloudflare.com:3478" },
+    { urls: "stun:stun.services.mozilla.com:3478" },
+  ],
+  iceCandidatePoolSize: 10,
+  iceTransportPolicy: "all",
+};
+
 interface LessonInfo {
   id: string;
   title: string;
@@ -66,6 +80,10 @@ export default function LessonJoin() {
   const screenPeerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
+  const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const screenReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const [socketState, setSocketState] = useState<Socket | null>(null);
@@ -194,9 +212,18 @@ export default function LessonJoin() {
 
     socket.on("lesson:screen-offer", async ({ offer, senderSocketId }) => {
       try {
-        const pc = new RTCPeerConnection({
-          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-        });
+        if (screenReconnectTimerRef.current) {
+          clearTimeout(screenReconnectTimerRef.current);
+          screenReconnectTimerRef.current = null;
+        }
+        if (screenPeerConnectionRef.current) {
+          screenPeerConnectionRef.current.close();
+          screenPeerConnectionRef.current = null;
+        }
+        screenStreamRef.current = null;
+        setHasScreenStream(false);
+
+        const pc = new RTCPeerConnection(ICE_SERVERS);
         screenPeerConnectionRef.current = pc;
 
         pc.ontrack = (e) => {
@@ -217,6 +244,30 @@ export default function LessonJoin() {
               targetSocketId: senderSocketId,
               lessonId: lesson.id,
             });
+          }
+        };
+
+        let screenReconnectAttempted = false;
+        const currentScreenPc = pc;
+        pc.onconnectionstatechange = () => {
+          if (currentScreenPc !== screenPeerConnectionRef.current) return;
+          if (currentScreenPc.connectionState === "connected") {
+            screenReconnectAttempted = false;
+            if (screenReconnectTimerRef.current) { clearTimeout(screenReconnectTimerRef.current); screenReconnectTimerRef.current = null; }
+          } else if (currentScreenPc.connectionState === "failed" && !screenReconnectAttempted) {
+            screenReconnectAttempted = true;
+            console.log("Screen share connection failed - re-requesting stream");
+            if (screenReconnectTimerRef.current) clearTimeout(screenReconnectTimerRef.current);
+            screenReconnectTimerRef.current = setTimeout(() => {
+              if (screenPeerConnectionRef.current === currentScreenPc && currentScreenPc.connectionState === "failed") {
+                currentScreenPc.close();
+                screenPeerConnectionRef.current = null;
+                screenStreamRef.current = null;
+                setHasScreenStream(false);
+                const deviceType = window.innerWidth < 768 ? "mobile" : "desktop";
+                socket.emit("lesson:request-screen-stream", { lessonId: lesson.id, deviceType });
+              }
+            }, 3000);
           }
         };
 
@@ -257,9 +308,17 @@ export default function LessonJoin() {
 
     socket.on("lesson:webrtc-offer", async ({ offer, senderSocketId }) => {
       try {
-        const pc = new RTCPeerConnection({
-          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-        });
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
+        }
+        if (peerConnectionRef.current) {
+          peerConnectionRef.current.close();
+          peerConnectionRef.current = null;
+        }
+        remoteStreamRef.current = null;
+
+        const pc = new RTCPeerConnection(ICE_SERVERS);
         peerConnectionRef.current = pc;
 
         pc.ontrack = (e) => {
@@ -271,6 +330,14 @@ export default function LessonJoin() {
             videoRef.current.srcObject = remoteStreamRef.current;
           }
           if (e.track.kind === "video") setHasRemoteVideo(true);
+          if (e.track.kind === "audio") {
+            if (audioRef.current) {
+              audioRef.current.srcObject = remoteStreamRef.current;
+              audioRef.current.play().catch(() => {
+                setAudioAutoplayBlocked(true);
+              });
+            }
+          }
         };
 
         pc.onicecandidate = (e) => {
@@ -280,6 +347,34 @@ export default function LessonJoin() {
               targetSocketId: senderSocketId,
               lessonId: lesson.id,
             });
+          }
+        };
+
+        let streamReconnectAttempts = 0;
+        const currentPc = pc;
+        pc.onconnectionstatechange = () => {
+          if (currentPc !== peerConnectionRef.current) return;
+          if (currentPc.connectionState === "connected") {
+            streamReconnectAttempts = 0;
+            if (reconnectTimerRef.current) {
+              clearTimeout(reconnectTimerRef.current);
+              reconnectTimerRef.current = null;
+            }
+          } else if (currentPc.connectionState === "failed") {
+            if (streamReconnectAttempts < 2) {
+              streamReconnectAttempts++;
+              if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+              reconnectTimerRef.current = setTimeout(() => {
+                if (peerConnectionRef.current === currentPc && currentPc.connectionState === "failed") {
+                  console.log("Audio/video failed - re-requesting stream (attempt", streamReconnectAttempts, ")");
+                  currentPc.close();
+                  peerConnectionRef.current = null;
+                  remoteStreamRef.current = null;
+                  setHasRemoteVideo(false);
+                  socket.emit("lesson:request-stream", { lessonId: lesson.id });
+                }
+              }, 3000 * streamReconnectAttempts);
+            }
           }
         };
 
@@ -422,6 +517,7 @@ export default function LessonJoin() {
       peerConnectionRef.current?.close();
       screenPeerConnectionRef.current?.close();
       screenStreamRef.current?.getTracks().forEach(t => t.stop());
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
     };
   }, []);
 
@@ -538,19 +634,20 @@ export default function LessonJoin() {
               isHost={false}
             />
           ) : (
-            <div className="flex items-center justify-center w-full h-full bg-black relative" data-testid="screen-share-student-view">
+            <div className="w-full h-full bg-black relative overflow-auto" data-testid="screen-share-student-view">
               {hasScreenStream ? (
-                <>
+                <div className="w-full h-full flex items-center justify-center min-w-0 min-h-0">
                   <video
                     ref={screenVideoRef}
                     autoPlay
                     playsInline
-                    className="max-w-full max-h-full object-contain"
+                    className="w-full h-full object-contain"
+                    style={{ touchAction: "pan-x pan-y pinch-zoom" }}
                     data-testid="screen-share-student-video"
                   />
                   {pointer && pointer.visible && screenVideoRef.current && (() => {
                     const rect = screenVideoRef.current!.getBoundingClientRect();
-                    const parentRect = screenVideoRef.current!.parentElement?.getBoundingClientRect();
+                    const parentRect = screenVideoRef.current!.parentElement?.parentElement?.getBoundingClientRect();
                     if (!parentRect || rect.width === 0 || rect.height === 0) return null;
                     const offsetLeft = rect.left - parentRect.left;
                     const offsetTop = rect.top - parentRect.top;
@@ -568,9 +665,9 @@ export default function LessonJoin() {
                       </div>
                     );
                   })()}
-                </>
+                </div>
               ) : (
-                <div className="flex flex-col items-center justify-center gap-3 text-white/70">
+                <div className="flex flex-col items-center justify-center w-full h-full gap-3 text-white/70">
                   <Monitor className="w-12 h-12" />
                   <p>O'qituvchi ekranini ulashmoqda...</p>
                   <div className="w-6 h-6 border-2 border-white/50 border-t-transparent rounded-full animate-spin" />
@@ -636,11 +733,27 @@ export default function LessonJoin() {
           </div>
         )}
 
-        <audio ref={el => {
-          if (el && remoteStreamRef.current && !el.srcObject) {
-            el.srcObject = remoteStreamRef.current;
-          }
-        }} autoPlay hidden />
+        <audio ref={audioRef} autoPlay playsInline hidden />
+
+        {audioAutoplayBlocked && (
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50">
+            <Button
+              onClick={() => {
+                if (audioRef.current && remoteStreamRef.current) {
+                  audioRef.current.srcObject = remoteStreamRef.current;
+                  audioRef.current.play().then(() => {
+                    setAudioAutoplayBlocked(false);
+                  }).catch(() => {});
+                }
+              }}
+              className="gap-2 shadow-lg"
+              data-testid="button-enable-audio"
+            >
+              <Volume2 className="w-4 h-4" />
+              Ovozni yoqish
+            </Button>
+          </div>
+        )}
 
         <LessonChat socket={socketState} studentName={displayName || undefined} />
       </div>

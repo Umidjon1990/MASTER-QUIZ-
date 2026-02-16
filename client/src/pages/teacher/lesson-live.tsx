@@ -25,6 +25,20 @@ import {
 } from "lucide-react";
 import type { LiveLesson } from "@shared/schema";
 
+const ICE_SERVERS: RTCConfiguration = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun3.l.google.com:19302" },
+    { urls: "stun:stun4.l.google.com:19302" },
+    { urls: "stun:stun.cloudflare.com:3478" },
+    { urls: "stun:stun.services.mozilla.com:3478" },
+  ],
+  iceCandidatePoolSize: 10,
+  iceTransportPolicy: "all",
+};
+
 export default function TeacherLessonLive() {
   const [, params] = useRoute("/teacher/lesson/:id");
   const [, navigate] = useLocation();
@@ -199,9 +213,13 @@ export default function TeacherLessonLive() {
     const socket = socketRef.current;
     if (!socket || !localStreamRef.current) return;
 
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    });
+    const existingPc = peerConnectionsRef.current.get(targetSocketId);
+    if (existingPc) {
+      existingPc.close();
+      peerConnectionsRef.current.delete(targetSocketId);
+    }
+
+    const pc = new RTCPeerConnection(ICE_SERVERS);
     peerConnectionsRef.current.set(targetSocketId, pc);
 
     localStreamRef.current.getTracks().forEach(track => {
@@ -218,10 +236,44 @@ export default function TeacherLessonLive() {
       }
     };
 
+    let iceRestartAttempted = false;
+    let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
-        pc.close();
-        peerConnectionsRef.current.delete(targetSocketId);
+      if (pc.connectionState === "connected") {
+        iceRestartAttempted = false;
+        if (disconnectTimer) { clearTimeout(disconnectTimer); disconnectTimer = null; }
+      } else if (pc.connectionState === "failed") {
+        if (disconnectTimer) { clearTimeout(disconnectTimer); disconnectTimer = null; }
+        if (!iceRestartAttempted) {
+          iceRestartAttempted = true;
+          console.log("WebRTC failed for", targetSocketId, "- one ICE restart attempt");
+          pc.restartIce();
+          pc.createOffer({ iceRestart: true }).then(offer => {
+            if (peerConnectionsRef.current.get(targetSocketId) !== pc) return;
+            pc.setLocalDescription(offer);
+            socket.emit("lesson:webrtc-offer", { lessonId, offer, targetSocketId });
+          }).catch(() => {
+            pc.close();
+            peerConnectionsRef.current.delete(targetSocketId);
+          });
+        } else {
+          pc.close();
+          peerConnectionsRef.current.delete(targetSocketId);
+        }
+      } else if (pc.connectionState === "disconnected") {
+        if (disconnectTimer) clearTimeout(disconnectTimer);
+        disconnectTimer = setTimeout(() => {
+          if (peerConnectionsRef.current.get(targetSocketId) !== pc) return;
+          if (pc.connectionState === "disconnected" && !iceRestartAttempted) {
+            iceRestartAttempted = true;
+            pc.restartIce();
+            pc.createOffer({ iceRestart: true }).then(offer => {
+              if (peerConnectionsRef.current.get(targetSocketId) !== pc) return;
+              pc.setLocalDescription(offer);
+              socket.emit("lesson:webrtc-offer", { lessonId, offer, targetSocketId });
+            }).catch(() => {});
+          }
+        }, 5000);
       }
     };
 
@@ -235,9 +287,13 @@ export default function TeacherLessonLive() {
     const stream = screenStreamRef.current;
     if (!socket || !stream) return;
 
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    });
+    const existingPc = screenPeerConnectionsRef.current.get(targetSocketId);
+    if (existingPc) {
+      existingPc.close();
+      screenPeerConnectionsRef.current.delete(targetSocketId);
+    }
+
+    const pc = new RTCPeerConnection(ICE_SERVERS);
     screenPeerConnectionsRef.current.set(targetSocketId, pc);
 
     stream.getTracks().forEach(track => {
@@ -254,10 +310,44 @@ export default function TeacherLessonLive() {
       }
     };
 
+    let screenIceRestarted = false;
+    let screenDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
-        pc.close();
-        screenPeerConnectionsRef.current.delete(targetSocketId);
+      if (screenPeerConnectionsRef.current.get(targetSocketId) !== pc) return;
+      if (pc.connectionState === "connected") {
+        screenIceRestarted = false;
+        if (screenDisconnectTimer) { clearTimeout(screenDisconnectTimer); screenDisconnectTimer = null; }
+      } else if (pc.connectionState === "failed") {
+        if (screenDisconnectTimer) { clearTimeout(screenDisconnectTimer); screenDisconnectTimer = null; }
+        if (!screenIceRestarted) {
+          screenIceRestarted = true;
+          pc.restartIce();
+          pc.createOffer({ iceRestart: true }).then(offer => {
+            if (screenPeerConnectionsRef.current.get(targetSocketId) !== pc) return;
+            pc.setLocalDescription(offer);
+            socket.emit("lesson:screen-offer", { lessonId, offer, targetSocketId });
+          }).catch(() => {
+            pc.close();
+            screenPeerConnectionsRef.current.delete(targetSocketId);
+          });
+        } else {
+          pc.close();
+          screenPeerConnectionsRef.current.delete(targetSocketId);
+        }
+      } else if (pc.connectionState === "disconnected") {
+        if (screenDisconnectTimer) clearTimeout(screenDisconnectTimer);
+        screenDisconnectTimer = setTimeout(() => {
+          if (screenPeerConnectionsRef.current.get(targetSocketId) !== pc) return;
+          if (pc.connectionState === "disconnected" && !screenIceRestarted) {
+            screenIceRestarted = true;
+            pc.restartIce();
+            pc.createOffer({ iceRestart: true }).then(offer => {
+              if (screenPeerConnectionsRef.current.get(targetSocketId) !== pc) return;
+              pc.setLocalDescription(offer);
+              socket.emit("lesson:screen-offer", { lessonId, offer, targetSocketId });
+            }).catch(() => {});
+          }
+        }, 5000);
       }
     };
 
