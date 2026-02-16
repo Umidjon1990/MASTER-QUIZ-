@@ -388,7 +388,7 @@ export function setupWebSocket(httpServer: HttpServer) {
               total: questionsList.length,
               question: {
                 id: q.id,
-                text: q.text,
+                text: q.questionText,
                 type: q.type,
                 options: q.options,
                 mediaUrl: q.mediaUrl,

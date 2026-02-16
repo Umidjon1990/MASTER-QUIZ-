@@ -781,12 +781,19 @@ export default function TeacherLessonLive() {
     socketRef.current?.emit("lesson:pointer-move", { lessonId, x, y, visible });
   };
 
+  const lastViewportRef = useRef<{ scrollRatioX: number; scrollRatioY: number; visibleRatioW: number; visibleRatioH: number } | null>(null);
+
   const handleZoomChange = (newZoom: number) => {
     setZoomLevel(newZoom);
-    socketRef.current?.emit("lesson:zoom-change", { lessonId, zoomLevel: newZoom });
+    socketRef.current?.emit("lesson:zoom-change", {
+      lessonId,
+      zoomLevel: newZoom,
+      viewport: lastViewportRef.current || undefined,
+    });
   };
 
   const handleViewportChange = useCallback((viewport: { scrollRatioX: number; scrollRatioY: number; visibleRatioW: number; visibleRatioH: number }) => {
+    lastViewportRef.current = viewport;
     socketRef.current?.emit("lesson:zoom-change", { lessonId, zoomLevel, viewport });
   }, [lessonId, zoomLevel]);
 

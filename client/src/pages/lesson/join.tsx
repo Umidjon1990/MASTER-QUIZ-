@@ -61,6 +61,7 @@ export default function LessonJoin() {
   const [ended, setEnded] = useState(false);
   const [participantCount, setParticipantCount] = useState(0);
   const [externalViewport, setExternalViewport] = useState<{ scrollRatioX: number; scrollRatioY: number; visibleRatioW: number; visibleRatioH: number } | null>(null);
+  const [externalZoom, setExternalZoom] = useState<number | undefined>(undefined);
 
   const [videoShape, setVideoShape] = useState<"circle" | "rectangle">("circle");
   const initStudentVideoSize = typeof window !== "undefined" && window.innerWidth < 640 ? 80 : 120;
@@ -164,6 +165,9 @@ export default function LessonJoin() {
         if (res.viewport) {
           setExternalViewport(res.viewport);
         }
+        if (res.zoomLevel !== undefined) {
+          setExternalZoom(res.zoomLevel);
+        }
         if (res.pipState) {
           applyPipState(res.pipState);
         }
@@ -186,9 +190,13 @@ export default function LessonJoin() {
       setPointer({ x, y, visible });
     });
 
-    socket.on("lesson:zoom-changed", ({ zoomLevel, viewport }) => {
+    socket.on("lesson:zoom-changed", ({ zoomLevel: newZoom, viewport }) => {
       if (viewport) {
-        setExternalViewport(viewport);
+        setExternalViewport({ ...viewport });
+        setExternalZoom(undefined);
+      } else if (newZoom !== undefined) {
+        setExternalViewport(null);
+        setExternalZoom(newZoom);
       }
     });
 
@@ -631,6 +639,7 @@ export default function LessonJoin() {
               currentPage={currentPage}
               pointerPosition={pointer}
               externalViewport={externalViewport}
+              externalZoom={externalZoom}
               isHost={false}
             />
           ) : (
