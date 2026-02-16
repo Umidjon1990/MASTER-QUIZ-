@@ -1223,7 +1223,12 @@ export default function TeacherLessonLive() {
             }`}
           >
             <video
-              ref={videoRef}
+              ref={(el) => {
+                (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
+                if (el && localStreamRef.current) {
+                  el.srcObject = localStreamRef.current;
+                }
+              }}
               autoPlay
               playsInline
               muted

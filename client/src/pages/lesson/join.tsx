@@ -714,7 +714,12 @@ export default function LessonJoin() {
               }`}
             >
               <video
-                ref={videoRef}
+                ref={(el) => {
+                  (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
+                  if (el && remoteStreamRef.current) {
+                    el.srcObject = remoteStreamRef.current;
+                  }
+                }}
                 autoPlay
                 playsInline
                 muted

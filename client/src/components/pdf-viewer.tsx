@@ -83,15 +83,23 @@ export default function PDFViewer({
   }, [onViewportChange, computeViewport]);
 
   useEffect(() => {
+    if (externalZoom !== undefined && externalZoom !== zoomLevel && !isHost) {
+      const container = containerRef.current;
+      if (container && externalZoom > 0) {
+        const scrollCenterX = container.scrollLeft + container.clientWidth / 2;
+        const scrollCenterY = container.scrollTop + container.clientHeight / 2;
+        const contentW = container.scrollWidth || 1;
+        const contentH = container.scrollHeight || 1;
+        scrollAnchorRef.current = { ratioX: scrollCenterX / contentW, ratioY: scrollCenterY / contentH };
+      }
+      prevZoomRef.current = zoomLevel;
+      setZoomLevel(externalZoom);
+    }
+  }, [externalZoom]);
+
+  useEffect(() => {
     if (externalViewport && !isHost) {
       applyingExternalViewportRef.current = true;
-      const multiplier = Math.max(1, 1 / (externalViewport.visibleRatioW || 1));
-      const level = Math.round(Math.log(multiplier) / Math.log(1.25));
-      const clampedLevel = Math.max(0, Math.min(6, level));
-
-      prevZoomRef.current = zoomLevel;
-      setZoomLevel(clampedLevel);
-
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           const container = containerRef.current;
@@ -106,21 +114,6 @@ export default function PDFViewer({
       });
     }
   }, [externalViewport]);
-
-  useEffect(() => {
-    if (externalZoom !== undefined && externalZoom !== zoomLevel) {
-      const container = containerRef.current;
-      if (container && externalZoom > 0) {
-        const scrollCenterX = container.scrollLeft + container.clientWidth / 2;
-        const scrollCenterY = container.scrollTop + container.clientHeight / 2;
-        const contentW = container.scrollWidth || 1;
-        const contentH = container.scrollHeight || 1;
-        scrollAnchorRef.current = { ratioX: scrollCenterX / contentW, ratioY: scrollCenterY / contentH };
-      }
-      prevZoomRef.current = zoomLevel;
-      setZoomLevel(externalZoom);
-    }
-  }, [externalZoom]);
 
   const updateZoom = useCallback((newZoomOrUpdater: number | ((prev: number) => number)) => {
     const container = containerRef.current;
