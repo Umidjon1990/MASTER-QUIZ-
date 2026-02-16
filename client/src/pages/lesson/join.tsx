@@ -80,7 +80,7 @@ export default function LessonJoin() {
   const [hasScreenStream, setHasScreenStream] = useState(false);
   const screenPeerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
-  const screenVideoRef = useRef<HTMLVideoElement>(null);
+  const screenVideoRef = useRef<HTMLVideoElement | null>(null);
   const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -539,7 +539,7 @@ export default function LessonJoin() {
     if (hasScreenStream && screenVideoRef.current && screenStreamRef.current) {
       screenVideoRef.current.srcObject = screenStreamRef.current;
     }
-  }, [hasScreenStream]);
+  }, [hasScreenStream, lessonMode]);
 
   const toggleAudioMute = () => {
     if (remoteStreamRef.current) {
@@ -624,7 +624,12 @@ export default function LessonJoin() {
               {hasScreenStream && (
                 <div className="w-full max-w-2xl mx-auto aspect-video bg-black rounded-lg overflow-hidden">
                   <video
-                    ref={screenVideoRef}
+                    ref={(el) => {
+                      screenVideoRef.current = el;
+                      if (el && screenStreamRef.current) {
+                        el.srcObject = screenStreamRef.current;
+                      }
+                    }}
                     autoPlay
                     playsInline
                     className="w-full h-full object-contain"
@@ -647,7 +652,12 @@ export default function LessonJoin() {
               {hasScreenStream ? (
                 <div className="w-full h-full flex items-center justify-center min-w-0 min-h-0">
                   <video
-                    ref={screenVideoRef}
+                    ref={(el) => {
+                      screenVideoRef.current = el;
+                      if (el && screenStreamRef.current) {
+                        el.srcObject = screenStreamRef.current;
+                      }
+                    }}
                     autoPlay
                     playsInline
                     className="w-full h-full object-contain"

@@ -984,15 +984,9 @@ export default function TeacherLessonLive() {
               </div>
             </div>
             {isScreenSharing && (
-              <div className="w-full max-w-2xl mx-auto aspect-video bg-black rounded-lg overflow-hidden">
-                <video
-                  ref={screenVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-contain"
-                  data-testid="voice-screen-share-video"
-                />
+              <div className="flex items-center gap-2 px-4 py-2 bg-green-600/20 border border-green-500/30 rounded-lg" data-testid="voice-screen-share-status">
+                <Monitor className="w-5 h-5 text-green-400" />
+                <span className="text-sm text-green-300">Ekran ulashilmoqda</span>
               </div>
             )}
           </div>
@@ -1010,30 +1004,26 @@ export default function TeacherLessonLive() {
           />
         ) : (
           <div
-            className="flex items-center justify-center w-full h-full bg-black relative"
+            className="flex flex-col items-center justify-center w-full h-full bg-black relative gap-6"
             data-testid="screen-share-preview"
-            onPointerMove={(e) => {
-              if (!isScreenSharing || !screenVideoRef.current) return;
-              const video = screenVideoRef.current;
-              const rect = video.getBoundingClientRect();
-              if (rect.width === 0 || rect.height === 0) return;
-              const x = ((e.clientX - rect.left) / rect.width) * 100;
-              const y = ((e.clientY - rect.top) / rect.height) * 100;
-              const visible = x >= 0 && x <= 100 && y >= 0 && y <= 100;
-              handlePointerMove(x, y, visible);
-            }}
-            onPointerLeave={() => handlePointerMove(0, 0, false)}
           >
-            <video
-              ref={screenVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="max-w-full max-h-full object-contain"
-              data-testid="screen-share-video"
-            />
-            {!isScreenSharing && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white">
+            {isScreenSharing ? (
+              <>
+                <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center animate-pulse">
+                  <Monitor className="w-10 h-10 text-green-400" />
+                </div>
+                <div className="text-center space-y-2">
+                  <h2 className="text-xl font-semibold text-white">Ekran ulashilmoqda</h2>
+                  <p className="text-sm text-white/60">O'quvchilar sizning ekraningizni ko'rmoqda</p>
+                </div>
+                <div className="flex items-center gap-3 text-sm text-white/50">
+                  <span className="flex items-center gap-1">
+                    <Users className="w-4 h-4" /> {participantCount} qatnashchi
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-4 text-white">
                 <Monitor className="w-16 h-16 opacity-50" />
                 <p className="text-lg opacity-70">Ekran ulashish to'xtatildi</p>
                 <Button variant="outline" onClick={() => setLessonMode(lesson?.lessonType === "voice" ? "voice" : "pdf")} data-testid="button-back-to-pdf">
