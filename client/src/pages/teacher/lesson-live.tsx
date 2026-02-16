@@ -735,7 +735,7 @@ export default function TeacherLessonLive() {
     if (videoEnabled && videoRef.current && localStreamRef.current) {
       videoRef.current.srcObject = localStreamRef.current;
     }
-  }, [videoEnabled]);
+  }, [videoEnabled, lessonMode]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

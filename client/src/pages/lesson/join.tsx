@@ -193,9 +193,8 @@ export default function LessonJoin() {
     socket.on("lesson:zoom-changed", ({ zoomLevel: newZoom, viewport }) => {
       if (viewport) {
         setExternalViewport({ ...viewport });
-        setExternalZoom(undefined);
-      } else if (newZoom !== undefined) {
-        setExternalViewport(null);
+      }
+      if (newZoom !== undefined) {
         setExternalZoom(newZoom);
       }
     });
@@ -533,7 +532,7 @@ export default function LessonJoin() {
     if (hasRemoteVideo && videoRef.current && remoteStreamRef.current) {
       videoRef.current.srcObject = remoteStreamRef.current;
     }
-  }, [hasRemoteVideo]);
+  }, [hasRemoteVideo, lessonMode]);
 
   useEffect(() => {
     if (hasScreenStream && screenVideoRef.current && screenStreamRef.current) {
