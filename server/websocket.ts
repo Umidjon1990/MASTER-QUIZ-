@@ -832,10 +832,15 @@ export function setupWebSocket(httpServer: HttpServer) {
       if (socket.data.lessonRole !== "host") return;
       const { lessonId } = data;
       const roomSockets = await io.in(`lesson:${lessonId}`).fetchSockets();
+      const studentSocketIds: string[] = [];
       for (const s of roomSockets) {
         if (s.data.lessonRole === "student") {
+          studentSocketIds.push(s.id);
           socket.emit("lesson:stream-requested", { socketId: s.id });
         }
+      }
+      if (studentSocketIds.length > 0) {
+        io.to(studentSocketIds).emit("lesson:teacher-stream-available", { lessonId });
       }
     });
 

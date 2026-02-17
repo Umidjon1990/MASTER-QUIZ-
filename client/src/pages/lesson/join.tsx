@@ -425,6 +425,12 @@ export default function LessonJoin() {
         } catch {}
       }
     });
+
+    socket.on("lesson:teacher-stream-available", () => {
+      if (!peerConnectionRef.current || peerConnectionRef.current.connectionState === "closed" || peerConnectionRef.current.connectionState === "failed") {
+        socket.emit("lesson:request-stream", { lessonId: lesson.id });
+      }
+    });
   };
 
   useEffect(() => {

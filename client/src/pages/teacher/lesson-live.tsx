@@ -163,11 +163,33 @@ export default function TeacherLessonLive() {
   }, [resetControlsTimer]);
 
 
+  const [mediaError, setMediaError] = useState<string | null>(null);
+
   useEffect(() => {
+    const isInIframe = window.self !== window.top;
+    if (isInIframe) {
+      setMediaError("Kamera va mikrofon iframe ichida ishlamasligi mumkin. Sahifani yangi tabda oching.");
+    }
+
     const loadDevices = async () => {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setMediaError("Brauzer kamera/mikrofonni qo'llab-quvvatlamaydi. HTTPS orqali yangi tabda oching.");
+        return;
+      }
       try {
-        await navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(s => s.getTracks().forEach(t => t.stop()));
-      } catch {}
+        const testStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        testStream.getTracks().forEach(t => t.stop());
+        setMediaError(null);
+      } catch (err: any) {
+        console.error("Media permission error:", err);
+        if (err.name === "NotAllowedError") {
+          setMediaError("Kamera/mikrofon ruxsati berilmagan. Brauzer sozlamalaridan ruxsat bering.");
+        } else if (err.name === "NotFoundError") {
+          setMediaError("Kamera yoki mikrofon topilmadi.");
+        } else if (isInIframe) {
+          setMediaError("Kamera va mikrofon iframe ichida ishlamaydi. Sahifani yangi tabda oching.");
+        }
+      }
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         setAudioDevices(devices.filter(d => d.kind === "audioinput"));
@@ -584,6 +606,9 @@ export default function TeacherLessonLive() {
   }, [isScreenSharing]);
 
   const getMediaStream = async (audio: boolean, video: boolean) => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error("Brauzer kamera/mikrofonni qo'llab-quvvatlamaydi. Sahifani yangi tabda oching.");
+    }
     const constraints: MediaStreamConstraints = {};
     if (audio) {
       constraints.audio = selectedAudioDevice
@@ -619,8 +644,14 @@ export default function TeacherLessonLive() {
           const stream = await getMediaStream(true, videoEnabled);
           localStreamRef.current = stream;
           if (videoRef.current) videoRef.current.srcObject = stream;
-        } catch {
-          toast({ title: "Mikrofondan foydalanib bo'lmaydi", variant: "destructive" });
+        } catch (err: any) {
+          console.error("Mikrofon xatoligi:", err);
+          const msg = err?.name === "NotAllowedError"
+            ? "Mikrofon ruxsati berilmagan. Brauzer sozlamalaridan ruxsat bering."
+            : err?.name === "NotFoundError"
+            ? "Mikrofon topilmadi. Qurilmani ulang."
+            : err?.message || "Mikrofondan foydalanib bo'lmaydi";
+          toast({ title: msg, variant: "destructive" });
           return;
         }
       } else {
@@ -642,14 +673,15 @@ export default function TeacherLessonLive() {
                 }
               });
             }
-          } catch {
-            toast({ title: "Mikrofondan foydalanib bo'lmaydi", variant: "destructive" });
+          } catch (err: any) {
+            console.error("Mikrofon xatoligi:", err);
+            toast({ title: err?.message || "Mikrofondan foydalanib bo'lmaydi", variant: "destructive" });
             return;
           }
         }
       }
       setAudioEnabled(true);
-      if (wasEmpty) broadcastStreamToStudents();
+      broadcastStreamToStudents();
     }
   };
 
@@ -683,9 +715,15 @@ export default function TeacherLessonLive() {
         }
         if (videoRef.current) videoRef.current.srcObject = localStreamRef.current;
         setVideoEnabled(true);
-        if (wasEmpty) broadcastStreamToStudents();
-      } catch {
-        toast({ title: "Kameradan foydalanib bo'lmaydi", variant: "destructive" });
+        broadcastStreamToStudents();
+      } catch (err: any) {
+        console.error("Kamera xatoligi:", err);
+        const msg = err?.name === "NotAllowedError"
+          ? "Kamera ruxsati berilmagan. Brauzer sozlamalaridan ruxsat bering."
+          : err?.name === "NotFoundError"
+          ? "Kamera topilmadi. Qurilmani ulang."
+          : err?.message || "Kameradan foydalanib bo'lmaydi";
+        toast({ title: msg, variant: "destructive" });
       }
     }
   };
@@ -1245,6 +1283,12 @@ export default function TeacherLessonLive() {
         )}
       </div>
 
+      {mediaError && (
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-40 max-w-sm px-3 py-2 rounded-md bg-red-600/90 text-white text-xs text-center backdrop-blur-sm" data-testid="media-error-banner">
+          {mediaError}
+        </div>
+      )}
+
       <div className={`absolute top-0 left-0 right-0 z-30 flex items-center justify-between gap-1 p-1.5 sm:p-2 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${showControls ? "opacity-100" : "opacity-0 pointer-events-none"}`} data-testid="lesson-controls">
         <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap min-w-0">
           <Button size="icon" variant="ghost" className="text-white" onClick={() => navigate("/teacher/lessons")} data-testid="button-back">
@@ -1428,6 +1472,29 @@ export default function TeacherLessonLive() {
               <Maximize2 className="w-4 h-4" />
             </Button>
           )}
+        </div>
+      )}
+
+      {audioEnabled && !videoEnabled && (
+        <div className="fixed z-50 bottom-20 right-4 flex items-center gap-1.5 px-3 py-2 rounded-full bg-green-600/80 backdrop-blur-sm text-white text-xs shadow-lg" data-testid="audio-only-indicator">
+          <Mic className="w-3.5 h-3.5" />
+          <span>Mikrofon yoniq</span>
+          <div className="flex items-center gap-0.5">
+            {[...Array(3)].map((_, i) => {
+              const threshold = (i + 1) * 30;
+              const active = audioLevel >= threshold;
+              return (
+                <div
+                  key={i}
+                  className="w-1 rounded-full transition-all duration-75"
+                  style={{
+                    height: `${6 + i * 2}px`,
+                    backgroundColor: active ? "white" : "rgba(255,255,255,0.3)",
+                  }}
+                />
+              );
+            })}
+          </div>
         </div>
       )}
 
