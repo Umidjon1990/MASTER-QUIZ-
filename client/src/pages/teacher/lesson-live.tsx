@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import {
   Video, VideoOff, Mic, MicOff, Users, Copy, Link2, Play, Square,
-  Circle, RectangleHorizontal, ArrowLeft, Lock, Unlock,
+  Circle, RectangleHorizontal, ArrowLeft, Lock, Unlock, X,
   Presentation, GripVertical, Download, StopCircle, Settings2,
   Monitor, MonitorOff, ZoomIn, ZoomOut, Maximize2, ChevronLeft, ChevronRight,
   Minimize2, Wifi, WifiOff,
@@ -166,28 +166,21 @@ export default function TeacherLessonLive() {
   const [mediaError, setMediaError] = useState<string | null>(null);
 
   useEffect(() => {
-    const isInIframe = window.self !== window.top;
-    if (isInIframe) {
-      setMediaError("Kamera va mikrofon iframe ichida ishlamasligi mumkin. Sahifani yangi tabda oching.");
-    }
-
     const loadDevices = async () => {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setMediaError("Brauzer kamera/mikrofonni qo'llab-quvvatlamaydi. HTTPS orqali yangi tabda oching.");
+        setMediaError("Brauzer kamera/mikrofonni qo'llab-quvvatlamaydi. Yangi tabda oching.");
         return;
       }
       try {
         const testStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
         testStream.getTracks().forEach(t => t.stop());
-        setMediaError(null);
       } catch (err: any) {
-        console.error("Media permission error:", err);
-        if (err.name === "NotAllowedError") {
-          setMediaError("Kamera/mikrofon ruxsati berilmagan. Brauzer sozlamalaridan ruxsat bering.");
-        } else if (err.name === "NotFoundError") {
-          setMediaError("Kamera yoki mikrofon topilmadi.");
-        } else if (isInIframe) {
-          setMediaError("Kamera va mikrofon iframe ichida ishlamaydi. Sahifani yangi tabda oching.");
+        console.error("Media permission check:", err);
+        try {
+          const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
+          audioOnly.getTracks().forEach(t => t.stop());
+        } catch {
+          setMediaError("Kamera/mikrofon ruxsati berilmagan. Brauzer manzil satridagi kamera belgisini bosib ruxsat bering.");
         }
       }
       try {
@@ -607,7 +600,7 @@ export default function TeacherLessonLive() {
 
   const getMediaStream = async (audio: boolean, video: boolean) => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error("Brauzer kamera/mikrofonni qo'llab-quvvatlamaydi. Sahifani yangi tabda oching.");
+      throw new Error("Brauzer kamera/mikrofonni qo'llab-quvvatlamaydi");
     }
     const constraints: MediaStreamConstraints = {};
     if (audio) {
@@ -624,7 +617,29 @@ export default function TeacherLessonLive() {
       if (selectedVideoDevice) videoConstraints.deviceId = { ideal: selectedVideoDevice };
       constraints.video = videoConstraints;
     }
-    return navigator.mediaDevices.getUserMedia(constraints);
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (firstErr) {
+      if (video && selectedVideoDevice) {
+        try {
+          const fallbackConstraints = { ...constraints };
+          fallbackConstraints.video = { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } };
+          return await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+        } catch {
+          throw firstErr;
+        }
+      }
+      if (audio && selectedAudioDevice) {
+        try {
+          const fallbackConstraints = { ...constraints };
+          fallbackConstraints.audio = { echoCancellation: true, noiseSuppression: true };
+          return await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+        } catch {
+          throw firstErr;
+        }
+      }
+      throw firstErr;
+    }
   };
 
   const broadcastStreamToStudents = useCallback(() => {
@@ -633,24 +648,42 @@ export default function TeacherLessonLive() {
     socket.emit("lesson:broadcast-stream-available", { lessonId });
   }, [lessonId]);
 
+  const getMediaErrorMsg = (err: any, type: "audio" | "video") => {
+    const device = type === "audio" ? "Mikrofon" : "Kamera";
+    if (err?.name === "NotAllowedError") return `${device} ruxsati berilmagan. Brauzer manzil satrida kamera belgisini bosib ruxsat bering.`;
+    if (err?.name === "NotFoundError") return `${device} topilmadi. Qurilmani ulang va sahifani yangilang.`;
+    if (err?.name === "NotReadableError") return `${device} boshqa dastur tomonidan ishlatilmoqda. Boshqa ilovalarni yoping.`;
+    if (err?.name === "OverconstrainedError") return `${device} so'ralgan sifatni qo'llab-quvvatlamaydi.`;
+    if (err?.name === "AbortError") return `${device}ga ulanish bekor qilindi.`;
+    return err?.message || `${device}dan foydalanib bo'lmaydi`;
+  };
+
+  const addTrackToPeers = (track: MediaStreamTrack) => {
+    peerConnectionsRef.current.forEach(pc => {
+      const sender = pc.getSenders().find(s => s.track?.kind === track.kind);
+      if (sender) {
+        sender.replaceTrack(track).catch(() => {});
+      } else {
+        pc.addTrack(track, localStreamRef.current!);
+      }
+    });
+  };
+
   const toggleAudio = async () => {
     if (audioEnabled) {
       localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = false; });
       setAudioEnabled(false);
     } else {
-      const wasEmpty = !localStreamRef.current;
       if (!localStreamRef.current) {
         try {
           const stream = await getMediaStream(true, videoEnabled);
           localStreamRef.current = stream;
           if (videoRef.current) videoRef.current.srcObject = stream;
+          setMediaError(null);
         } catch (err: any) {
           console.error("Mikrofon xatoligi:", err);
-          const msg = err?.name === "NotAllowedError"
-            ? "Mikrofon ruxsati berilmagan. Brauzer sozlamalaridan ruxsat bering."
-            : err?.name === "NotFoundError"
-            ? "Mikrofon topilmadi. Qurilmani ulang."
-            : err?.message || "Mikrofondan foydalanib bo'lmaydi";
+          const msg = getMediaErrorMsg(err, "audio");
+          setMediaError(msg);
           toast({ title: msg, variant: "destructive" });
           return;
         }
@@ -664,18 +697,13 @@ export default function TeacherLessonLive() {
             const newTrack = audioStream.getAudioTracks()[0];
             if (newTrack) {
               localStreamRef.current!.addTrack(newTrack);
-              peerConnectionsRef.current.forEach(pc => {
-                const audioSender = pc.getSenders().find(s => s.track?.kind === "audio");
-                if (audioSender) {
-                  audioSender.replaceTrack(newTrack).catch(() => {});
-                } else {
-                  pc.addTrack(newTrack, localStreamRef.current!);
-                }
-              });
+              addTrackToPeers(newTrack);
             }
           } catch (err: any) {
             console.error("Mikrofon xatoligi:", err);
-            toast({ title: err?.message || "Mikrofondan foydalanib bo'lmaydi", variant: "destructive" });
+            const msg = getMediaErrorMsg(err, "audio");
+            setMediaError(msg);
+            toast({ title: msg, variant: "destructive" });
             return;
           }
         }
@@ -693,7 +721,6 @@ export default function TeacherLessonLive() {
       });
       setVideoEnabled(false);
     } else {
-      const wasEmpty = !localStreamRef.current;
       try {
         if (!localStreamRef.current) {
           const stream = await getMediaStream(audioEnabled, true);
@@ -703,26 +730,17 @@ export default function TeacherLessonLive() {
           const newVideoTrack = videoStream.getVideoTracks()[0];
           if (newVideoTrack) {
             localStreamRef.current!.addTrack(newVideoTrack);
-            peerConnectionsRef.current.forEach(pc => {
-              const videoSender = pc.getSenders().find(s => s.track?.kind === "video");
-              if (videoSender) {
-                videoSender.replaceTrack(newVideoTrack).catch(() => {});
-              } else {
-                pc.addTrack(newVideoTrack, localStreamRef.current!);
-              }
-            });
+            addTrackToPeers(newVideoTrack);
           }
         }
         if (videoRef.current) videoRef.current.srcObject = localStreamRef.current;
         setVideoEnabled(true);
+        setMediaError(null);
         broadcastStreamToStudents();
       } catch (err: any) {
         console.error("Kamera xatoligi:", err);
-        const msg = err?.name === "NotAllowedError"
-          ? "Kamera ruxsati berilmagan. Brauzer sozlamalaridan ruxsat bering."
-          : err?.name === "NotFoundError"
-          ? "Kamera topilmadi. Qurilmani ulang."
-          : err?.message || "Kameradan foydalanib bo'lmaydi";
+        const msg = getMediaErrorMsg(err, "video");
+        setMediaError(msg);
         toast({ title: msg, variant: "destructive" });
       }
     }
@@ -1284,8 +1302,14 @@ export default function TeacherLessonLive() {
       </div>
 
       {mediaError && (
-        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-40 max-w-sm px-3 py-2 rounded-md bg-red-600/90 text-white text-xs text-center backdrop-blur-sm" data-testid="media-error-banner">
-          {mediaError}
+        <div className="absolute top-14 left-2 right-2 sm:left-1/2 sm:-translate-x-1/2 sm:max-w-md z-[60] px-4 py-3 rounded-lg bg-red-600 text-white text-sm text-center shadow-xl animate-in fade-in slide-in-from-top-2" data-testid="media-error-banner">
+          <div className="flex items-center justify-center gap-2">
+            <VideoOff className="w-4 h-4 shrink-0" />
+            <span>{mediaError}</span>
+            <button onClick={() => setMediaError(null)} className="ml-2 p-0.5 rounded hover:bg-white/20">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       )}
 
