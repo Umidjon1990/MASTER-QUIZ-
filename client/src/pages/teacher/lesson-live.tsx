@@ -602,11 +602,18 @@ export default function TeacherLessonLive() {
     return navigator.mediaDevices.getUserMedia(constraints);
   };
 
+  const broadcastStreamToStudents = useCallback(() => {
+    const socket = socketRef.current;
+    if (!socket || !localStreamRef.current || !lessonId) return;
+    socket.emit("lesson:broadcast-stream-available", { lessonId });
+  }, [lessonId]);
+
   const toggleAudio = async () => {
     if (audioEnabled) {
       localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = false; });
       setAudioEnabled(false);
     } else {
+      const wasEmpty = !localStreamRef.current;
       if (!localStreamRef.current) {
         try {
           const stream = await getMediaStream(true, videoEnabled);
@@ -623,7 +630,18 @@ export default function TeacherLessonLive() {
         } else {
           try {
             const audioStream = await getMediaStream(true, false);
-            audioStream.getAudioTracks().forEach(t => localStreamRef.current!.addTrack(t));
+            const newTrack = audioStream.getAudioTracks()[0];
+            if (newTrack) {
+              localStreamRef.current!.addTrack(newTrack);
+              peerConnectionsRef.current.forEach(pc => {
+                const audioSender = pc.getSenders().find(s => s.track?.kind === "audio");
+                if (audioSender) {
+                  audioSender.replaceTrack(newTrack).catch(() => {});
+                } else {
+                  pc.addTrack(newTrack, localStreamRef.current!);
+                }
+              });
+            }
           } catch {
             toast({ title: "Mikrofondan foydalanib bo'lmaydi", variant: "destructive" });
             return;
@@ -631,6 +649,7 @@ export default function TeacherLessonLive() {
         }
       }
       setAudioEnabled(true);
+      if (wasEmpty) broadcastStreamToStudents();
     }
   };
 
@@ -642,16 +661,29 @@ export default function TeacherLessonLive() {
       });
       setVideoEnabled(false);
     } else {
+      const wasEmpty = !localStreamRef.current;
       try {
         if (!localStreamRef.current) {
           const stream = await getMediaStream(audioEnabled, true);
           localStreamRef.current = stream;
         } else {
           const videoStream = await getMediaStream(false, true);
-          videoStream.getVideoTracks().forEach(t => localStreamRef.current!.addTrack(t));
+          const newVideoTrack = videoStream.getVideoTracks()[0];
+          if (newVideoTrack) {
+            localStreamRef.current!.addTrack(newVideoTrack);
+            peerConnectionsRef.current.forEach(pc => {
+              const videoSender = pc.getSenders().find(s => s.track?.kind === "video");
+              if (videoSender) {
+                videoSender.replaceTrack(newVideoTrack).catch(() => {});
+              } else {
+                pc.addTrack(newVideoTrack, localStreamRef.current!);
+              }
+            });
+          }
         }
         if (videoRef.current) videoRef.current.srcObject = localStreamRef.current;
         setVideoEnabled(true);
+        if (wasEmpty) broadcastStreamToStudents();
       } catch {
         toast({ title: "Kameradan foydalanib bo'lmaydi", variant: "destructive" });
       }

@@ -61,10 +61,10 @@ function clearLiveSessionTimers(sessionId: string) {
 function cleanupLiveSessionTimer(sessionId: string) {
   clearLiveSessionTimers(sessionId);
   liveSessionTimers.delete(sessionId);
-  for (const key of questionAnswerCounts.keys()) {
+  for (const key of Array.from(questionAnswerCounts.keys())) {
     if (key.startsWith(`${sessionId}:`)) questionAnswerCounts.delete(key);
   }
-  for (const key of questionStartTimes.keys()) {
+  for (const key of Array.from(questionStartTimes.keys())) {
     if (key.startsWith(`${sessionId}:`)) questionStartTimes.delete(key);
   }
 }
@@ -826,6 +826,17 @@ export function setupWebSocket(httpServer: HttpServer) {
       if (socket.data.lessonRole !== "student") return;
       const { lessonId } = data;
       socket.to(`lesson:${lessonId}`).emit("lesson:stream-requested", { socketId: socket.id });
+    });
+
+    socket.on("lesson:broadcast-stream-available", async (data) => {
+      if (socket.data.lessonRole !== "host") return;
+      const { lessonId } = data;
+      const roomSockets = await io.in(`lesson:${lessonId}`).fetchSockets();
+      for (const s of roomSockets) {
+        if (s.data.lessonRole === "student") {
+          socket.emit("lesson:stream-requested", { socketId: s.id });
+        }
+      }
     });
 
     socket.on("public:create-room", async (data, callback) => {
