@@ -280,7 +280,7 @@ export async function registerRoutes(
 
       const quiz = await storage.getQuiz(req.params.id);
       if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
-      if (quiz.creatorId !== req.user.id) return res.status(403).json({ message: "Ruxsat yo'q" });
+      if (quiz.creatorId !== req.userId) return res.status(403).json({ message: "Ruxsat yo'q" });
 
       const scheduledDate = new Date(scheduledAt);
       if (scheduledDate <= new Date()) return res.status(400).json({ message: "Vaqt kelajakda bo'lishi kerak" });
@@ -309,7 +309,7 @@ export async function registerRoutes(
     try {
       const quiz = await storage.getQuiz(req.params.id);
       if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
-      if (quiz.creatorId !== req.user.id) return res.status(403).json({ message: "Ruxsat yo'q" });
+      if (quiz.creatorId !== req.userId) return res.status(403).json({ message: "Ruxsat yo'q" });
 
       const updated = await storage.updateQuiz(req.params.id, {
         scheduledAt: null,
