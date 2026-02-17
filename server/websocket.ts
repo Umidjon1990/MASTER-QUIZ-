@@ -645,6 +645,10 @@ export function setupWebSocket(httpServer: HttpServer) {
       }
     });
 
+    socket.on("lesson:debug-log", (data: { msg: string }) => {
+      console.log(`[MEDIA-DEBUG] ${data.msg}`);
+    });
+
     socket.on("lesson:host-join", async (data, callback) => {
       try {
         const { lessonId } = data;

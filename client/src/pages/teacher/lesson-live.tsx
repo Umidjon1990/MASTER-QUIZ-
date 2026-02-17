@@ -126,6 +126,14 @@ export default function TeacherLessonLive() {
   const [audioLevel, setAudioLevel] = useState(0);
   const audioAnalyserRef = useRef<{ ctx: AudioContext; analyser: AnalyserNode; source: MediaStreamAudioSourceNode; animId: number } | null>(null);
   const [mediaLoading, setMediaLoading] = useState<"audio" | "video" | null>(null);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const addDebugLog = useCallback((msg: string) => {
+    const ts = new Date().toLocaleTimeString();
+    const entry = `[${ts}] ${msg}`;
+    console.log("[MEDIA-DEBUG]", entry);
+    setDebugLogs(prev => [...prev.slice(-20), entry]);
+    socketRef.current?.emit("lesson:debug-log", { msg: entry });
+  }, []);
 
   const [lessonMode, setLessonMode] = useState<"pdf" | "screen" | "voice">("pdf");
   const [showControls, setShowControls] = useState(true);
@@ -682,39 +690,55 @@ export default function TeacherLessonLive() {
     });
   };
 
+  const describeStream = (stream: MediaStream | null) => {
+    if (!stream) return "stream=null";
+    const at = stream.getAudioTracks();
+    const vt = stream.getVideoTracks();
+    return `tracks: audio=${at.length}(${at.map(t => `${t.label}|${t.readyState}|en=${t.enabled}`).join(",")}) video=${vt.length}(${vt.map(t => `${t.label}|${t.readyState}|en=${t.enabled}`).join(",")})`;
+  };
+
   const toggleAudio = async () => {
     if (mediaLoading) return;
+    addDebugLog(`toggleAudio called. audioEnabled=${audioEnabled}, stream=${!!localStreamRef.current}`);
     if (audioEnabled) {
       localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = false; });
       setAudioEnabled(false);
+      addDebugLog("Audio OFF");
       toast({ title: "Mikrofon o'chirildi" });
     } else {
       setMediaLoading("audio");
       try {
         if (!localStreamRef.current) {
+          addDebugLog("No stream, requesting audio+video...");
           const stream = await getMediaStream(true, videoEnabled);
+          addDebugLog(`Got stream: ${describeStream(stream)}`);
           localStreamRef.current = stream;
           if (videoRef.current) videoRef.current.srcObject = stream;
           setMediaError(null);
         } else {
           const audioTracks = localStreamRef.current.getAudioTracks();
+          addDebugLog(`Existing stream has ${audioTracks.length} audio tracks`);
           if (audioTracks.length > 0) {
             audioTracks.forEach(t => { t.enabled = true; });
+            addDebugLog("Re-enabled existing audio tracks");
           } else {
+            addDebugLog("No audio tracks, requesting new audio...");
             const audioStream = await getMediaStream(true, false);
             const newTrack = audioStream.getAudioTracks()[0];
             if (newTrack) {
               localStreamRef.current!.addTrack(newTrack);
               addTrackToPeers(newTrack);
+              addDebugLog(`Added new audio track: ${newTrack.label}|${newTrack.readyState}`);
             }
           }
         }
         setAudioEnabled(true);
         setMediaError(null);
+        addDebugLog(`Audio ON. Stream: ${describeStream(localStreamRef.current)}`);
         toast({ title: "Mikrofon yoniq!" });
         broadcastStreamToStudents();
       } catch (err: any) {
-        console.error("Mikrofon xatoligi:", err);
+        addDebugLog(`Audio ERROR: ${err?.name}: ${err?.message}`);
         const msg = getMediaErrorMsg(err, "audio");
         setMediaError(msg);
         toast({ title: msg, variant: "destructive" });
@@ -726,34 +750,48 @@ export default function TeacherLessonLive() {
 
   const toggleVideo = async () => {
     if (mediaLoading) return;
+    addDebugLog(`toggleVideo called. videoEnabled=${videoEnabled}, stream=${!!localStreamRef.current}`);
     if (videoEnabled) {
       localStreamRef.current?.getVideoTracks().forEach(t => {
         t.stop();
         localStreamRef.current!.removeTrack(t);
       });
       setVideoEnabled(false);
+      addDebugLog("Video OFF");
       toast({ title: "Kamera o'chirildi" });
     } else {
       setMediaLoading("video");
       try {
         if (!localStreamRef.current) {
+          addDebugLog("No stream, requesting audio+video...");
           const stream = await getMediaStream(audioEnabled, true);
+          addDebugLog(`Got stream: ${describeStream(stream)}`);
           localStreamRef.current = stream;
         } else {
+          addDebugLog("Has stream, requesting video only...");
           const videoStream = await getMediaStream(false, true);
           const newVideoTrack = videoStream.getVideoTracks()[0];
           if (newVideoTrack) {
             localStreamRef.current!.addTrack(newVideoTrack);
             addTrackToPeers(newVideoTrack);
+            addDebugLog(`Added video track: ${newVideoTrack.label}|${newVideoTrack.readyState}`);
+          } else {
+            addDebugLog("WARNING: getUserMedia succeeded but no video track returned!");
           }
         }
-        if (videoRef.current) videoRef.current.srcObject = localStreamRef.current;
+        if (videoRef.current) {
+          videoRef.current.srcObject = localStreamRef.current;
+          addDebugLog("Set videoRef.srcObject");
+        } else {
+          addDebugLog("videoRef.current is null (PIP not yet rendered, will set via ref callback)");
+        }
         setVideoEnabled(true);
         setMediaError(null);
+        addDebugLog(`Video ON. Stream: ${describeStream(localStreamRef.current)}`);
         toast({ title: "Kamera yoniq!" });
         broadcastStreamToStudents();
       } catch (err: any) {
-        console.error("Kamera xatoligi:", err);
+        addDebugLog(`Video ERROR: ${err?.name}: ${err?.message}`);
         const msg = getMediaErrorMsg(err, "video");
         setMediaError(msg);
         toast({ title: msg, variant: "destructive" });
@@ -1637,6 +1675,18 @@ export default function TeacherLessonLive() {
       )}
 
       <LessonChat socket={socketState} isHost />
+
+      {debugLogs.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-[90] max-h-32 overflow-y-auto bg-black/90 text-green-400 text-[10px] font-mono p-2 border-t border-green-500/30" data-testid="debug-panel">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-white/60 text-[9px]">MEDIA DEBUG LOG</span>
+            <button onClick={() => setDebugLogs([])} className="text-white/40 text-[9px] hover:text-white">Tozalash</button>
+          </div>
+          {debugLogs.map((log, i) => (
+            <div key={i} className="leading-tight">{log}</div>
+          ))}
+        </div>
+      )}
 
     </div>
   );
