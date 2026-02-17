@@ -195,8 +195,23 @@ export default function TeacherLessonLive() {
       }
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
-        setAudioDevices(devices.filter(d => d.kind === "audioinput"));
-        setVideoDevices(devices.filter(d => d.kind === "videoinput"));
+        const audioInputs = devices.filter(d => d.kind === "audioinput");
+        const videoInputs = devices.filter(d => d.kind === "videoinput");
+        setAudioDevices(audioInputs);
+        setVideoDevices(videoInputs);
+
+        if (audioInputs.length > 0 && !selectedAudioDevice) {
+          const mixerPatterns = /стерео\s*микшер|stereo\s*mix|wave\s*out|what\s*u\s*hear|loopback/i;
+          const realMic = audioInputs.find(d => !mixerPatterns.test(d.label));
+          setSelectedAudioDevice(realMic ? realMic.deviceId : audioInputs[0].deviceId);
+        }
+
+        if (videoInputs.length > 0 && !selectedVideoDevice) {
+          const externalCam = videoInputs.find(d =>
+            /c922|c920|c930|c925|brio|streamcam|webcam|logitech|razer|elgato/i.test(d.label)
+          );
+          setSelectedVideoDevice(externalCam ? externalCam.deviceId : videoInputs[0].deviceId);
+        }
       } catch {}
     };
     loadDevices();
@@ -630,7 +645,7 @@ export default function TeacherLessonLive() {
     const constraints: MediaStreamConstraints = {};
     if (audio) {
       constraints.audio = selectedAudioDevice
-        ? { deviceId: { ideal: selectedAudioDevice }, echoCancellation: true, noiseSuppression: true }
+        ? { deviceId: { exact: selectedAudioDevice }, echoCancellation: true, noiseSuppression: true }
         : { echoCancellation: true, noiseSuppression: true };
     }
     if (video) {
@@ -639,7 +654,7 @@ export default function TeacherLessonLive() {
         height: { ideal: 720 },
         frameRate: { ideal: 30 },
       };
-      if (selectedVideoDevice) videoConstraints.deviceId = { ideal: selectedVideoDevice };
+      if (selectedVideoDevice) videoConstraints.deviceId = { exact: selectedVideoDevice };
       constraints.video = videoConstraints;
     }
     try {
@@ -806,7 +821,7 @@ export default function TeacherLessonLive() {
         localStreamRef.current!.removeTrack(t);
       });
       try {
-        const newStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { ideal: deviceId }, echoCancellation: true, noiseSuppression: true } });
+        const newStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId }, echoCancellation: true, noiseSuppression: true } });
         newStream.getAudioTracks().forEach(t => localStreamRef.current!.addTrack(t));
         peerConnectionsRef.current.forEach(pc => {
           const sender = pc.getSenders().find(s => s.track?.kind === "audio");
@@ -878,7 +893,7 @@ export default function TeacherLessonLive() {
         localStreamRef.current!.removeTrack(t);
       });
       try {
-        const newStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { ideal: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } });
+        const newStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } });
         newStream.getVideoTracks().forEach(t => localStreamRef.current!.addTrack(t));
         if (videoRef.current) videoRef.current.srcObject = localStreamRef.current;
         peerConnectionsRef.current.forEach(pc => {
