@@ -346,13 +346,17 @@ export default function LessonJoin() {
             remoteStreamRef.current = new MediaStream();
           }
           remoteStreamRef.current.addTrack(e.track);
-          if (videoRef.current) {
-            videoRef.current.srcObject = remoteStreamRef.current;
+          if (e.track.kind === "video") {
+            try { e.track.contentHint = "motion"; } catch {}
+            if (videoRef.current) {
+              videoRef.current.srcObject = remoteStreamRef.current;
+            }
+            setHasRemoteVideo(true);
           }
-          if (e.track.kind === "video") setHasRemoteVideo(true);
           if (e.track.kind === "audio") {
             if (audioRef.current) {
-              audioRef.current.srcObject = remoteStreamRef.current;
+              const audioStream = new MediaStream([e.track]);
+              audioRef.current.srcObject = audioStream;
               audioRef.current.play().catch(() => {
                 setAudioAutoplayBlocked(true);
               });
@@ -799,6 +803,7 @@ export default function LessonJoin() {
                 playsInline
                 muted
                 className="w-full h-full object-cover"
+                style={{ willChange: "transform", backfaceVisibility: "hidden", transform: "translateZ(0)" }}
               />
               <div
                 className="absolute top-0 left-0 w-full h-8 sm:h-6 cursor-move flex items-center justify-center opacity-60 sm:opacity-0 hover:opacity-100 transition-opacity bg-black/30"

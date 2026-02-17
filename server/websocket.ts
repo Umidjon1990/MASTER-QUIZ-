@@ -3,6 +3,8 @@ import { Server as SocketServer } from "socket.io";
 import { storage } from "./storage";
 
 let io: SocketServer;
+const questionAnswerCounts = new Map<string, number>();
+const questionStartTimes = new Map<string, { startedAt: number; timeLimit: number }>();
 
 export function getIO() {
   return io;
@@ -59,6 +61,12 @@ function clearLiveSessionTimers(sessionId: string) {
 function cleanupLiveSessionTimer(sessionId: string) {
   clearLiveSessionTimers(sessionId);
   liveSessionTimers.delete(sessionId);
+  for (const key of questionAnswerCounts.keys()) {
+    if (key.startsWith(`${sessionId}:`)) questionAnswerCounts.delete(key);
+  }
+  for (const key of questionStartTimes.keys()) {
+    if (key.startsWith(`${sessionId}:`)) questionStartTimes.delete(key);
+  }
 }
 
 async function serverShowLeaderboard(sessionId: string) {
@@ -148,6 +156,10 @@ async function serverNextQuestion(sessionId: string) {
 
     const timerEnabled = quiz?.timerEnabled ?? true;
     const effectiveTimeLimit = timerEnabled ? (q.timeLimit || quiz?.timePerQuestion || 30) : 0;
+
+    const qKey = `${sessionId}:${q.id}`;
+    questionAnswerCounts.set(qKey, 0);
+    questionStartTimes.set(qKey, { startedAt: Date.now(), timeLimit: effectiveTimeLimit });
 
     io.to(`session:${sessionId}`).emit("question:show", {
       index: nextIndex,
@@ -453,6 +465,10 @@ export function setupWebSocket(httpServer: HttpServer) {
           effectiveTimeLimit,
         });
 
+        const qKey = `${sessionId}:${q.id}`;
+        questionAnswerCounts.set(qKey, 0);
+        questionStartTimes.set(qKey, { startedAt: Date.now(), timeLimit: effectiveTimeLimit });
+
         io.to(`session:${sessionId}`).emit("quiz:started", {
           totalQuestions: questionsList.length,
           timerEnabled,
@@ -607,7 +623,18 @@ export function setupWebSocket(httpServer: HttpServer) {
         const totalScore = myUpdated?.score ?? 0;
         const totalPlayers = allParticipants.length;
 
-        socket.emit("answer:result", { isCorrect, points, correctAnswer: question.correctAnswer, rank: myRank, totalScore, totalPlayers });
+        const qKey = `${sessionId}:${questionId}`;
+        const currentCount = (questionAnswerCounts.get(qKey) || 0) + 1;
+        questionAnswerCounts.set(qKey, currentCount);
+
+        let remainingTime = 0;
+        const qTime = questionStartTimes.get(qKey);
+        if (qTime && qTime.timeLimit > 0) {
+          const elapsed = Math.floor((Date.now() - qTime.startedAt) / 1000);
+          remainingTime = Math.max(0, qTime.timeLimit - elapsed);
+        }
+
+        socket.emit("answer:result", { isCorrect, points, correctAnswer: question.correctAnswer, rank: myRank, totalScore, totalPlayers, answerOrder: currentCount, remainingTime });
 
         io.to(`session:${sessionId}`).emit("answer:received", {
           participantId,

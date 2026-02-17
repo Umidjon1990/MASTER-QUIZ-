@@ -191,15 +191,13 @@ export default function LessonChat({ socket, isHost = false, studentName }: Less
                         {msg.name}
                       </span>
                       <span className="text-[10px] text-muted-foreground/60">{formatTime(msg.timestamp)}</span>
-                      {isHost && msg.role === "student" && (
-                        <button
-                          onClick={() => { setReplyingTo(msg); inputRef.current?.focus(); }}
-                          className="text-[10px] text-muted-foreground ml-0.5 hover-elevate rounded p-0.5"
-                          data-testid={`button-reply-${msg.id}`}
-                        >
-                          <Reply className="w-3 h-3" />
-                        </button>
-                      )}
+                      <button
+                        onClick={() => { setReplyingTo(msg); inputRef.current?.focus(); }}
+                        className="text-[10px] text-muted-foreground ml-0.5 hover-elevate rounded p-0.5"
+                        data-testid={`button-reply-${msg.id}`}
+                      >
+                        <Reply className="w-3 h-3" />
+                      </button>
                     </div>
                     {msg.replyTo && (
                       <div className="text-[10px] text-muted-foreground bg-muted/50 rounded px-1.5 py-0.5 mb-0.5 max-w-[85%] truncate border-l-2 border-primary/40">

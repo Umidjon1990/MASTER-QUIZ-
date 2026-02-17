@@ -48,14 +48,19 @@ export default function DiscoverPage() {
   const toggleLike = useMutation({
     mutationFn: async (quizId: string) => {
       const res = await fetch(`/api/quizzes/${quizId}/like`, { method: "POST", credentials: "include" });
+      if (res.status === 401) throw new Error("auth");
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/discover"] });
     },
-    onError: () => {
-      toast({ title: "Like qo'yishda xatolik", variant: "destructive" });
+    onError: (err: Error) => {
+      if (err.message === "auth") {
+        toast({ title: "Like qo'yish uchun tizimga kiring", variant: "destructive" });
+      } else {
+        toast({ title: "Like qo'yishda xatolik", variant: "destructive" });
+      }
     },
   });
 

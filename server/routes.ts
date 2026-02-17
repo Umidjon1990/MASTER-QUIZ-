@@ -561,6 +561,13 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Parol noto'g'ri", requiresPassword: true });
       }
 
+      const existingParticipants = await storage.getSessionParticipants(session.id);
+      const nameToCheck = (guestName || "Guest").trim().toLowerCase();
+      const nameExists = existingParticipants.some(p => (p.guestName || "").trim().toLowerCase() === nameToCheck);
+      if (nameExists) {
+        return res.status(400).json({ message: "Bu ism allaqachon ishlatilmoqda. Boshqa ism tanlang.", duplicateName: true });
+      }
+
       const participant = await storage.addParticipant({
         sessionId: session.id,
         userId: userId || null,

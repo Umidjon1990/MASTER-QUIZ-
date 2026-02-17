@@ -446,9 +446,25 @@ export default function TeacherLive() {
               </div>
 
               {session.password && (
-                <div className="flex items-center justify-center gap-1 text-sm text-muted-foreground mb-4">
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>Parol bilan himoyalangan</span>
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center justify-center gap-1 text-sm text-muted-foreground">
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Parol: <span className="font-mono font-bold text-foreground">{session.password}</span></span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mx-auto flex"
+                    onClick={() => {
+                      const link = `${window.location.origin}/play/join?code=${session.joinCode}`;
+                      const text = `Quiz: ${link}\nParol: ${session.password}`;
+                      navigator.clipboard.writeText(text);
+                      toast({ title: "Link va parol nusxalandi!" });
+                    }}
+                    data-testid="button-copy-link-password"
+                  >
+                    <Copy className="w-3.5 h-3.5 mr-1" /> Link va parol nusxalash
+                  </Button>
                 </div>
               )}
 

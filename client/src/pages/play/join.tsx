@@ -112,6 +112,8 @@ export default function JoinPlay() {
   const [myScore, setMyScore] = useState(0);
   const [myLiveRank, setMyLiveRank] = useState(0);
   const [totalPlayers, setTotalPlayers] = useState(0);
+  const [answerOrder, setAnswerOrder] = useState(0);
+  const [waitingTimeLeft, setWaitingTimeLeft] = useState(0);
   const [connectionStatus, setConnectionStatus] = useState<"connected" | "disconnected" | "reconnecting">("disconnected");
   const sessionIdRef = React.useRef(sessionId);
   const participantIdRef = React.useRef(participantId);
@@ -132,6 +134,13 @@ export default function JoinPlay() {
       return () => clearTimeout(timer);
     }
   }, [timeLeft, phase, answered, timerEnabled]);
+
+  useEffect(() => {
+    if (phase === "result" && waitingTimeLeft > 0) {
+      const timer = setTimeout(() => setWaitingTimeLeft((t) => t - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [waitingTimeLeft, phase]);
 
   const connectSocket = useCallback(() => {
     if (socket) return socket;
@@ -180,6 +189,8 @@ export default function JoinPlay() {
       setSelectedMulti([]);
       setAnswerResult(null);
       setAnswered(false);
+      setAnswerOrder(0);
+      setWaitingTimeLeft(0);
       const hasTimer = data.timerEnabled !== false;
       setTimerEnabled(hasTimer);
       if (hasTimer && data.question.timeLimit > 0) {
@@ -197,6 +208,10 @@ export default function JoinPlay() {
       if (data.rank) setMyLiveRank(data.rank);
       if (data.totalScore !== undefined) setMyScore(data.totalScore);
       if (data.totalPlayers) setTotalPlayers(data.totalPlayers);
+      if (data.answerOrder) setAnswerOrder(data.answerOrder);
+      if (data.remainingTime !== undefined && data.remainingTime > 0) {
+        setWaitingTimeLeft(data.remainingTime);
+      }
       if (data.isCorrect) {
         confetti({ particleCount: 80, spread: 60, origin: { y: 0.7 } });
       }
@@ -532,7 +547,24 @@ export default function JoinPlay() {
             {!answerResult.isCorrect && (
               <p className="text-muted-foreground">To'g'ri javob: <span className="font-semibold">{answerResult.correctAnswer}</span></p>
             )}
-            <p className="text-muted-foreground">Keyingi savolni kuting...</p>
+            {answerOrder > 0 && (
+              <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="text-muted-foreground" data-testid="text-answer-order">
+                Siz <span className="font-bold text-foreground">{answerOrder}-chi</span> javob berdingiz
+              </motion.p>
+            )}
+            <div className="space-y-2" data-testid="waiting-timer-section">
+              {waitingTimeLeft > 0 ? (
+                <div className="flex flex-col items-center gap-2">
+                  <p className="text-muted-foreground">Savol vaqti tugashini kuting</p>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-muted-foreground" />
+                    <span className="text-2xl font-mono font-bold" data-testid="text-waiting-timer">{waitingTimeLeft}s</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">Keyingi savolni kuting...</p>
+              )}
+            </div>
           </motion.div>
         )}
 
