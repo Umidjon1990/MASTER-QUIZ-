@@ -275,7 +275,7 @@ export async function registerRoutes(
 
   app.post("/api/quizzes/:id/schedule", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
-      const { scheduledAt } = req.body;
+      const { scheduledAt, requireCode } = req.body;
       if (!scheduledAt) return res.status(400).json({ message: "Vaqt kerak" });
 
       const quiz = await storage.getQuiz(req.params.id);
@@ -288,12 +288,14 @@ export async function registerRoutes(
       const questions = await storage.getQuestionsByQuiz(req.params.id);
       if (questions.length === 0) return res.status(400).json({ message: "Quizda savollar yo'q" });
 
+      const needCode = requireCode !== false;
       const code = String(Math.floor(100000 + Math.random() * 900000));
 
       const updated = await storage.updateQuiz(req.params.id, {
         scheduledAt: scheduledDate,
         scheduledStatus: "pending",
         scheduledCode: code,
+        scheduledRequireCode: needCode,
         isPublic: true,
         status: "published",
       } as any);
@@ -315,6 +317,7 @@ export async function registerRoutes(
         scheduledAt: null,
         scheduledStatus: null,
         scheduledCode: null,
+        scheduledRequireCode: true,
       } as any);
 
       res.json(updated);
@@ -337,6 +340,34 @@ export async function registerRoutes(
         scheduledAt: quiz.scheduledAt,
         scheduledStatus: quiz.scheduledStatus,
         scheduledCode: quiz.scheduledCode,
+        scheduledRequireCode: quiz.scheduledRequireCode,
+        creatorId: quiz.creatorId,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/scheduled-quiz-by-id/:quizId", async (req, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.quizId);
+      if (!quiz || quiz.scheduledStatus !== "pending" || !quiz.scheduledAt) {
+        return res.status(404).json({ message: "Rejalashtirilgan quiz topilmadi" });
+      }
+      if (quiz.scheduledRequireCode) {
+        return res.status(403).json({ message: "Bu quiz faqat kod bilan kirish mumkin" });
+      }
+      res.json({
+        id: quiz.id,
+        title: quiz.title,
+        description: quiz.description,
+        category: quiz.category,
+        coverImage: quiz.coverImage,
+        totalQuestions: quiz.totalQuestions,
+        scheduledAt: quiz.scheduledAt,
+        scheduledStatus: quiz.scheduledStatus,
+        scheduledCode: quiz.scheduledCode,
+        scheduledRequireCode: quiz.scheduledRequireCode,
         creatorId: quiz.creatorId,
       });
     } catch (error) {

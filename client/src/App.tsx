@@ -189,7 +189,8 @@ function App() {
 
             <Route path="/discover" component={DiscoverPage} />
             <Route path="/quiz/play/:id" component={QuizPlayPage} />
-            <Route path="/play/scheduled/:code" component={ScheduledQuizLobby} />
+            <Route path="/play/scheduled/:code">{() => <ScheduledQuizLobby mode="code" />}</Route>
+            <Route path="/play/scheduled-open/:quizId">{() => <ScheduledQuizLobby mode="open" />}</Route>
 
             <Route component={NotFound} />
           </Switch>

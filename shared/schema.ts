@@ -48,6 +48,7 @@ export const quizzes = pgTable("quizzes", {
   scheduledAt: timestamp("scheduled_at"),
   scheduledStatus: varchar("scheduled_status", { length: 20 }),
   scheduledCode: varchar("scheduled_code", { length: 10 }),
+  scheduledRequireCode: boolean("scheduled_require_code").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

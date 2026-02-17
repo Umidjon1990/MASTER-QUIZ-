@@ -21,14 +21,16 @@ interface ScheduledQuizInfo {
   scheduledAt: string;
   scheduledStatus: string;
   scheduledCode: string;
+  scheduledRequireCode?: boolean;
   creatorId: string;
 }
 
-export default function ScheduledQuizLobby() {
-  const params = useParams<{ code: string }>();
+export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | "open" }) {
+  const params = useParams<{ code: string; quizId: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const code = params.code || "";
+  const code = mode === "code" ? (params.code || "") : "";
+  const quizId = mode === "open" ? (params.quizId || "") : "";
 
   const [quizInfo, setQuizInfo] = useState<ScheduledQuizInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,8 +43,13 @@ export default function ScheduledQuizLobby() {
   const [roomCode, setRoomCode] = useState("");
 
   useEffect(() => {
-    if (!code) return;
-    fetch(`/api/scheduled-quiz/${code}`)
+    const fetchUrl = mode === "code" && code
+      ? `/api/scheduled-quiz/${code}`
+      : mode === "open" && quizId
+        ? `/api/scheduled-quiz-by-id/${quizId}`
+        : null;
+    if (!fetchUrl) return;
+    fetch(fetchUrl)
       .then(r => {
         if (!r.ok) throw new Error("Quiz topilmadi");
         return r.json();
@@ -55,7 +62,7 @@ export default function ScheduledQuizLobby() {
         setError(err.message);
         setLoading(false);
       });
-  }, [code]);
+  }, [code, quizId, mode]);
 
   useEffect(() => {
     if (!quizInfo?.scheduledAt) return;
@@ -82,15 +89,17 @@ export default function ScheduledQuizLobby() {
     return () => clearInterval(interval);
   }, [quizInfo?.scheduledAt]);
 
+  const lobbyCode = quizInfo?.scheduledCode || code;
+
   useEffect(() => {
-    if (!isJoined || !code) return;
+    if (!isJoined || !lobbyCode) return;
 
     const s = io({
       transports: ["websocket", "polling"],
     });
 
     s.on("connect", () => {
-      s.emit("scheduled:join-lobby", { code, playerName });
+      s.emit("scheduled:join-lobby", { code: lobbyCode, playerName });
     });
 
     s.on("scheduled:lobby-update", (data: { players: string[] }) => {
@@ -113,7 +122,7 @@ export default function ScheduledQuizLobby() {
       s.disconnect();
       socket = null;
     };
-  }, [isJoined, code, playerName, navigate]);
+  }, [isJoined, lobbyCode, playerName, navigate]);
 
   const handleJoin = useCallback(() => {
     if (!playerName.trim()) {

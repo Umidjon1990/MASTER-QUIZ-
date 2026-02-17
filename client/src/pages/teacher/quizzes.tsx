@@ -9,7 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle } from "lucide-react";
+import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import type { Quiz, UserProfile, TelegramChat } from "@shared/schema";
 
@@ -20,6 +21,7 @@ export default function TeacherQuizzes() {
   const [scheduleQuiz, setScheduleQuiz] = useState<Quiz | null>(null);
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
+  const [scheduleRequireCode, setScheduleRequireCode] = useState(true);
 
   const { data: quizzes, isLoading } = useQuery<Quiz[]>({
     queryKey: ["/api/quizzes"],
@@ -51,8 +53,8 @@ export default function TeacherQuizzes() {
   });
 
   const scheduleMutation = useMutation({
-    mutationFn: async ({ quizId, scheduledAt }: { quizId: string; scheduledAt: string }) => {
-      const res = await apiRequest("POST", `/api/quizzes/${quizId}/schedule`, { scheduledAt });
+    mutationFn: async ({ quizId, scheduledAt, requireCode }: { quizId: string; scheduledAt: string; requireCode: boolean }) => {
+      const res = await apiRequest("POST", `/api/quizzes/${quizId}/schedule`, { scheduledAt, requireCode });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.message || "Xatolik");
@@ -101,7 +103,7 @@ export default function TeacherQuizzes() {
       return;
     }
     const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}:00+05:00`).toISOString();
-    scheduleMutation.mutate({ quizId: scheduleQuiz.id, scheduledAt });
+    scheduleMutation.mutate({ quizId: scheduleQuiz.id, scheduledAt, requireCode: scheduleRequireCode });
   };
 
   const [now, setNow] = useState(Date.now());
@@ -165,10 +167,18 @@ export default function TeacherQuizzes() {
                   <h3 className="font-semibold">{quiz.title}</h3>
                   <div className="flex gap-1.5 flex-wrap">
                     {quiz.scheduledStatus === "pending" && (
-                      <Badge variant="outline" className="text-xs border-orange-500/30 text-orange-600 dark:text-orange-400">
-                        <CalendarClock className="w-3 h-3 mr-1" />
-                        Rejalashtirilgan
-                      </Badge>
+                      <>
+                        <Badge variant="outline" className="text-xs border-orange-500/30 text-orange-600 dark:text-orange-400">
+                          <CalendarClock className="w-3 h-3 mr-1" />
+                          Rejalashtirilgan
+                        </Badge>
+                        {!quiz.scheduledRequireCode && (
+                          <Badge variant="outline" className="text-xs border-green-500/30 text-green-600 dark:text-green-400">
+                            <Unlock className="w-3 h-3 mr-1" />
+                            Ochiq
+                          </Badge>
+                        )}
+                      </>
                     )}
                     {quiz.scheduledStatus === "started" && (
                       <Badge variant="outline" className="text-xs border-green-500/30 text-green-600 dark:text-green-400">
@@ -202,14 +212,23 @@ export default function TeacherQuizzes() {
                           {formatCountdown(quiz.scheduledAt)}
                         </p>
                       </div>
-                      <div className="flex gap-1.5">
-                        {quiz.scheduledCode && (
+                      <div className="flex gap-1.5 items-center flex-wrap">
+                        {quiz.scheduledRequireCode && quiz.scheduledCode && (
                           <>
                             <Badge variant="secondary" className="font-mono tracking-wider text-xs">{quiz.scheduledCode}</Badge>
                             <Button variant="ghost" size="sm" onClick={() => copyScheduleLink(quiz.scheduledCode!)} data-testid={`button-copy-link-${quiz.id}`}>
                               <Copy className="w-3 h-3 mr-1" /> Link
                             </Button>
                           </>
+                        )}
+                        {!quiz.scheduledRequireCode && (
+                          <Button variant="ghost" size="sm" onClick={() => {
+                            const link = `${window.location.origin}/play/scheduled-open/${quiz.id}`;
+                            navigator.clipboard.writeText(link);
+                            toast({ title: "Link nusxalandi!" });
+                          }} data-testid={`button-copy-open-link-${quiz.id}`}>
+                            <Copy className="w-3 h-3 mr-1" /> Ochiq link
+                          </Button>
                         )}
                         <Button
                           variant="ghost"
@@ -317,7 +336,7 @@ export default function TeacherQuizzes() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!scheduleQuiz} onOpenChange={(open) => { if (!open) { setScheduleQuiz(null); setScheduleDate(""); setScheduleTime(""); } }}>
+      <Dialog open={!!scheduleQuiz} onOpenChange={(open) => { if (!open) { setScheduleQuiz(null); setScheduleDate(""); setScheduleTime(""); setScheduleRequireCode(true); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
@@ -350,6 +369,22 @@ export default function TeacherQuizzes() {
                     data-testid="input-schedule-time"
                   />
                 </div>
+              </div>
+              <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-muted">
+                <div className="flex items-center gap-2">
+                  {scheduleRequireCode ? <Lock className="w-4 h-4 text-muted-foreground" /> : <Unlock className="w-4 h-4 text-muted-foreground" />}
+                  <div>
+                    <p className="text-sm font-medium">Kod bilan kirish</p>
+                    <p className="text-xs text-muted-foreground">
+                      {scheduleRequireCode ? "O'quvchilar faqat kod orqali kirishlari mumkin" : "O'quvchilar to'g'ridan-to'g'ri link orqali kirishlari mumkin"}
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={scheduleRequireCode}
+                  onCheckedChange={setScheduleRequireCode}
+                  data-testid="switch-require-code"
+                />
               </div>
               {scheduleDate && scheduleTime && (
                 <div className="p-3 rounded-md bg-muted text-sm text-center">
