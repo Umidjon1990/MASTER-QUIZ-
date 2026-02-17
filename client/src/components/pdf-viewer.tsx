@@ -83,7 +83,7 @@ export default function PDFViewer({
   }, [onViewportChange, computeViewport]);
 
   useEffect(() => {
-    if (externalZoom !== undefined && externalZoom !== zoomLevel && !isHost) {
+    if (externalZoom !== undefined && externalZoom !== zoomLevel) {
       const container = containerRef.current;
       if (container && externalZoom > 0) {
         const scrollCenterX = container.scrollLeft + container.clientWidth / 2;
