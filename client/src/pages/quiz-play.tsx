@@ -81,9 +81,13 @@ export default function QuizPlayPage() {
   const { toast } = useToast();
   const socketRef = useRef<Socket | null>(null);
 
+  const autoParams = new URLSearchParams(window.location.search);
+  const autoJoinCode = autoParams.get("joinCode") || "";
+  const autoName = autoParams.get("autoName") || "";
+
   const [stage, setStage] = useState<GameStage>("mode-select");
   const [gameMode, setGameMode] = useState<"solo" | "multi">("solo");
-  const [playerName, setPlayerName] = useState("");
+  const [playerName, setPlayerName] = useState(autoName);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [timeLeft, setTimeLeft] = useState(0);
@@ -91,7 +95,7 @@ export default function QuizPlayPage() {
   const [linkCopied, setLinkCopied] = useState(false);
 
   const [roomCode, setRoomCode] = useState("");
-  const [joinCode, setJoinCode] = useState("");
+  const [joinCode, setJoinCode] = useState(autoJoinCode);
   const [roomId, setRoomId] = useState("");
   const [playerId, setPlayerId] = useState("");
   const [isHost, setIsHost] = useState(false);
@@ -108,6 +112,7 @@ export default function QuizPlayPage() {
   const [multiResult, setMultiResult] = useState<{ leaderboard: LeaderboardEntry[]; totalQuestions: number; maxScore: number; quizTitle: string } | null>(null);
   const [isLastQuestion, setIsLastQuestion] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [autoJoined, setAutoJoined] = useState(false);
 
   const { data, isLoading, error } = useQuery<QuizData>({
     queryKey: ["/api/quizzes", id, "play"],
@@ -251,6 +256,30 @@ export default function QuizPlayPage() {
       }
     });
   };
+
+  useEffect(() => {
+    if (autoJoinCode && autoName && !autoJoined && data) {
+      setAutoJoined(true);
+      setGameMode("multi");
+      setConnecting(true);
+      const s = connectSocket();
+      s.emit("public:join-room", { code: autoJoinCode, playerName: autoName }, (res: any) => {
+        setConnecting(false);
+        if (res.success) {
+          setRoomCode(autoJoinCode);
+          setRoomId(res.roomId);
+          setPlayerId(res.playerId);
+          setIsHost(false);
+          setPlayers(res.players);
+          setTotalQuestions(res.totalQuestions);
+          setStage("lobby");
+        } else {
+          toast({ title: res.error || "Qo'shilishda xatolik", variant: "destructive" });
+          setStage("mode-select");
+        }
+      });
+    }
+  }, [autoJoinCode, autoName, autoJoined, data]);
 
   const handleStartGame = () => {
     socketRef.current?.emit("public:start-game", {}, (res: any) => {

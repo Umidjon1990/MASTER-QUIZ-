@@ -273,6 +273,77 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/quizzes/:id/schedule", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { scheduledAt } = req.body;
+      if (!scheduledAt) return res.status(400).json({ message: "Vaqt kerak" });
+
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.user.id) return res.status(403).json({ message: "Ruxsat yo'q" });
+
+      const scheduledDate = new Date(scheduledAt);
+      if (scheduledDate <= new Date()) return res.status(400).json({ message: "Vaqt kelajakda bo'lishi kerak" });
+
+      const questions = await storage.getQuestionsByQuiz(req.params.id);
+      if (questions.length === 0) return res.status(400).json({ message: "Quizda savollar yo'q" });
+
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+
+      const updated = await storage.updateQuiz(req.params.id, {
+        scheduledAt: scheduledDate,
+        scheduledStatus: "pending",
+        scheduledCode: code,
+        isPublic: true,
+        status: "published",
+      } as any);
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Schedule error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/quizzes/:id/cancel-schedule", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.user.id) return res.status(403).json({ message: "Ruxsat yo'q" });
+
+      const updated = await storage.updateQuiz(req.params.id, {
+        scheduledAt: null,
+        scheduledStatus: null,
+        scheduledCode: null,
+      } as any);
+
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/scheduled-quiz/:code", async (req, res) => {
+    try {
+      const quiz = await storage.getQuizByScheduledCode(req.params.code);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      res.json({
+        id: quiz.id,
+        title: quiz.title,
+        description: quiz.description,
+        category: quiz.category,
+        coverImage: quiz.coverImage,
+        totalQuestions: quiz.totalQuestions,
+        scheduledAt: quiz.scheduledAt,
+        scheduledStatus: quiz.scheduledStatus,
+        scheduledCode: quiz.scheduledCode,
+        creatorId: quiz.creatorId,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.delete("/api/quizzes/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       await storage.deleteQuestionsByQuiz(req.params.id);

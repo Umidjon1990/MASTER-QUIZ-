@@ -39,6 +39,8 @@ interface PublicRoom {
 const publicRooms = new Map<string, PublicRoom>();
 const codeToRoomId = new Map<string, string>();
 
+const scheduledLobbies = new Map<string, { players: Map<string, { socketId: string; name: string }> }>();
+
 interface LiveSessionTimer {
   sessionId: string;
   questionTimer: ReturnType<typeof setTimeout> | null;
@@ -282,12 +284,25 @@ function showPublicLeaderboard(roomId: string) {
       playerId: p.playerId,
     }));
 
+  const isLast = room.currentQuestionIndex >= room.questions.length - 1;
+
   io.to(`pubroom:${roomId}`).emit("public:leaderboard", {
     leaderboard,
     correctAnswer: q?.correctAnswer || "",
     questionIndex: room.currentQuestionIndex,
-    isLast: room.currentQuestionIndex >= room.questions.length - 1,
+    isLast,
   });
+
+  if (room.hostSocketId === "scheduler") {
+    room.questionTimer = setTimeout(() => {
+      room.currentQuestionIndex++;
+      if (room.currentQuestionIndex >= room.questions.length) {
+        finishPublicGame(roomId);
+      } else {
+        sendPublicQuestion(roomId);
+      }
+    }, 5000);
+  }
 }
 
 function finishPublicGame(roomId: string) {
@@ -324,11 +339,81 @@ function finishPublicGame(roomId: string) {
   setTimeout(() => cleanupRoom(roomId), 5 * 60 * 1000);
 }
 
+async function checkScheduledQuizzes() {
+  if (!io) return;
+  try {
+    const pendingQuizzes = await storage.getScheduledPendingQuizzes();
+    for (const quiz of pendingQuizzes) {
+      console.log(`Starting scheduled quiz: ${quiz.title} (${quiz.id})`);
+
+      const questions = await storage.getQuestionsByQuiz(quiz.id);
+      if (questions.length === 0) {
+        await storage.updateQuiz(quiz.id, { scheduledStatus: "cancelled" } as any);
+        continue;
+      }
+
+      const roomId = `pr_sched_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const roomCode = generateRoomCode();
+
+      const room: PublicRoom = {
+        id: roomId,
+        quizId: quiz.id,
+        code: roomCode,
+        hostSocketId: "scheduler",
+        hostPlayerId: "scheduler",
+        status: "waiting",
+        players: new Map(),
+        questions,
+        quiz,
+        currentQuestionIndex: -1,
+        questionTimer: null,
+        questionStartTime: 0,
+        currentEffectiveTimeLimit: 30,
+        answeredThisQuestion: new Set(),
+      };
+
+      publicRooms.set(roomId, room);
+      codeToRoomId.set(roomCode, roomId);
+
+      io.to(`scheduled:${quiz.scheduledCode}`).emit("scheduled:game-starting", { roomCode });
+
+      const lobby = scheduledLobbies.get(quiz.scheduledCode || "");
+      if (lobby) {
+        scheduledLobbies.delete(quiz.scheduledCode || "");
+      }
+
+      await storage.updateQuiz(quiz.id, { scheduledStatus: "started" } as any);
+
+      setTimeout(() => {
+        room.status = "playing";
+        room.currentQuestionIndex = 0;
+
+        if (quiz.shuffleQuestions) {
+          for (let i = room.questions.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [room.questions[i], room.questions[j]] = [room.questions[j], room.questions[i]];
+          }
+        }
+
+        io.to(`pubroom:${roomId}`).emit("public:game-started", {
+          totalQuestions: room.questions.length,
+        });
+
+        sendPublicQuestion(roomId);
+      }, 15000);
+    }
+  } catch (err) {
+    console.error("Scheduler error:", err);
+  }
+}
+
 export function setupWebSocket(httpServer: HttpServer) {
   io = new SocketServer(httpServer, {
     cors: { origin: "*" },
     path: "/socket.io",
   });
+
+  setInterval(checkScheduledQuizzes, 15000);
 
   io.on("connection", (socket) => {
     console.log("Client connected:", socket.id);
@@ -1086,6 +1171,24 @@ export function setupWebSocket(httpServer: HttpServer) {
       }
     });
 
+    socket.on("scheduled:join-lobby", (data) => {
+      const { code, playerName } = data;
+      if (!code || !playerName) return;
+
+      socket.join(`scheduled:${code}`);
+      socket.data.scheduledCode = code;
+
+      let lobby = scheduledLobbies.get(code);
+      if (!lobby) {
+        lobby = { players: new Map() };
+        scheduledLobbies.set(code, lobby);
+      }
+      lobby.players.set(socket.id, { socketId: socket.id, name: playerName });
+
+      const playerNames = Array.from(lobby.players.values()).map(p => p.name);
+      io.to(`scheduled:${code}`).emit("scheduled:lobby-update", { players: playerNames });
+    });
+
     socket.on("lesson:chat-send", (data) => {
       if (!socket.data.lessonId) return;
       const { message, replyTo, name } = data;
@@ -1129,6 +1232,17 @@ export function setupWebSocket(httpServer: HttpServer) {
             name: socket.data.studentName,
             count,
           });
+        }
+      }
+      if (socket.data.scheduledCode) {
+        const lobby = scheduledLobbies.get(socket.data.scheduledCode);
+        if (lobby) {
+          lobby.players.delete(socket.id);
+          const playerNames = Array.from(lobby.players.values()).map(p => p.name);
+          io.to(`scheduled:${socket.data.scheduledCode}`).emit("scheduled:lobby-update", { players: playerNames });
+          if (lobby.players.size === 0) {
+            scheduledLobbies.delete(socket.data.scheduledCode);
+          }
         }
       }
       if (socket.data.publicRoomId) {

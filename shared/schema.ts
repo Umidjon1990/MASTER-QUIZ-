@@ -45,6 +45,9 @@ export const quizzes = pgTable("quizzes", {
   totalPlays: integer("total_plays").notNull().default(0),
   totalLikes: integer("total_likes").notNull().default(0),
   status: varchar("status", { length: 20 }).notNull().default("draft"),
+  scheduledAt: timestamp("scheduled_at"),
+  scheduledStatus: varchar("scheduled_status", { length: 20 }),
+  scheduledCode: varchar("scheduled_code", { length: 10 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -19,7 +19,7 @@ import {
   liveLessons,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql, ilike, isNull, or, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, ilike, isNull, or, inArray, lte } from "drizzle-orm";
 
 export interface IStorage {
   getUserProfile(userId: string): Promise<UserProfile | undefined>;
@@ -35,6 +35,8 @@ export interface IStorage {
   updateQuiz(id: string, data: Partial<InsertQuiz>): Promise<Quiz | undefined>;
   deleteQuiz(id: string): Promise<void>;
   incrementQuizPlays(id: string): Promise<void>;
+  getQuizByScheduledCode(code: string): Promise<Quiz | undefined>;
+  getScheduledPendingQuizzes(): Promise<Quiz[]>;
 
   createQuestion(question: InsertQuestion): Promise<Question>;
   getQuestionsByQuiz(quizId: string): Promise<Question[]>;
@@ -155,6 +157,16 @@ export class DatabaseStorage implements IStorage {
 
   async incrementQuizPlays(id: string): Promise<void> {
     await db.update(quizzes).set({ totalPlays: sql`${quizzes.totalPlays} + 1` }).where(eq(quizzes.id, id));
+  }
+
+  async getQuizByScheduledCode(code: string): Promise<Quiz | undefined> {
+    const [quiz] = await db.select().from(quizzes).where(eq(quizzes.scheduledCode, code));
+    return quiz;
+  }
+
+  async getScheduledPendingQuizzes(): Promise<Quiz[]> {
+    return db.select().from(quizzes)
+      .where(and(eq(quizzes.scheduledStatus, "pending"), lte(quizzes.scheduledAt, new Date())));
   }
 
   async createQuestion(question: InsertQuestion): Promise<Question> {

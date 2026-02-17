@@ -9,13 +9,17 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot } from "lucide-react";
+import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import type { Quiz, UserProfile, TelegramChat } from "@shared/schema";
 
 export default function TeacherQuizzes() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [telegramQuiz, setTelegramQuiz] = useState<Quiz | null>(null);
+  const [scheduleQuiz, setScheduleQuiz] = useState<Quiz | null>(null);
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
 
   const { data: quizzes, isLoading } = useQuery<Quiz[]>({
     queryKey: ["/api/quizzes"],
@@ -45,6 +49,39 @@ export default function TeacherQuizzes() {
     },
   });
 
+  const scheduleMutation = useMutation({
+    mutationFn: async ({ quizId, scheduledAt }: { quizId: string; scheduledAt: string }) => {
+      const res = await apiRequest("POST", `/api/quizzes/${quizId}/schedule`, { scheduledAt });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "Xatolik");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
+      setScheduleQuiz(null);
+      setScheduleDate("");
+      setScheduleTime("");
+      toast({ title: "Quiz rejalashtirildi!" });
+    },
+    onError: (error: any) => {
+      toast({ title: error.message || "Rejalashtirishda xatolik", variant: "destructive" });
+    },
+  });
+
+  const cancelScheduleMutation = useMutation({
+    mutationFn: async (quizId: string) => {
+      const res = await apiRequest("POST", `/api/quizzes/${quizId}/cancel-schedule`);
+      if (!res.ok) throw new Error("Xatolik");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
+      toast({ title: "Reja bekor qilindi" });
+    },
+  });
+
   const deleteQuiz = useMutation({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/quizzes/${id}`, { method: "DELETE", credentials: "include" });
@@ -56,6 +93,21 @@ export default function TeacherQuizzes() {
       toast({ title: "Quiz o'chirildi" });
     },
   });
+
+  const handleSchedule = () => {
+    if (!scheduleQuiz || !scheduleDate || !scheduleTime) {
+      toast({ title: "Sana va vaqtni kiriting", variant: "destructive" });
+      return;
+    }
+    const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
+    scheduleMutation.mutate({ quizId: scheduleQuiz.id, scheduledAt });
+  };
+
+  const copyScheduleLink = (quizScheduledCode: string) => {
+    const link = `${window.location.origin}/play/scheduled/${quizScheduledCode}`;
+    navigator.clipboard.writeText(link);
+    toast({ title: "Link nusxalandi!" });
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -91,16 +143,59 @@ export default function TeacherQuizzes() {
               <Card className="p-5 hover-elevate" data-testid={`card-quiz-${quiz.id}`}>
                 <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
                   <h3 className="font-semibold">{quiz.title}</h3>
-                  <Badge variant={quiz.status === "published" ? "default" : "secondary"}>
-                    {quiz.status === "published" ? "Nashr" : "Qoralama"}
-                  </Badge>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {quiz.scheduledStatus === "pending" && (
+                      <Badge variant="outline" className="text-xs border-orange-500/30 text-orange-600 dark:text-orange-400">
+                        <CalendarClock className="w-3 h-3 mr-1" />
+                        Rejalashtirilgan
+                      </Badge>
+                    )}
+                    {quiz.scheduledStatus === "started" && (
+                      <Badge variant="outline" className="text-xs border-green-500/30 text-green-600 dark:text-green-400">
+                        <Play className="w-3 h-3 mr-1" />
+                        Boshlandi
+                      </Badge>
+                    )}
+                    <Badge variant={quiz.status === "published" ? "default" : "secondary"}>
+                      {quiz.status === "published" ? "Nashr" : "Qoralama"}
+                    </Badge>
+                  </div>
                 </div>
                 {quiz.description && (
                   <p className="text-sm text-muted-foreground mb-2 line-clamp-2">{quiz.description}</p>
                 )}
-                <div className="text-sm text-muted-foreground mb-4">
+                <div className="text-sm text-muted-foreground mb-2">
                   {quiz.totalQuestions} savol | {quiz.totalPlays} marta o'ynalgan
                 </div>
+
+                {quiz.scheduledStatus === "pending" && quiz.scheduledAt && (
+                  <div className="mb-3 p-2.5 rounded-md bg-orange-50 dark:bg-orange-950/20 border border-orange-200/50 dark:border-orange-800/30">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Clock className="w-3.5 h-3.5 text-orange-500" />
+                        <span className="text-orange-700 dark:text-orange-300 font-medium">
+                          {new Date(quiz.scheduledAt).toLocaleDateString("uz-UZ", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      <div className="flex gap-1.5">
+                        {quiz.scheduledCode && (
+                          <Button variant="ghost" size="sm" onClick={() => copyScheduleLink(quiz.scheduledCode!)} data-testid={`button-copy-link-${quiz.id}`}>
+                            <Copy className="w-3 h-3 mr-1" /> Link
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => cancelScheduleMutation.mutate(quiz.id)}
+                          data-testid={`button-cancel-schedule-${quiz.id}`}
+                        >
+                          <X className="w-3 h-3 mr-1" /> Bekor
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex gap-2 flex-wrap">
                   <Button variant="outline" size="sm" onClick={() => navigate(`/teacher/quizzes/${quiz.id}`)} data-testid={`button-edit-${quiz.id}`}>
                     <Edit className="w-3 h-3 mr-1" /> Tahrirlash
@@ -108,6 +203,11 @@ export default function TeacherQuizzes() {
                   {quiz.status === "published" && (
                     <Button size="sm" className="gradient-purple border-0" onClick={() => navigate(`/teacher/live?quizId=${quiz.id}`)} data-testid={`button-start-live-${quiz.id}`}>
                       <Play className="w-3 h-3 mr-1" /> Jonli
+                    </Button>
+                  )}
+                  {quiz.status === "published" && quiz.scheduledStatus !== "pending" && (
+                    <Button variant="outline" size="sm" onClick={() => setScheduleQuiz(quiz)} data-testid={`button-schedule-${quiz.id}`}>
+                      <CalendarClock className="w-3 h-3 mr-1" /> Rejalashtirish
                     </Button>
                   )}
                   {hasTelegramBot && quiz.totalQuestions > 0 && (
@@ -184,6 +284,71 @@ export default function TeacherQuizzes() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!scheduleQuiz} onOpenChange={(open) => { if (!open) { setScheduleQuiz(null); setScheduleDate(""); setScheduleTime(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              <CalendarClock className="w-5 h-5 inline mr-2" />
+              Quizni rejalashtirish
+            </DialogTitle>
+          </DialogHeader>
+          {scheduleQuiz && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">"{scheduleQuiz.title}"</span> quizi belgilangan vaqtda avtomatik boshlanadi. O'quvchilar linkni ochib kutish zalida kutishadi.
+              </p>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Sana</label>
+                  <Input
+                    type="date"
+                    value={scheduleDate}
+                    onChange={(e) => setScheduleDate(e.target.value)}
+                    min={new Date().toISOString().split("T")[0]}
+                    data-testid="input-schedule-date"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Vaqt</label>
+                  <Input
+                    type="time"
+                    value={scheduleTime}
+                    onChange={(e) => setScheduleTime(e.target.value)}
+                    data-testid="input-schedule-time"
+                  />
+                </div>
+              </div>
+              {scheduleDate && scheduleTime && (
+                <div className="p-3 rounded-md bg-muted text-sm text-center">
+                  <Clock className="w-4 h-4 inline mr-1.5" />
+                  {new Date(`${scheduleDate}T${scheduleTime}`).toLocaleDateString("uz-UZ", {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </div>
+              )}
+              <Button
+                className="w-full gradient-purple border-0"
+                onClick={handleSchedule}
+                disabled={scheduleMutation.isPending || !scheduleDate || !scheduleTime}
+                data-testid="button-confirm-schedule"
+              >
+                {scheduleMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : (
+                  <CalendarClock className="w-4 h-4 mr-2" />
+                )}
+                Rejalashtirish
+              </Button>
             </div>
           )}
         </DialogContent>
