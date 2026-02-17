@@ -102,6 +102,7 @@ export default function TeacherLessonLive() {
   const [isStarted, setIsStarted] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [videoEnabled, setVideoEnabled] = useState(false);
+  const [localStreamState, setLocalStreamState] = useState<MediaStream | null>(null);
   const [videoShape, setVideoShape] = useState<"circle" | "rectangle">("circle");
   const [videoDragging, setVideoDragging] = useState(false);
   const initVideoSize = typeof window !== "undefined" && window.innerWidth < 640 ? 120 : 200;
@@ -713,7 +714,7 @@ export default function TeacherLessonLive() {
           const stream = await getMediaStream(true, videoEnabled);
           addDebugLog(`Got stream: ${describeStream(stream)}`);
           localStreamRef.current = stream;
-          if (videoRef.current) videoRef.current.srcObject = stream;
+          setLocalStreamState(stream);
           setMediaError(null);
         } else {
           const audioTracks = localStreamRef.current.getAudioTracks();
@@ -767,6 +768,7 @@ export default function TeacherLessonLive() {
           const stream = await getMediaStream(audioEnabled, true);
           addDebugLog(`Got stream: ${describeStream(stream)}`);
           localStreamRef.current = stream;
+          setLocalStreamState(stream);
         } else {
           addDebugLog("Has stream, requesting video only...");
           const videoStream = await getMediaStream(false, true);
@@ -778,12 +780,7 @@ export default function TeacherLessonLive() {
           } else {
             addDebugLog("WARNING: getUserMedia succeeded but no video track returned!");
           }
-        }
-        if (videoRef.current) {
-          videoRef.current.srcObject = localStreamRef.current;
-          addDebugLog("Set videoRef.srcObject");
-        } else {
-          addDebugLog("videoRef.current is null (PIP not yet rendered, will set via ref callback)");
+          setLocalStreamState(localStreamRef.current);
         }
         setVideoEnabled(true);
         setMediaError(null);
@@ -1053,18 +1050,11 @@ export default function TeacherLessonLive() {
   };
 
   useEffect(() => {
-    if (videoEnabled && localStreamRef.current) {
-      const trySetVideo = () => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = localStreamRef.current;
-          videoRef.current.play().catch(() => {});
-        } else {
-          setTimeout(trySetVideo, 50);
-        }
-      };
-      trySetVideo();
+    if (videoEnabled && localStreamRef.current && videoRef.current) {
+      videoRef.current.srcObject = localStreamRef.current;
+      videoRef.current.play().catch(() => {});
     }
-  }, [videoEnabled, lessonMode]);
+  }, [videoEnabled, localStreamState]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1618,72 +1608,65 @@ export default function TeacherLessonLive() {
         </div>
       )}
 
-      {videoEnabled && (
+      <div
+        className="fixed z-50"
+        style={{
+          left: `${videoPos.left}px`,
+          top: `${videoPos.top}px`,
+          width: `${videoSize}px`,
+          height: videoShape === "circle" ? `${videoSize}px` : `${videoSize * 0.75}px`,
+          display: videoEnabled ? "block" : "none",
+        }}
+        onMouseEnter={() => setShowPipToolbar(true)}
+        onMouseLeave={() => setShowPipToolbar(false)}
+        data-testid="teacher-pip-video"
+      >
         <div
-          className="fixed z-50"
-          style={{
-            left: `${videoPos.left}px`,
-            top: `${videoPos.top}px`,
-            width: `${videoSize}px`,
-            height: videoShape === "circle" ? `${videoSize}px` : `${videoSize * 0.75}px`,
-          }}
-          onMouseEnter={() => setShowPipToolbar(true)}
-          onMouseLeave={() => setShowPipToolbar(false)}
-          data-testid="teacher-pip-video"
+          className={`relative w-full h-full overflow-hidden border-2 border-primary shadow-xl ${
+            videoShape === "circle" ? "rounded-full" : "rounded-lg"
+          }`}
+          style={{ boxShadow: "0 0 20px rgba(59,130,246,0.5), 0 4px 15px rgba(0,0,0,0.3)" }}
         >
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-full object-cover"
+            style={{ transform: "scaleX(-1)" }}
+          />
           <div
-            className={`relative w-full h-full overflow-hidden border-3 border-primary shadow-xl ${
-              videoShape === "circle" ? "rounded-full" : "rounded-lg"
-            }`}
-            style={{ boxShadow: "0 0 20px rgba(59,130,246,0.5), 0 4px 15px rgba(0,0,0,0.3)" }}
+            className="absolute top-0 left-0 w-full h-8 sm:h-6 cursor-move flex items-center justify-center opacity-60 sm:opacity-0 hover:opacity-100 transition-opacity bg-black/30"
+            onMouseDown={handleVideoDragStart}
+            onTouchStart={handleVideoDragStart}
+            data-testid="teacher-pip-drag-handle"
           >
-            <video
-              ref={(el) => {
-                (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
-                if (el && localStreamRef.current) {
-                  el.srcObject = localStreamRef.current;
-                  el.play().catch(() => {});
-                }
-              }}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-              style={{ transform: "scaleX(-1)" }}
-            />
-            <div
-              className="absolute top-0 left-0 w-full h-8 sm:h-6 cursor-move flex items-center justify-center opacity-60 sm:opacity-0 hover:opacity-100 transition-opacity bg-black/30"
-              onMouseDown={handleVideoDragStart}
-              onTouchStart={handleVideoDragStart}
-              data-testid="teacher-pip-drag-handle"
-            >
-              <GripVertical className="w-3 h-3 text-white" />
-            </div>
-            <div
-              className="absolute bottom-0 right-0 w-3 h-3 cursor-nwse-resize z-10"
-              style={{ background: "linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.6) 50%)" }}
-              onMouseDown={handleResizeStart}
-              onTouchStart={handleResizeStart}
-              data-testid="teacher-pip-resize-handle"
-            />
+            <GripVertical className="w-3 h-3 text-white" />
           </div>
           <div
-            className={`absolute -bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-0.5 px-1 py-0.5 rounded bg-black/60 backdrop-blur-sm transition-all duration-200 ${showPipToolbar ? "visible opacity-100" : "invisible opacity-0 sm:invisible sm:opacity-0"}`}
-            style={{ visibility: typeof window !== "undefined" && window.innerWidth < 640 ? "visible" : undefined, opacity: typeof window !== "undefined" && window.innerWidth < 640 ? 1 : undefined }}
-            data-testid="teacher-pip-toolbar"
-          >
-            <button className="p-1 text-white/80" onClick={() => setVideoSize(120)} data-testid="button-pip-small">
-              <Minimize2 className="w-3 h-3" />
-            </button>
-            <button className="p-1 text-white/80" onClick={() => setVideoSize(200)} data-testid="button-pip-medium">
-              <Square className="w-3 h-3" />
-            </button>
-            <button className="p-1 text-white/80" onClick={() => setVideoSize(Math.min(window.innerWidth / 2, window.innerHeight / 2))} data-testid="button-pip-large">
-              <Maximize2 className="w-3 h-3" />
-            </button>
-          </div>
+            className="absolute bottom-0 right-0 w-3 h-3 cursor-nwse-resize z-10"
+            style={{ background: "linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.6) 50%)" }}
+            onMouseDown={handleResizeStart}
+            onTouchStart={handleResizeStart}
+            data-testid="teacher-pip-resize-handle"
+          />
         </div>
-      )}
+        <div
+          className={`absolute -bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-0.5 px-1 py-0.5 rounded bg-black/60 backdrop-blur-sm transition-all duration-200 ${showPipToolbar ? "visible opacity-100" : "invisible opacity-0 sm:invisible sm:opacity-0"}`}
+          style={{ visibility: typeof window !== "undefined" && window.innerWidth < 640 ? "visible" : undefined, opacity: typeof window !== "undefined" && window.innerWidth < 640 ? 1 : undefined }}
+          data-testid="teacher-pip-toolbar"
+        >
+          <button className="p-1 text-white/80" onClick={() => setVideoSize(120)} data-testid="button-pip-small">
+            <Minimize2 className="w-3 h-3" />
+          </button>
+          <button className="p-1 text-white/80" onClick={() => setVideoSize(200)} data-testid="button-pip-medium">
+            <Square className="w-3 h-3" />
+          </button>
+          <button className="p-1 text-white/80" onClick={() => setVideoSize(Math.min(window.innerWidth / 2, window.innerHeight / 2))} data-testid="button-pip-large">
+            <Maximize2 className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
 
       <LessonChat socket={socketState} isHost />
 
