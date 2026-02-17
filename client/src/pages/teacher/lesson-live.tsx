@@ -104,8 +104,8 @@ export default function TeacherLessonLive() {
   const [videoEnabled, setVideoEnabled] = useState(false);
   const [videoShape, setVideoShape] = useState<"circle" | "rectangle">("circle");
   const [videoDragging, setVideoDragging] = useState(false);
-  const initVideoSize = typeof window !== "undefined" && window.innerWidth < 640 ? 100 : 160;
-  const [videoPos, setVideoPos] = useState({ left: typeof window !== "undefined" ? window.innerWidth - initVideoSize - 20 : 200, top: typeof window !== "undefined" ? window.innerHeight - initVideoSize - 20 : 200 });
+  const initVideoSize = typeof window !== "undefined" && window.innerWidth < 640 ? 120 : 200;
+  const [videoPos, setVideoPos] = useState({ left: typeof window !== "undefined" ? window.innerWidth - initVideoSize - 24 : 200, top: typeof window !== "undefined" ? window.innerHeight - initVideoSize - 80 : 200 });
   const [videoSize, setVideoSize] = useState(initVideoSize);
   const dragStart = useRef({ x: 0, y: 0, startLeft: 0, startTop: 0 });
   const [isResizing, setIsResizing] = useState(false);
@@ -1053,8 +1053,16 @@ export default function TeacherLessonLive() {
   };
 
   useEffect(() => {
-    if (videoEnabled && videoRef.current && localStreamRef.current) {
-      videoRef.current.srcObject = localStreamRef.current;
+    if (videoEnabled && localStreamRef.current) {
+      const trySetVideo = () => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = localStreamRef.current;
+          videoRef.current.play().catch(() => {});
+        } else {
+          setTimeout(trySetVideo, 50);
+        }
+      };
+      trySetVideo();
     }
   }, [videoEnabled, lessonMode]);
 
@@ -1624,21 +1632,24 @@ export default function TeacherLessonLive() {
           data-testid="teacher-pip-video"
         >
           <div
-            className={`relative w-full h-full overflow-hidden border-2 border-primary/50 shadow-lg ${
+            className={`relative w-full h-full overflow-hidden border-3 border-primary shadow-xl ${
               videoShape === "circle" ? "rounded-full" : "rounded-lg"
             }`}
+            style={{ boxShadow: "0 0 20px rgba(59,130,246,0.5), 0 4px 15px rgba(0,0,0,0.3)" }}
           >
             <video
               ref={(el) => {
                 (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
                 if (el && localStreamRef.current) {
                   el.srcObject = localStreamRef.current;
+                  el.play().catch(() => {});
                 }
               }}
               autoPlay
               playsInline
               muted
               className="w-full h-full object-cover"
+              style={{ transform: "scaleX(-1)" }}
             />
             <div
               className="absolute top-0 left-0 w-full h-8 sm:h-6 cursor-move flex items-center justify-center opacity-60 sm:opacity-0 hover:opacity-100 transition-opacity bg-black/30"
@@ -1676,17 +1687,7 @@ export default function TeacherLessonLive() {
 
       <LessonChat socket={socketState} isHost />
 
-      {debugLogs.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-[90] max-h-32 overflow-y-auto bg-black/90 text-green-400 text-[10px] font-mono p-2 border-t border-green-500/30" data-testid="debug-panel">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-white/60 text-[9px]">MEDIA DEBUG LOG</span>
-            <button onClick={() => setDebugLogs([])} className="text-white/40 text-[9px] hover:text-white">Tozalash</button>
-          </div>
-          {debugLogs.map((log, i) => (
-            <div key={i} className="leading-tight">{log}</div>
-          ))}
-        </div>
-      )}
+      
 
     </div>
   );
