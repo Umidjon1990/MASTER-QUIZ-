@@ -256,7 +256,9 @@ export default function ScheduledQuizLobby() {
                 day: "numeric",
                 hour: "2-digit",
                 minute: "2-digit",
+                timeZone: "Asia/Tashkent",
               })}
+              {" "}(O'zbekiston vaqti)
             </p>
           </div>
         </Card>

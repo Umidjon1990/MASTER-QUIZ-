@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
@@ -5,11 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { AnimatedCounter } from "@/components/animated-counter";
+import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import {
   Zap, Users, Trophy, BookOpen, ArrowRight, Moon, Sun, Sparkles, Globe,
-  Monitor, Mic, FileText, Radio, BarChart3, MessageSquare, Video, Presentation, Send
+  Monitor, Mic, FileText, Radio, BarChart3, MessageSquare, Video, Presentation, Send, Loader2
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import type { Quiz } from "@shared/schema";
@@ -36,6 +39,27 @@ export default function Landing() {
   const { user, isLoading: authLoading } = useAuth();
   const [, navigate] = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const { toast } = useToast();
+  const [joinCode, setJoinCode] = useState("");
+  const [joinLoading, setJoinLoading] = useState(false);
+
+  const handleJoinByCode = async () => {
+    const code = joinCode.trim();
+    if (code.length !== 6) {
+      toast({ title: "6 raqamli kod kiriting", variant: "destructive" });
+      return;
+    }
+    setJoinLoading(true);
+    try {
+      const res = await fetch(`/api/scheduled-quiz/${code}`);
+      if (res.ok) {
+        navigate(`/play/scheduled/${code}`);
+        return;
+      }
+    } catch {}
+    navigate(`/play/join?code=${code}`);
+    setJoinLoading(false);
+  };
 
   const { data: publicQuizzes, isLoading: quizzesLoading } = useQuery<Quiz[]>({
     queryKey: ["/api/quizzes/public"],
@@ -104,6 +128,34 @@ export default function Landing() {
             <Button size="lg" variant="outline" onClick={() => navigate("/discover")} className="bg-white/5 backdrop-blur-sm border-white/20 text-white" data-testid="button-hero-discover">
               <Globe className="w-4 h-4 mr-1" /> Quizlarni ko'rish
             </Button>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.5 }}
+            className="max-w-sm mx-auto mb-12"
+          >
+            <div className="flex gap-2 glass-card rounded-md p-2">
+              <Input
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="6 raqamli kod kiriting"
+                className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-center text-lg tracking-widest font-mono"
+                maxLength={6}
+                onKeyDown={(e) => e.key === "Enter" && handleJoinByCode()}
+                data-testid="input-join-code"
+              />
+              <Button
+                onClick={handleJoinByCode}
+                disabled={joinLoading || joinCode.length !== 6}
+                className="gradient-purple border-0 shrink-0"
+                data-testid="button-join-code"
+              >
+                {joinLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+              </Button>
+            </div>
+            <p className="text-white/50 text-xs mt-2">Quiz yoki sessiya kodini kiriting</p>
           </motion.div>
 
           <motion.div

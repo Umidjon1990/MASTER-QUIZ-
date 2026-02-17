@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
@@ -23,6 +23,7 @@ export default function TeacherQuizzes() {
 
   const { data: quizzes, isLoading } = useQuery<Quiz[]>({
     queryKey: ["/api/quizzes"],
+    refetchInterval: 30000,
   });
 
   const { data: profile } = useQuery<UserProfile>({
@@ -99,8 +100,27 @@ export default function TeacherQuizzes() {
       toast({ title: "Sana va vaqtni kiriting", variant: "destructive" });
       return;
     }
-    const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
+    const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}:00+05:00`).toISOString();
     scheduleMutation.mutate({ quizId: scheduleQuiz.id, scheduledAt });
+  };
+
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatCountdown = (scheduledAt: string | Date) => {
+    const target = new Date(scheduledAt).getTime();
+    const diff = target - now;
+    if (diff <= 0) return "Vaqt keldi!";
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    if (days > 0) return `${days}k ${hours}s ${minutes}d qoldi`;
+    if (hours > 0) return `${hours}s ${minutes}d ${seconds}s qoldi`;
+    return `${minutes}d ${seconds}s qoldi`;
   };
 
   const copyScheduleLink = (quizScheduledCode: string) => {
@@ -171,17 +191,25 @@ export default function TeacherQuizzes() {
                 {quiz.scheduledStatus === "pending" && quiz.scheduledAt && (
                   <div className="mb-3 p-2.5 rounded-md bg-orange-50 dark:bg-orange-950/20 border border-orange-200/50 dark:border-orange-800/30">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2 text-sm">
-                        <Clock className="w-3.5 h-3.5 text-orange-500" />
-                        <span className="text-orange-700 dark:text-orange-300 font-medium">
-                          {new Date(quiz.scheduledAt).toLocaleDateString("uz-UZ", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                        </span>
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2 text-sm">
+                          <Clock className="w-3.5 h-3.5 text-orange-500" />
+                          <span className="text-orange-700 dark:text-orange-300 font-medium">
+                            {new Date(quiz.scheduledAt).toLocaleDateString("uz-UZ", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tashkent" })}
+                          </span>
+                        </div>
+                        <p className="text-xs font-medium tabular-nums text-orange-600 dark:text-orange-400 pl-5" data-testid={`countdown-${quiz.id}`}>
+                          {formatCountdown(quiz.scheduledAt)}
+                        </p>
                       </div>
                       <div className="flex gap-1.5">
                         {quiz.scheduledCode && (
-                          <Button variant="ghost" size="sm" onClick={() => copyScheduleLink(quiz.scheduledCode!)} data-testid={`button-copy-link-${quiz.id}`}>
-                            <Copy className="w-3 h-3 mr-1" /> Link
-                          </Button>
+                          <>
+                            <Badge variant="secondary" className="font-mono tracking-wider text-xs">{quiz.scheduledCode}</Badge>
+                            <Button variant="ghost" size="sm" onClick={() => copyScheduleLink(quiz.scheduledCode!)} data-testid={`button-copy-link-${quiz.id}`}>
+                              <Copy className="w-3 h-3 mr-1" /> Link
+                            </Button>
+                          </>
                         )}
                         <Button
                           variant="ghost"
@@ -326,14 +354,16 @@ export default function TeacherQuizzes() {
               {scheduleDate && scheduleTime && (
                 <div className="p-3 rounded-md bg-muted text-sm text-center">
                   <Clock className="w-4 h-4 inline mr-1.5" />
-                  {new Date(`${scheduleDate}T${scheduleTime}`).toLocaleDateString("uz-UZ", {
+                  {new Date(`${scheduleDate}T${scheduleTime}:00+05:00`).toLocaleDateString("uz-UZ", {
                     weekday: "long",
                     year: "numeric",
                     month: "long",
                     day: "numeric",
                     hour: "2-digit",
                     minute: "2-digit",
+                    timeZone: "Asia/Tashkent",
                   })}
+                  <span className="text-muted-foreground ml-1">(O'zbekiston vaqti)</span>
                 </div>
               )}
               <Button
