@@ -101,7 +101,7 @@ export default function QuizPlayPage() {
   const [questionIndex, setQuestionIndex] = useState(0);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [myScore, setMyScore] = useState(0);
-  const [lastAnswerResult, setLastAnswerResult] = useState<{ isCorrect: boolean; points: number; correctAnswer: string } | null>(null);
+  const [lastAnswerResult, setLastAnswerResult] = useState<{ isCorrect: boolean; points: number; correctAnswer: string; answerOrder?: number } | null>(null);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [answeredCount, setAnsweredCount] = useState(0);
   const [totalPlayers, setTotalPlayers] = useState(0);
@@ -180,7 +180,7 @@ export default function QuizPlayPage() {
     });
 
     s.on("public:answer-result", (data) => {
-      setLastAnswerResult({ isCorrect: data.isCorrect, points: data.points, correctAnswer: data.correctAnswer });
+      setLastAnswerResult({ isCorrect: data.isCorrect, points: data.points, correctAnswer: data.correctAnswer, answerOrder: data.answerOrder });
       setMyScore(data.totalScore);
     });
 
@@ -906,12 +906,18 @@ export default function QuizPlayPage() {
                       <div className="space-y-1">
                         <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto" />
                         <p className="font-semibold text-green-700 dark:text-green-400">To'g'ri! +{lastAnswerResult.points} ball</p>
+                        {lastAnswerResult.answerOrder && (
+                          <p className="text-xs text-muted-foreground" data-testid="text-answer-order">Siz {lastAnswerResult.answerOrder}-bo'lib javob berdingiz</p>
+                        )}
                       </div>
                     ) : (
                       <div className="space-y-1">
                         <XCircle className="w-8 h-8 text-red-600 mx-auto" />
                         <p className="font-semibold text-red-700 dark:text-red-400">Noto'g'ri</p>
                         <p className="text-xs text-muted-foreground">To'g'ri javob: {lastAnswerResult.correctAnswer}</p>
+                        {lastAnswerResult.answerOrder && (
+                          <p className="text-xs text-muted-foreground" data-testid="text-answer-order">Siz {lastAnswerResult.answerOrder}-bo'lib javob berdingiz</p>
+                        )}
                       </div>
                     )}
                   </motion.div>

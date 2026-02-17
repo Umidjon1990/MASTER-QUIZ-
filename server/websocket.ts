@@ -1054,6 +1054,7 @@ export function setupWebSocket(httpServer: HttpServer) {
           points,
           correctAnswer: question.correctAnswer,
           totalScore: player.score,
+          answerOrder: room.answeredThisQuestion.size,
         });
 
         io.to(`pubroom:${roomId}`).emit("public:answer-received", {
