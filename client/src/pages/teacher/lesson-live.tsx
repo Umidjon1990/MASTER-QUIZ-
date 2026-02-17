@@ -125,6 +125,7 @@ export default function TeacherLessonLive() {
   const [showDeviceSettings, setShowDeviceSettings] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const audioAnalyserRef = useRef<{ ctx: AudioContext; analyser: AnalyserNode; source: MediaStreamAudioSourceNode; animId: number } | null>(null);
+  const [mediaLoading, setMediaLoading] = useState<"audio" | "video" | null>(null);
 
   const [lessonMode, setLessonMode] = useState<"pdf" | "screen" | "voice">("pdf");
   const [showControls, setShowControls] = useState(true);
@@ -598,6 +599,21 @@ export default function TeacherLessonLive() {
     }
   }, [isScreenSharing]);
 
+  const getUserMediaWithTimeout = (constraints: MediaStreamConstraints, timeoutMs = 8000): Promise<MediaStream> => {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new DOMException("Qurilmadan javob kelmadi. Kamerani tekshiring yoki boshqa qurilma tanlang.", "TimeoutError"));
+      }, timeoutMs);
+      navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+        clearTimeout(timer);
+        resolve(stream);
+      }).catch(err => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+  };
+
   const getMediaStream = async (audio: boolean, video: boolean) => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       throw new Error("Brauzer kamera/mikrofonni qo'llab-quvvatlamaydi");
@@ -618,22 +634,18 @@ export default function TeacherLessonLive() {
       constraints.video = videoConstraints;
     }
     try {
-      return await navigator.mediaDevices.getUserMedia(constraints);
+      return await getUserMediaWithTimeout(constraints);
     } catch (firstErr) {
       if (video && selectedVideoDevice) {
         try {
-          const fallbackConstraints = { ...constraints };
-          fallbackConstraints.video = { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } };
-          return await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+          return await getUserMediaWithTimeout({ ...constraints, video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } } });
         } catch {
           throw firstErr;
         }
       }
       if (audio && selectedAudioDevice) {
         try {
-          const fallbackConstraints = { ...constraints };
-          fallbackConstraints.audio = { echoCancellation: true, noiseSuppression: true };
-          return await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+          return await getUserMediaWithTimeout({ ...constraints, audio: { echoCancellation: true, noiseSuppression: true } });
         } catch {
           throw firstErr;
         }
@@ -650,10 +662,11 @@ export default function TeacherLessonLive() {
 
   const getMediaErrorMsg = (err: any, type: "audio" | "video") => {
     const device = type === "audio" ? "Mikrofon" : "Kamera";
-    if (err?.name === "NotAllowedError") return `${device} ruxsati berilmagan. Brauzer manzil satrida kamera belgisini bosib ruxsat bering.`;
+    if (err?.name === "TimeoutError") return `${device}dan javob kelmadi (8 soniya). Qurilmani tekshiring yoki boshqa ${type === "video" ? "kamera" : "mikrofon"} tanlang.`;
+    if (err?.name === "NotAllowedError") return `${device} ruxsati berilmagan. Brauzer manzil satridagi qulf/kamera belgisini bosib ruxsat bering.`;
     if (err?.name === "NotFoundError") return `${device} topilmadi. Qurilmani ulang va sahifani yangilang.`;
-    if (err?.name === "NotReadableError") return `${device} boshqa dastur tomonidan ishlatilmoqda. Boshqa ilovalarni yoping.`;
-    if (err?.name === "OverconstrainedError") return `${device} so'ralgan sifatni qo'llab-quvvatlamaydi.`;
+    if (err?.name === "NotReadableError") return `${device} boshqa dastur ishlatmoqda. Boshqa ilovalarni yoping yoki qurilmani o'zgartiring.`;
+    if (err?.name === "OverconstrainedError") return `${device} so'ralgan sifatni qo'llab-quvvatlamaydi. Boshqa qurilma tanlang.`;
     if (err?.name === "AbortError") return `${device}ga ulanish bekor qilindi.`;
     return err?.message || `${device}dan foydalanib bo'lmaydi`;
   };
@@ -670,57 +683,58 @@ export default function TeacherLessonLive() {
   };
 
   const toggleAudio = async () => {
+    if (mediaLoading) return;
     if (audioEnabled) {
       localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = false; });
       setAudioEnabled(false);
+      toast({ title: "Mikrofon o'chirildi" });
     } else {
-      if (!localStreamRef.current) {
-        try {
+      setMediaLoading("audio");
+      try {
+        if (!localStreamRef.current) {
           const stream = await getMediaStream(true, videoEnabled);
           localStreamRef.current = stream;
           if (videoRef.current) videoRef.current.srcObject = stream;
           setMediaError(null);
-        } catch (err: any) {
-          console.error("Mikrofon xatoligi:", err);
-          const msg = getMediaErrorMsg(err, "audio");
-          setMediaError(msg);
-          toast({ title: msg, variant: "destructive" });
-          return;
-        }
-      } else {
-        const audioTracks = localStreamRef.current.getAudioTracks();
-        if (audioTracks.length > 0) {
-          audioTracks.forEach(t => { t.enabled = true; });
         } else {
-          try {
+          const audioTracks = localStreamRef.current.getAudioTracks();
+          if (audioTracks.length > 0) {
+            audioTracks.forEach(t => { t.enabled = true; });
+          } else {
             const audioStream = await getMediaStream(true, false);
             const newTrack = audioStream.getAudioTracks()[0];
             if (newTrack) {
               localStreamRef.current!.addTrack(newTrack);
               addTrackToPeers(newTrack);
             }
-          } catch (err: any) {
-            console.error("Mikrofon xatoligi:", err);
-            const msg = getMediaErrorMsg(err, "audio");
-            setMediaError(msg);
-            toast({ title: msg, variant: "destructive" });
-            return;
           }
         }
+        setAudioEnabled(true);
+        setMediaError(null);
+        toast({ title: "Mikrofon yoniq!" });
+        broadcastStreamToStudents();
+      } catch (err: any) {
+        console.error("Mikrofon xatoligi:", err);
+        const msg = getMediaErrorMsg(err, "audio");
+        setMediaError(msg);
+        toast({ title: msg, variant: "destructive" });
+      } finally {
+        setMediaLoading(null);
       }
-      setAudioEnabled(true);
-      broadcastStreamToStudents();
     }
   };
 
   const toggleVideo = async () => {
+    if (mediaLoading) return;
     if (videoEnabled) {
       localStreamRef.current?.getVideoTracks().forEach(t => {
         t.stop();
         localStreamRef.current!.removeTrack(t);
       });
       setVideoEnabled(false);
+      toast({ title: "Kamera o'chirildi" });
     } else {
+      setMediaLoading("video");
       try {
         if (!localStreamRef.current) {
           const stream = await getMediaStream(audioEnabled, true);
@@ -736,12 +750,15 @@ export default function TeacherLessonLive() {
         if (videoRef.current) videoRef.current.srcObject = localStreamRef.current;
         setVideoEnabled(true);
         setMediaError(null);
+        toast({ title: "Kamera yoniq!" });
         broadcastStreamToStudents();
       } catch (err: any) {
         console.error("Kamera xatoligi:", err);
         const msg = getMediaErrorMsg(err, "video");
         setMediaError(msg);
         toast({ title: msg, variant: "destructive" });
+      } finally {
+        setMediaLoading(null);
       }
     }
   };
@@ -1302,12 +1319,15 @@ export default function TeacherLessonLive() {
       </div>
 
       {mediaError && (
-        <div className="absolute top-14 left-2 right-2 sm:left-1/2 sm:-translate-x-1/2 sm:max-w-md z-[60] px-4 py-3 rounded-lg bg-red-600 text-white text-sm text-center shadow-xl animate-in fade-in slide-in-from-top-2" data-testid="media-error-banner">
-          <div className="flex items-center justify-center gap-2">
-            <VideoOff className="w-4 h-4 shrink-0" />
-            <span>{mediaError}</span>
-            <button onClick={() => setMediaError(null)} className="ml-2 p-0.5 rounded hover:bg-white/20">
-              <X className="w-3.5 h-3.5" />
+        <div className="fixed top-16 left-2 right-2 sm:left-1/2 sm:-translate-x-1/2 sm:max-w-lg z-[100] px-4 py-3 rounded-lg bg-red-600 text-white text-sm shadow-2xl border border-red-400" data-testid="media-error-banner">
+          <div className="flex items-start gap-2">
+            <VideoOff className="w-5 h-5 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="font-semibold mb-1">Xatolik!</div>
+              <div>{mediaError}</div>
+            </div>
+            <button onClick={() => setMediaError(null)} className="p-1 rounded hover:bg-white/20 shrink-0">
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -1349,11 +1369,15 @@ export default function TeacherLessonLive() {
         </div>
 
         <div className="flex items-center gap-0.5 sm:gap-1 flex-wrap">
-          <Button size="icon" variant="ghost" className={`toggle-elevate ${audioEnabled ? "toggle-elevated bg-white/20 text-white" : "text-white/60"}`} onClick={toggleAudio} data-testid="button-toggle-audio">
-            {audioEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+          <Button size="icon" variant="ghost" className={`toggle-elevate ${audioEnabled ? "toggle-elevated bg-green-600/60 text-white" : "text-white/60"} ${mediaLoading === "audio" ? "animate-pulse" : ""}`} onClick={toggleAudio} disabled={mediaLoading !== null} data-testid="button-toggle-audio">
+            {mediaLoading === "audio" ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : audioEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
           </Button>
-          <Button size="icon" variant="ghost" className={`toggle-elevate ${videoEnabled ? "toggle-elevated bg-white/20 text-white" : "text-white/60"}`} onClick={toggleVideo} data-testid="button-toggle-video">
-            {videoEnabled ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+          <Button size="icon" variant="ghost" className={`toggle-elevate ${videoEnabled ? "toggle-elevated bg-green-600/60 text-white" : "text-white/60"} ${mediaLoading === "video" ? "animate-pulse" : ""}`} onClick={toggleVideo} disabled={mediaLoading !== null} data-testid="button-toggle-video">
+            {mediaLoading === "video" ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : videoEnabled ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
           </Button>
           {videoEnabled && (
             <Button size="icon" variant="ghost" className="text-white" onClick={() => setVideoShape(s => s === "circle" ? "rectangle" : "circle")} data-testid="button-video-shape">
@@ -1418,54 +1442,80 @@ export default function TeacherLessonLive() {
       </div>
 
       {showDeviceSettings && showControls && (
-        <div className="absolute top-12 left-0 right-0 z-20 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 p-2 bg-black/40 backdrop-blur-sm" data-testid="device-settings-panel">
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Mic className="w-3.5 h-3.5 text-white/70 shrink-0" />
-            <Select value={selectedAudioDevice} onValueChange={switchAudioDevice}>
-              <SelectTrigger className="w-full sm:w-[200px] h-8 text-xs bg-white/10 border-white/20 text-white" data-testid="select-audio-device">
-                <SelectValue placeholder="Mikrofon tanlang" />
-              </SelectTrigger>
-              <SelectContent>
-                {audioDevices.map(d => (
-                  <SelectItem key={d.deviceId} value={d.deviceId} data-testid={`option-audio-${d.deviceId}`}>
-                    {d.label || `Mikrofon ${audioDevices.indexOf(d) + 1}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="flex items-center gap-1" data-testid="audio-level-meter">
-              {[...Array(5)].map((_, i) => {
-                const threshold = (i + 1) * 20;
-                const active = audioLevel >= threshold;
-                return (
-                  <div
-                    key={i}
-                    className="w-1 rounded-full transition-all duration-75"
-                    style={{
-                      height: `${8 + i * 3}px`,
-                      backgroundColor: active
-                        ? audioLevel > 80 ? "#ef4444" : audioLevel > 50 ? "#eab308" : "#22c55e"
-                        : "rgba(255,255,255,0.2)",
-                    }}
-                  />
-                );
-              })}
+        <div className="absolute top-12 left-0 right-0 z-20 flex flex-col gap-2 p-2 bg-black/60 backdrop-blur-md" data-testid="device-settings-panel">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Mic className="w-3.5 h-3.5 text-white/70 shrink-0" />
+              <Select value={selectedAudioDevice} onValueChange={switchAudioDevice}>
+                <SelectTrigger className="w-full sm:w-[200px] h-8 text-xs bg-white/10 border-white/20 text-white" data-testid="select-audio-device">
+                  <SelectValue placeholder="Mikrofon tanlang" />
+                </SelectTrigger>
+                <SelectContent>
+                  {audioDevices.map(d => (
+                    <SelectItem key={d.deviceId} value={d.deviceId} data-testid={`option-audio-${d.deviceId}`}>
+                      {d.label || `Mikrofon ${audioDevices.indexOf(d) + 1}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex items-center gap-1" data-testid="audio-level-meter">
+                {[...Array(5)].map((_, i) => {
+                  const threshold = (i + 1) * 20;
+                  const active = audioLevel >= threshold;
+                  return (
+                    <div
+                      key={i}
+                      className="w-1 rounded-full transition-all duration-75"
+                      style={{
+                        height: `${8 + i * 3}px`,
+                        backgroundColor: active
+                          ? audioLevel > 80 ? "#ef4444" : audioLevel > 50 ? "#eab308" : "#22c55e"
+                          : "rgba(255,255,255,0.2)",
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Video className="w-3.5 h-3.5 text-white/70 shrink-0" />
+              <Select value={selectedVideoDevice} onValueChange={switchVideoDevice}>
+                <SelectTrigger className="w-full sm:w-[200px] h-8 text-xs bg-white/10 border-white/20 text-white" data-testid="select-video-device">
+                  <SelectValue placeholder="Kamera tanlang" />
+                </SelectTrigger>
+                <SelectContent>
+                  {videoDevices.map(d => (
+                    <SelectItem key={d.deviceId} value={d.deviceId} data-testid={`option-video-${d.deviceId}`}>
+                      {d.label || `Kamera ${videoDevices.indexOf(d) + 1}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Video className="w-3.5 h-3.5 text-white/70 shrink-0" />
-            <Select value={selectedVideoDevice} onValueChange={switchVideoDevice}>
-              <SelectTrigger className="w-full sm:w-[200px] h-8 text-xs bg-white/10 border-white/20 text-white" data-testid="select-video-device">
-                <SelectValue placeholder="Kamera tanlang" />
-              </SelectTrigger>
-              <SelectContent>
-                {videoDevices.map(d => (
-                  <SelectItem key={d.deviceId} value={d.deviceId} data-testid={`option-video-${d.deviceId}`}>
-                    {d.label || `Kamera ${videoDevices.indexOf(d) + 1}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex items-center gap-3 px-1">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-white/50">Mikrofon:</span>
+              {audioEnabled ? (
+                <span className="text-green-400 font-medium flex items-center gap-1">YONIQ <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" /></span>
+              ) : (
+                <span className="text-white/40">o'chiq</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-white/50">Kamera:</span>
+              {videoEnabled ? (
+                <span className="text-green-400 font-medium flex items-center gap-1">YONIQ <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" /></span>
+              ) : (
+                <span className="text-white/40">o'chiq</span>
+              )}
+            </div>
+            {mediaLoading && (
+              <span className="text-yellow-400 text-xs flex items-center gap-1">
+                <div className="w-3 h-3 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+                {mediaLoading === "audio" ? "Mikrofon ulanmoqda..." : "Kamera ulanmoqda..."}
+              </span>
+            )}
           </div>
         </div>
       )}
