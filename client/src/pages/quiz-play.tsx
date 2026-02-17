@@ -31,6 +31,7 @@ import {
   Gamepad2,
   UserPlus,
   Play,
+  Link2,
 } from "lucide-react";
 
 interface QuizQuestion {
@@ -592,6 +593,16 @@ export default function QuizPlayPage() {
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground">Kodni do'stlaringizga yuboring</p>
+
+              <div className="flex items-center gap-1.5 bg-muted/50 rounded-md px-3 py-2 mt-2">
+                <Link2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground truncate flex-1" data-testid="text-quiz-share-link">
+                  {window.location.href}
+                </span>
+                <Button size="icon" variant="ghost" className="shrink-0" onClick={handleCopyLink} data-testid="button-copy-link-lobby">
+                  {linkCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-2">
