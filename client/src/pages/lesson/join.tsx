@@ -345,10 +345,13 @@ export default function LessonJoin() {
           if (!remoteStreamRef.current) {
             remoteStreamRef.current = new MediaStream();
           }
-          remoteStreamRef.current.addTrack(e.track);
+          const existingTrackIds = remoteStreamRef.current.getTracks().map(t => t.id);
+          if (!existingTrackIds.includes(e.track.id)) {
+            remoteStreamRef.current.addTrack(e.track);
+          }
           if (e.track.kind === "video") {
             try { e.track.contentHint = "motion"; } catch {}
-            if (videoRef.current) {
+            if (videoRef.current && videoRef.current.srcObject !== remoteStreamRef.current) {
               videoRef.current.srcObject = remoteStreamRef.current;
             }
             setHasRemoteVideo(true);
@@ -597,7 +600,9 @@ export default function LessonJoin() {
 
   useEffect(() => {
     if (hasRemoteVideo && videoRef.current && remoteStreamRef.current) {
-      videoRef.current.srcObject = remoteStreamRef.current;
+      if (videoRef.current.srcObject !== remoteStreamRef.current) {
+        videoRef.current.srcObject = remoteStreamRef.current;
+      }
     }
   }, [hasRemoteVideo, lessonMode]);
 
@@ -780,37 +785,32 @@ export default function LessonJoin() {
           )}
         </div>
 
-        {hasRemoteVideo && (
+        <div
+          className="fixed z-50"
+          style={{
+            left: `${videoPos.left}px`,
+            top: `${videoPos.top}px`,
+            width: `${videoSize}px`,
+            height: videoShape === "circle" ? `${videoSize}px` : `${videoSize * 0.75}px`,
+            display: hasRemoteVideo ? "block" : "none",
+          }}
+          onMouseEnter={() => setShowPipToolbar(true)}
+          onMouseLeave={() => setShowPipToolbar(false)}
+          data-testid="teacher-pip-video-student"
+        >
           <div
-            className="fixed z-50"
-            style={{
-              left: `${videoPos.left}px`,
-              top: `${videoPos.top}px`,
-              width: `${videoSize}px`,
-              height: videoShape === "circle" ? `${videoSize}px` : `${videoSize * 0.75}px`,
-            }}
-            onMouseEnter={() => setShowPipToolbar(true)}
-            onMouseLeave={() => setShowPipToolbar(false)}
-            data-testid="teacher-pip-video-student"
+            className={`relative w-full h-full overflow-hidden border-2 border-primary/50 shadow-lg ${
+              videoShape === "circle" ? "rounded-full" : "rounded-lg"
+            }`}
           >
-            <div
-              className={`relative w-full h-full overflow-hidden border-2 border-primary/50 shadow-lg ${
-                videoShape === "circle" ? "rounded-full" : "rounded-lg"
-              }`}
-            >
-              <video
-                ref={(el) => {
-                  (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
-                  if (el && remoteStreamRef.current) {
-                    el.srcObject = remoteStreamRef.current;
-                  }
-                }}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-                style={{ willChange: "transform", backfaceVisibility: "hidden", transform: "translateZ(0)" }}
-              />
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+              style={{ willChange: "transform", backfaceVisibility: "hidden", transform: "translateZ(0)", WebkitBackfaceVisibility: "hidden" }}
+            />
               <div
                 className="absolute top-0 left-0 w-full h-8 sm:h-6 cursor-move flex items-center justify-center opacity-60 sm:opacity-0 hover:opacity-100 transition-opacity bg-black/30"
                 onMouseDown={handleVideoDragStart}
@@ -840,7 +840,6 @@ export default function LessonJoin() {
               </button>
             </div>
           </div>
-        )}
 
         <audio ref={audioRef} autoPlay playsInline hidden />
 
