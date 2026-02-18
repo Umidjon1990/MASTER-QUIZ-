@@ -251,3 +251,23 @@ export type InsertQuizLike = z.infer<typeof insertQuizLikeSchema>;
 export type QuizLike = typeof quizLikes.$inferSelect;
 export type InsertLiveLesson = z.infer<typeof insertLiveLessonSchema>;
 export type LiveLesson = typeof liveLessons.$inferSelect;
+
+export const activeGames = pgTable("active_games", {
+  id: varchar("id").primaryKey(),
+  quizId: varchar("quiz_id").notNull(),
+  code: varchar("code", { length: 10 }).notNull(),
+  hostSocketId: varchar("host_socket_id").notNull(),
+  hostPlayerId: varchar("host_player_id").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("playing"),
+  currentQuestionIndex: integer("current_question_index").notNull().default(0),
+  questionStartTime: varchar("question_start_time").notNull(),
+  currentEffectiveTimeLimit: integer("current_effective_time_limit").notNull().default(30),
+  players: jsonb("players").notNull().default([]),
+  questions: jsonb("questions").notNull().default([]),
+  quizData: jsonb("quiz_data").notNull().default({}),
+  answeredThisQuestion: jsonb("answered_this_question").notNull().default([]),
+  phase: varchar("phase", { length: 20 }).notNull().default("question"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type ActiveGame = typeof activeGames.$inferSelect;
