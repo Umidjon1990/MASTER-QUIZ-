@@ -1144,7 +1144,7 @@ export function setupWebSocket(httpServer: HttpServer) {
 
     socket.on("public:join-room", async (data, callback) => {
       try {
-        const { code, playerName } = data;
+        const { code, playerName, rejoinToken } = data;
         if (!code || !playerName) return callback?.({ success: false, error: "Ma'lumotlar to'liq emas" });
 
         const roomId = codeToRoomId.get(code);
@@ -1158,25 +1158,34 @@ export function setupWebSocket(httpServer: HttpServer) {
 
         let playerId: string;
         let isRejoin = false;
+        let newToken = "";
 
         const existingPlayer = Array.from(room.players.values()).find(
           p => p.name.toLowerCase().trim() === playerName.toLowerCase().trim()
         );
 
         if (existingPlayer) {
-          playerId = existingPlayer.playerId;
-          existingPlayer.socketId = socket.id;
-          isRejoin = true;
+          if (rejoinToken && (existingPlayer as any).rejoinToken === rejoinToken) {
+            playerId = existingPlayer.playerId;
+            existingPlayer.socketId = socket.id;
+            isRejoin = true;
+            newToken = rejoinToken;
+          } else {
+            return callback?.({ success: false, error: "Bu ism allaqachon band. Boshqa ism tanlang." });
+          }
         } else {
           playerId = `p_${socket.id}_${Date.now()}`;
-          room.players.set(playerId, {
+          newToken = `tok_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+          const playerData: any = {
             socketId: socket.id,
             name: playerName,
             score: 0,
             correctAnswers: 0,
             totalAnswered: 0,
             playerId,
-          });
+            rejoinToken: newToken,
+          };
+          room.players.set(playerId, playerData);
         }
 
         socket.join(`pubroom:${roomId}`);
@@ -1201,6 +1210,7 @@ export function setupWebSocket(httpServer: HttpServer) {
           success: true,
           roomId,
           playerId,
+          rejoinToken: newToken,
           quizTitle: room.quiz.title,
           totalQuestions: room.questions.length,
           players: playerList,

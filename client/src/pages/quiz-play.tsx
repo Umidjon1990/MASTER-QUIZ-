@@ -293,7 +293,8 @@ export default function QuizPlayPage() {
     if (!playerName.trim() || !joinCode.trim()) return;
     setConnecting(true);
     const s = connectSocket();
-    s.emit("public:join-room", { code: joinCode.trim(), playerName: playerName.trim() }, (res: any) => {
+    const storedToken = localStorage.getItem(`rejoin_${joinCode.trim()}_${playerName.trim().toLowerCase()}`);
+    s.emit("public:join-room", { code: joinCode.trim(), playerName: playerName.trim(), rejoinToken: storedToken || undefined }, (res: any) => {
       setConnecting(false);
       if (res.success) {
         setRoomCode(joinCode.trim());
@@ -302,6 +303,9 @@ export default function QuizPlayPage() {
         setIsHost(false);
         setPlayers(res.players);
         setTotalQuestions(res.totalQuestions);
+        if (res.rejoinToken) {
+          localStorage.setItem(`rejoin_${joinCode.trim()}_${playerName.trim().toLowerCase()}`, res.rejoinToken);
+        }
         if (res.isRejoin) {
           setMyScore(res.currentScore || 0);
         }
@@ -327,7 +331,8 @@ export default function QuizPlayPage() {
       const s = connectSocket();
 
       const doJoin = () => {
-        s.emit("public:join-room", { code: autoJoinCode, playerName: autoName }, (res: any) => {
+        const storedToken = localStorage.getItem(`rejoin_${autoJoinCode}_${autoName.trim().toLowerCase()}`);
+        s.emit("public:join-room", { code: autoJoinCode, playerName: autoName, rejoinToken: storedToken || undefined }, (res: any) => {
           setConnecting(false);
           if (res.success) {
             setRoomCode(autoJoinCode);
@@ -336,6 +341,9 @@ export default function QuizPlayPage() {
             setIsHost(false);
             setPlayers(res.players);
             setTotalQuestions(res.totalQuestions);
+            if (res.rejoinToken) {
+              localStorage.setItem(`rejoin_${autoJoinCode}_${autoName.trim().toLowerCase()}`, res.rejoinToken);
+            }
             if (res.isRejoin) {
               setMyScore(res.currentScore || 0);
             }
@@ -362,7 +370,8 @@ export default function QuizPlayPage() {
 
       s.on("reconnect", () => {
         if (roomId) {
-          s.emit("public:join-room", { code: autoJoinCode, playerName: autoName }, () => {});
+          const token = localStorage.getItem(`rejoin_${autoJoinCode}_${autoName.trim().toLowerCase()}`);
+          s.emit("public:join-room", { code: autoJoinCode, playerName: autoName, rejoinToken: token || undefined }, () => {});
         }
       });
     }
