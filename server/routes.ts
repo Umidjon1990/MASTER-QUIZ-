@@ -334,6 +334,7 @@ export async function registerRoutes(
         scheduledAt: scheduledDate,
         scheduledStatus: "pending",
         scheduledCode: code,
+        scheduledRoomCode: null,
         scheduledRequireCode: needCode,
         scheduledTelegramChatId: telegramChatId || null,
         isPublic: true,
@@ -357,6 +358,7 @@ export async function registerRoutes(
         scheduledAt: null,
         scheduledStatus: null,
         scheduledCode: null,
+        scheduledRoomCode: null,
         scheduledRequireCode: true,
         scheduledTelegramChatId: null,
       } as any);
@@ -422,10 +424,13 @@ export async function registerRoutes(
       if (!quiz) {
         return res.status(404).json({ status: "not_found" });
       }
-      const roomCode = quiz.scheduledStatus === "started" ? getScheduledQuizRoomCode(quiz.id) : null;
+      const memRoomCode = getScheduledQuizRoomCode(quiz.id);
+      const roomCode = quiz.scheduledStatus === "started"
+        ? (memRoomCode || (quiz as any).scheduledRoomCode || null)
+        : null;
       res.json({
         scheduledStatus: quiz.scheduledStatus,
-        roomCode: roomCode || null,
+        roomCode,
       });
     } catch (error) {
       res.status(500).json({ status: "error" });

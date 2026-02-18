@@ -41,6 +41,7 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [isStarted, setIsStarted] = useState(false);
   const [roomCode, setRoomCode] = useState("");
+  const [alreadyStartedRoomCode, setAlreadyStartedRoomCode] = useState("");
 
   useEffect(() => {
     const fetchUrl = mode === "code" && code
@@ -49,13 +50,29 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
         ? `/api/scheduled-quiz-by-id/${quizId}`
         : null;
     if (!fetchUrl) return;
+
+    const targetQuizId = mode === "open" ? quizId : "";
+
     fetch(fetchUrl)
       .then(r => {
-        if (!r.ok) throw new Error("Quiz topilmadi");
+        if (!r.ok) {
+          if (targetQuizId) {
+            return fetch(`/api/scheduled-quiz-status/${targetQuizId}`)
+              .then(sr => sr.ok ? sr.json() : null)
+              .then(statusData => {
+                if (statusData?.scheduledStatus === "started" && statusData?.roomCode) {
+                  setAlreadyStartedRoomCode(statusData.roomCode);
+                  return null;
+                }
+                throw new Error("Quiz topilmadi");
+              });
+          }
+          throw new Error("Quiz topilmadi");
+        }
         return r.json();
       })
       .then(data => {
-        setQuizInfo(data);
+        if (data) setQuizInfo(data);
         setLoading(false);
       })
       .catch(err => {
@@ -174,6 +191,40 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (alreadyStartedRoomCode) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="p-8 text-center max-w-md w-full space-y-4">
+          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+            <Zap className="w-8 h-8 text-primary" />
+          </div>
+          <h2 className="text-xl font-bold">Quiz allaqachon boshlangan!</h2>
+          <p className="text-muted-foreground text-sm">Hali qo'shilishingiz mumkin</p>
+          <Input
+            placeholder="Ismingizni kiriting"
+            value={playerName}
+            onChange={e => setPlayerName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter" && playerName.trim()) {
+                navigate(`/quiz/play/${quizId}?joinCode=${alreadyStartedRoomCode}&autoName=${encodeURIComponent(playerName.trim())}`);
+              }
+            }}
+            data-testid="input-player-name-late"
+          />
+          <Button
+            className="w-full"
+            disabled={!playerName.trim()}
+            onClick={() => navigate(`/quiz/play/${quizId}?joinCode=${alreadyStartedRoomCode}&autoName=${encodeURIComponent(playerName.trim())}`)}
+            data-testid="button-join-late"
+          >
+            <Play className="w-4 h-4 mr-2" />
+            Qo'shilish
+          </Button>
+        </Card>
       </div>
     );
   }
