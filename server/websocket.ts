@@ -301,7 +301,7 @@ function showPublicLeaderboard(roomId: string) {
       } else {
         sendPublicQuestion(roomId);
       }
-    }, 5000);
+    }, 3000);
   }
 }
 
@@ -345,6 +345,53 @@ function finishPublicGame(roomId: string) {
   setTimeout(() => cleanupRoom(roomId), 5 * 60 * 1000);
 }
 
+function formatTelegramResultsWs(
+  title: string,
+  players: Array<{ name: string; score: number; correctAnswers: number; totalQuestions: number }>,
+  escFn: (s: string) => string,
+  isAuto = false
+): string {
+  const medalLabels = ["[1-O'RIN]", "[2-O'RIN]", "[3-O'RIN]"];
+  const barFull = "\u{2588}";
+  const barEmpty = "\u{2591}";
+  const line = "\u{2500}".repeat(24);
+
+  let msg = `<b>${escFn(title)}</b>\n`;
+  msg += `<i>Natijalar${isAuto ? " (avtomatik)" : ""}</i>\n`;
+  msg += `${line}\n\n`;
+
+  const top3 = players.slice(0, 3);
+  for (let i = 0; i < top3.length; i++) {
+    const r = top3[i];
+    const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
+    const barLen = Math.round(pct / 10);
+    const bar = barFull.repeat(barLen) + barEmpty.repeat(10 - barLen);
+
+    msg += `${medalLabels[i]} <b>${escFn(r.name)}</b>\n`;
+    msg += `   Ball: <b>${r.score}</b>\n`;
+    msg += `   To'g'ri: ${r.correctAnswers}/${r.totalQuestions} (${pct}%)\n`;
+    msg += `   ${bar}\n\n`;
+  }
+
+  if (players.length > 3) {
+    msg += `<b>Boshqa ishtirokchilar:</b>\n`;
+    msg += `${line}\n`;
+    const rest = players.slice(3, 10);
+    for (let i = 0; i < rest.length; i++) {
+      const r = rest[i];
+      const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
+      msg += `${i + 4}. ${escFn(r.name)} \u{2014} <b>${r.score}</b> ball (${pct}%)\n`;
+    }
+    msg += `\n`;
+  }
+
+  msg += `${line}\n`;
+  msg += `Jami ishtirokchilar: <b>${players.length}</b>\n`;
+  msg += `${new Date().toLocaleDateString("uz-UZ", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tashkent" })}`;
+
+  return msg;
+}
+
 async function autoSendResultsToTelegram(
   quiz: any,
   leaderboard: Array<{ rank: number; name: string; score: number; correctAnswers: number; totalAnswered: number; playerId: string }>,
@@ -368,29 +415,12 @@ async function autoSendResultsToTelegram(
   const bot = new TelegramBot(profile.telegramBotToken);
   const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
 
-  const medalMap: Record<number, string> = { 0: "[1]", 1: "[2]", 2: "[3]" };
-
-  let msg = `<b>${escHtml(quiz.title)}</b>\n`;
-  msg += `<i>Natijalar (avtomatik)</i>\n\n`;
-
-  const top3 = leaderboard.slice(0, 3);
-  for (let i = 0; i < top3.length; i++) {
-    const r = top3[i];
-    const medal = medalMap[i] || "";
-    msg += `${medal} <b>${i + 1}-o'rin:</b> ${escHtml(r.name)}\n`;
-    msg += `   Ball: <b>${r.score}</b> | To'g'ri: ${r.correctAnswers}/${totalQuestions}\n\n`;
-  }
-
-  if (leaderboard.length > 3) {
-    msg += `<b>Top 10 ro'yxat:</b>\n`;
-    const top10 = leaderboard.slice(3, 10);
-    for (let i = 0; i < top10.length; i++) {
-      const r = top10[i];
-      msg += `${i + 4}. ${escHtml(r.name)} — <b>${r.score}</b> ball (${r.correctAnswers}/${totalQuestions})\n`;
-    }
-  }
-
-  msg += `\nJami ishtirokchilar: <b>${leaderboard.length}</b>`;
+  const msg = formatTelegramResultsWs(quiz.title, leaderboard.map(r => ({
+    name: r.name,
+    score: r.score,
+    correctAnswers: r.correctAnswers,
+    totalQuestions,
+  })), escHtml, true);
 
   await bot.sendMessage(targetChat, msg, { parse_mode: "HTML" });
 

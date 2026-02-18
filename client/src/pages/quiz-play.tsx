@@ -86,8 +86,8 @@ export default function QuizPlayPage() {
   const autoJoinCode = autoParams.get("joinCode") || "";
   const autoName = autoParams.get("autoName") || "";
 
-  const [stage, setStage] = useState<GameStage>("mode-select");
-  const [gameMode, setGameMode] = useState<"solo" | "multi">("solo");
+  const [stage, setStage] = useState<GameStage>(autoJoinCode && autoName ? "lobby" : "mode-select");
+  const [gameMode, setGameMode] = useState<"solo" | "multi">(autoJoinCode && autoName ? "multi" : "solo");
   const [playerName, setPlayerName] = useState(autoName);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
@@ -729,79 +729,191 @@ export default function QuizPlayPage() {
   }
 
   if (stage === "multi-result" && multiResult) {
+    const myEntry = multiResult.leaderboard.find(e => e.playerId === playerId);
+    const myRank = myEntry?.rank || 0;
+    const top3 = multiResult.leaderboard.slice(0, 3);
+    const rest = multiResult.leaderboard.slice(3);
+    const podiumOrder = top3.length >= 3 ? [top3[1], top3[0], top3[2]] : top3;
+    const podiumHeights = top3.length >= 3 ? ["h-24", "h-32", "h-20"] : top3.map((_, i) => i === 0 ? "h-32" : "h-24");
+    const podiumColors = top3.length >= 3
+      ? ["from-gray-300 to-gray-400 dark:from-gray-600 dark:to-gray-700", "from-yellow-400 to-amber-500", "from-amber-600 to-amber-700 dark:from-amber-700 dark:to-amber-800"]
+      : ["from-yellow-400 to-amber-500", "from-gray-300 to-gray-400 dark:from-gray-600 dark:to-gray-700"];
+
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted/30">
-        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-lg">
-          <Card className="p-8 space-y-6">
-            <div className="text-center space-y-3">
-              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", delay: 0.2 }}>
-                <Trophy className="w-20 h-20 mx-auto text-yellow-500" />
-              </motion.div>
-              <h1 className="text-2xl font-bold" data-testid="text-final-title">Yakuniy natijalar</h1>
-              <p className="text-muted-foreground">{multiResult.quizTitle}</p>
-            </div>
+      <div className="min-h-screen flex flex-col items-center justify-start p-4 bg-gradient-to-b from-violet-950 via-indigo-950 to-background overflow-y-auto">
+        {myRank <= 3 && myRank > 0 && (
+          <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+            {Array.from({ length: 50 }).map((_, i) => (
+              <motion.div
+                key={i}
+                className="absolute w-2 h-2 rounded-full"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  backgroundColor: ["#FFD700", "#C0C0C0", "#CD7F32", "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7"][i % 8],
+                }}
+                initial={{ y: -20, opacity: 1, rotate: 0 }}
+                animate={{
+                  y: window.innerHeight + 20,
+                  opacity: [1, 1, 0],
+                  rotate: Math.random() * 720 - 360,
+                  x: Math.random() * 200 - 100,
+                }}
+                transition={{
+                  duration: 2 + Math.random() * 3,
+                  delay: Math.random() * 2,
+                  repeat: 2,
+                  ease: "easeOut",
+                }}
+              />
+            ))}
+          </div>
+        )}
 
-            <div className="space-y-3">
-              {multiResult.leaderboard.map((entry, i) => {
-                const isMe = entry.playerId === playerId;
-                const percentage = multiResult.totalQuestions > 0 ? Math.round((entry.correctAnswers / multiResult.totalQuestions) * 100) : 0;
-                return (
-                  <motion.div
-                    key={entry.playerId}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.1 }}
-                    className={`p-4 rounded-md ${isMe ? "bg-primary/10 border-2 border-primary/40" : i === 0 ? "bg-yellow-500/10 border border-yellow-500/30" : "bg-muted/50"}`}
-                    data-testid={`result-entry-${entry.playerId}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 text-center shrink-0">
-                        {entry.rank === 1 ? (
-                          <div className="w-10 h-10 rounded-full gradient-purple flex items-center justify-center">
-                            <Trophy className="w-5 h-5 text-white" />
-                          </div>
-                        ) : entry.rank === 2 ? (
-                          <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                            <Medal className="w-5 h-5 text-gray-500" />
-                          </div>
-                        ) : entry.rank === 3 ? (
-                          <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                            <Medal className="w-5 h-5 text-amber-600" />
-                          </div>
-                        ) : (
-                          <span className="text-lg font-bold text-muted-foreground">{entry.rank}</span>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold truncate">{entry.name} {isMe && "(Siz)"}</p>
-                        <p className="text-xs text-muted-foreground">{entry.correctAnswers}/{multiResult.totalQuestions} to'g'ri ({percentage}%)</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-lg font-bold">{entry.score}</p>
-                        <p className="text-xs text-muted-foreground">ball</p>
-                      </div>
+        <motion.div
+          initial={{ opacity: 0, y: -30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="text-center mt-6 mb-8"
+        >
+          <motion.div
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 200, delay: 0.3 }}
+          >
+            <Trophy className="w-16 h-16 mx-auto text-yellow-400 drop-shadow-lg" />
+          </motion.div>
+          <h1 className="text-3xl font-bold text-white mt-3" data-testid="text-final-title">Yakuniy natijalar</h1>
+          <p className="text-violet-200/70 mt-1">{multiResult.quizTitle}</p>
+        </motion.div>
+
+        {top3.length > 0 && (
+          <div className="flex items-end justify-center gap-3 mb-8 w-full max-w-md">
+            {podiumOrder.map((entry, i) => {
+              if (!entry) return null;
+              const isMe = entry.playerId === playerId;
+              const percentage = multiResult.totalQuestions > 0 ? Math.round((entry.correctAnswers / multiResult.totalQuestions) * 100) : 0;
+              return (
+                <motion.div
+                  key={entry.playerId}
+                  initial={{ opacity: 0, y: 60 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 + i * 0.2, type: "spring", stiffness: 120 }}
+                  className={`flex-1 flex flex-col items-center ${i === 1 ? "order-first sm:order-none" : ""}`}
+                  data-testid={`podium-entry-${entry.playerId}`}
+                >
+                  <div className={`relative mb-2 ${isMe ? "ring-2 ring-primary ring-offset-2 ring-offset-violet-950 rounded-full" : ""}`}>
+                    <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br ${podiumColors[i]} flex items-center justify-center shadow-lg`}>
+                      <span className="text-white font-bold text-lg">{entry.name.charAt(0).toUpperCase()}</span>
                     </div>
-                    <Progress value={percentage} className="h-1.5 mt-2" />
-                  </motion.div>
-                );
-              })}
-            </div>
+                    {entry.rank === 1 && (
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: 1.2, type: "spring" }}
+                        className="absolute -top-3 -right-1"
+                      >
+                        <Crown className="w-6 h-6 text-yellow-400 drop-shadow" />
+                      </motion.div>
+                    )}
+                  </div>
+                  <p className="text-white text-xs sm:text-sm font-semibold truncate max-w-[90px] text-center">{entry.name}</p>
+                  <p className="text-yellow-300 font-bold text-sm">{entry.score}</p>
+                  <p className="text-violet-300/60 text-xs">{percentage}%</p>
+                  <div className={`w-full ${podiumHeights[i]} bg-gradient-to-t ${podiumColors[i]} rounded-t-lg mt-2 flex items-center justify-center shadow-inner`}>
+                    <span className="text-white font-bold text-2xl">{entry.rank}</span>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
 
-            <div className="flex gap-3 flex-wrap">
-              <Button variant="outline" onClick={handlePlayAgain} data-testid="button-play-again">
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Qayta o'ynash
-              </Button>
-              <Button variant="outline" onClick={handleCopyLink} data-testid="button-share-result">
-                {linkCopied ? <Check className="w-4 h-4 mr-2" /> : <Share2 className="w-4 h-4 mr-2" />}
-                {linkCopied ? "Nusxalandi" : "Ulashish"}
-              </Button>
-              <Button onClick={() => navigate("/discover")} data-testid="button-discover">
-                <Home className="w-4 h-4 mr-2" />
-                Discover
-              </Button>
-            </div>
-          </Card>
+        {myEntry && myRank > 3 && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 1 }}
+            className="w-full max-w-md mb-4"
+          >
+            <Card className="p-4 border-primary/30 bg-primary/5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                  <span className="font-bold text-primary">{myRank}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold truncate">{myEntry.name} (Siz)</p>
+                  <p className="text-xs text-muted-foreground">{myEntry.correctAnswers}/{multiResult.totalQuestions} to'g'ri</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-lg font-bold">{myEntry.score}</p>
+                  <p className="text-xs text-muted-foreground">ball</p>
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        )}
+
+        {rest.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.2 }}
+            className="w-full max-w-md mb-6"
+          >
+            <Card className="overflow-hidden">
+              <div className="p-3 border-b bg-muted/30">
+                <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  Barcha ishtirokchilar
+                </p>
+              </div>
+              <div className="divide-y">
+                {rest.map((entry, i) => {
+                  const isMe = entry.playerId === playerId;
+                  const percentage = multiResult.totalQuestions > 0 ? Math.round((entry.correctAnswers / multiResult.totalQuestions) * 100) : 0;
+                  return (
+                    <motion.div
+                      key={entry.playerId}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 1.4 + i * 0.05 }}
+                      className={`flex items-center gap-3 p-3 ${isMe ? "bg-primary/5" : ""}`}
+                      data-testid={`result-entry-${entry.playerId}`}
+                    >
+                      <span className="w-8 text-center text-sm font-medium text-muted-foreground">{entry.rank}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{entry.name} {isMe && "(Siz)"}</p>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-xs text-muted-foreground">{percentage}%</span>
+                        <span className="text-sm font-bold w-12 text-right">{entry.score}</span>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </Card>
+          </motion.div>
+        )}
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.5 }}
+          className="flex gap-3 flex-wrap justify-center mb-8"
+        >
+          <Button variant="outline" onClick={handlePlayAgain} data-testid="button-play-again">
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Qayta o'ynash
+          </Button>
+          <Button variant="outline" onClick={handleCopyLink} data-testid="button-share-result">
+            {linkCopied ? <Check className="w-4 h-4 mr-2" /> : <Share2 className="w-4 h-4 mr-2" />}
+            {linkCopied ? "Nusxalandi" : "Ulashish"}
+          </Button>
+          <Button onClick={() => navigate("/discover")} className="gradient-purple border-0" data-testid="button-discover">
+            <Home className="w-4 h-4 mr-2" />
+            Bosh sahifa
+          </Button>
         </motion.div>
       </div>
     );

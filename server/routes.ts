@@ -883,35 +883,16 @@ export async function registerRoutes(
 
       results.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
 
-      const medalMap: Record<number, string> = { 0: "[1]", 1: "[2]", 2: "[3]" };
-
       const TelegramBot = (await import("node-telegram-bot-api")).default;
       const bot = new TelegramBot(profile.telegramBotToken);
       const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
 
-      let msg = `<b>${quiz.title}</b>\n`;
-      msg += `<i>Natijalar</i>\n\n`;
-
-      const top3 = results.slice(0, 3);
-      for (let i = 0; i < top3.length; i++) {
-        const r = top3[i];
-        const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
-        const medal = medalMap[i] || "";
-        msg += `${medal} <b>${i + 1}-o'rin:</b> ${escHtml(name)}\n`;
-        msg += `   Ball: <b>${r.totalScore}</b> | To'g'ri: ${r.correctAnswers}/${r.totalQuestions}\n\n`;
-      }
-
-      if (results.length > 3) {
-        msg += `<b>Top 10 ro'yxat:</b>\n`;
-        const top10 = results.slice(3, 10);
-        for (let i = 0; i < top10.length; i++) {
-          const r = top10[i];
-          const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
-          msg += `${i + 4}. ${escHtml(name)} — <b>${r.totalScore}</b> ball (${r.correctAnswers}/${r.totalQuestions})\n`;
-        }
-      }
-
-      msg += `\nJami ishtirokchilar: <b>${results.length}</b>`;
+      const msg = formatTelegramResults(quiz.title, results.map(r => ({
+        name: r.guestName || `O'yinchi #${r.participantId.slice(-4)}`,
+        score: r.totalScore || 0,
+        correctAnswers: r.correctAnswers,
+        totalQuestions: r.totalQuestions,
+      })), escHtml);
 
       await bot.sendMessage(targetChat, msg, { parse_mode: "HTML" });
 
@@ -983,6 +964,53 @@ export async function registerRoutes(
       res.status(500).json({ message: msg });
     }
   });
+
+  function formatTelegramResults(
+    title: string,
+    players: Array<{ name: string; score: number; correctAnswers: number; totalQuestions: number }>,
+    escFn: (s: string) => string,
+    isAuto = false
+  ): string {
+    const medalLabels = ["[1-O'RIN]", "[2-O'RIN]", "[3-O'RIN]"];
+    const barFull = "\u{2588}";
+    const barEmpty = "\u{2591}";
+    const line = "\u{2500}".repeat(24);
+
+    let msg = `<b>${escFn(title)}</b>\n`;
+    msg += `<i>Natijalar${isAuto ? " (avtomatik)" : ""}</i>\n`;
+    msg += `${line}\n\n`;
+
+    const top3 = players.slice(0, 3);
+    for (let i = 0; i < top3.length; i++) {
+      const r = top3[i];
+      const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
+      const barLen = Math.round(pct / 10);
+      const bar = barFull.repeat(barLen) + barEmpty.repeat(10 - barLen);
+
+      msg += `${medalLabels[i]} <b>${escFn(r.name)}</b>\n`;
+      msg += `   Ball: <b>${r.score}</b>\n`;
+      msg += `   To'g'ri: ${r.correctAnswers}/${r.totalQuestions} (${pct}%)\n`;
+      msg += `   ${bar}\n\n`;
+    }
+
+    if (players.length > 3) {
+      msg += `<b>Boshqa ishtirokchilar:</b>\n`;
+      msg += `${line}\n`;
+      const rest = players.slice(3, 10);
+      for (let i = 0; i < rest.length; i++) {
+        const r = rest[i];
+        const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
+        msg += `${i + 4}. ${escFn(r.name)} \u{2014} <b>${r.score}</b> ball (${pct}%)\n`;
+      }
+      msg += `\n`;
+    }
+
+    msg += `${line}\n`;
+    msg += `Jami ishtirokchilar: <b>${players.length}</b>\n`;
+    msg += `${new Date().toLocaleDateString("uz-UZ", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tashkent" })}`;
+
+    return msg;
+  }
 
   function escHtml(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
