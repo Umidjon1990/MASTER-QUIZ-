@@ -510,15 +510,68 @@ export default function QuizPlayPage() {
     return () => clearInterval(timer);
   }, [stage, timeLeft > 0, currentQuestion, gameMode]);
 
+  const roomLostCountRef = useRef(0);
+
   useEffect(() => {
     if (gameMode !== "multi" || !socketRef.current || !reconnectInfoRef.current) return;
     if (stage !== "playing" && stage !== "leaderboard") return;
+
+    roomLostCountRef.current = 0;
 
     const syncInterval = setInterval(() => {
       const s = socketRef.current;
       if (!s?.connected) return;
       s.emit("public:request-state", {}, (res: any) => {
-        if (!res?.success) return;
+        if (!res?.success) {
+          roomLostCountRef.current++;
+          if (roomLostCountRef.current >= 3) {
+            console.warn("Room lost after 3 failed state syncs");
+            toast({
+              title: "Sessiya tugadi",
+              description: "Server bilan aloqa uzildi. Natijalaringiz saqlanmoqda...",
+              variant: "destructive",
+            });
+            const info = reconnectInfoRef.current;
+            if (info && id) {
+              const savedAnswers = { ...answers };
+              fetch(`/api/quizzes/${id}/submit-public`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  playerName: info.playerName,
+                  answers: savedAnswers,
+                }),
+              }).then(r => r.json()).then(result => {
+                setMultiResult({
+                  leaderboard: [],
+                  totalQuestions: result.totalQuestions || totalQuestions,
+                  maxScore: 0,
+                  quizTitle: data?.quiz?.title || "",
+                });
+                setMyScore(result.score || myScore);
+                setStage("multi-result");
+              }).catch(() => {
+                setStage("multi-result");
+                setMultiResult({
+                  leaderboard: [],
+                  totalQuestions: totalQuestions,
+                  maxScore: 0,
+                  quizTitle: data?.quiz?.title || "",
+                });
+              });
+            } else {
+              setStage("multi-result");
+              setMultiResult({
+                leaderboard: [],
+                totalQuestions: totalQuestions,
+                maxScore: 0,
+                quizTitle: data?.quiz?.title || "",
+              });
+            }
+          }
+          return;
+        }
+        roomLostCountRef.current = 0;
         if (res.gameStatus === "finished") {
           setMultiResult({
             leaderboard: res.leaderboard,
@@ -541,10 +594,10 @@ export default function QuizPlayPage() {
           }
         }
       });
-    }, 5000);
+    }, 3000);
 
     return () => clearInterval(syncInterval);
-  }, [gameMode, stage, questionIndex]);
+  }, [gameMode, stage, questionIndex, id, totalQuestions, myScore, answers, data]);
 
   const soloCurrentQuestion = data?.questions?.[currentIndex];
 

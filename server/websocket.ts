@@ -233,6 +233,7 @@ function cleanupRoom(roomId: string) {
   const room = publicRooms.get(roomId);
   if (room) {
     if (room.questionTimer) clearTimeout(room.questionTimer);
+    if ((room as any).heartbeatTimer) clearInterval((room as any).heartbeatTimer);
     for (const [key, entry] of disconnectedPlayers.entries()) {
       if (entry.roomId === roomId) {
         clearTimeout(entry.timeout);
@@ -250,7 +251,16 @@ function sendPublicQuestion(roomId: string) {
   if (!room || !io) return;
 
   const q = room.questions[room.currentQuestionIndex];
-  if (!q) return;
+  if (!q) {
+    console.error(`[GAME ${roomId}] No question at index ${room.currentQuestionIndex}, finishing game`);
+    finishPublicGame(roomId);
+    return;
+  }
+
+  if (room.questionTimer) {
+    clearTimeout(room.questionTimer);
+    room.questionTimer = null;
+  }
 
   room.answeredThisQuestion = new Set();
 
@@ -265,6 +275,8 @@ function sendPublicQuestion(roomId: string) {
   const timeLimit = q.timeLimit || room.quiz.timePerQuestion || 30;
   room.currentEffectiveTimeLimit = timeLimit;
   room.questionStartTime = Date.now();
+
+  console.log(`[GAME ${roomId}] Question ${room.currentQuestionIndex + 1}/${room.questions.length} sent, timeLimit=${timeLimit}s, players=${room.players.size}`);
 
   io.to(`pubroom:${roomId}`).emit("public:question", {
     index: room.currentQuestionIndex,
@@ -282,6 +294,7 @@ function sendPublicQuestion(roomId: string) {
   });
 
   room.questionTimer = setTimeout(() => {
+    console.log(`[GAME ${roomId}] Timer fired for question ${room.currentQuestionIndex + 1}/${room.questions.length}, showing leaderboard`);
     showPublicLeaderboard(roomId);
   }, (timeLimit + 1) * 1000);
 }
@@ -303,6 +316,8 @@ function showPublicLeaderboard(roomId: string) {
 
   const isLast = room.currentQuestionIndex >= room.questions.length - 1;
 
+  console.log(`[GAME ${roomId}] Leaderboard for Q${room.currentQuestionIndex + 1}/${room.questions.length}, isLast=${isLast}, host=${room.hostSocketId}`);
+
   io.to(`pubroom:${roomId}`).emit("public:leaderboard", {
     leaderboard,
     correctAnswer: q?.correctAnswer || "",
@@ -310,7 +325,16 @@ function showPublicLeaderboard(roomId: string) {
     isLast,
   });
 
-  if (room.hostSocketId === "scheduler") {
+  if (room.questionTimer) {
+    clearTimeout(room.questionTimer);
+    room.questionTimer = null;
+  }
+
+  if (isLast) {
+    room.questionTimer = setTimeout(() => {
+      finishPublicGame(roomId);
+    }, 2000);
+  } else if (room.hostSocketId === "scheduler") {
     room.questionTimer = setTimeout(() => {
       room.currentQuestionIndex++;
       if (room.currentQuestionIndex >= room.questions.length) {
@@ -326,10 +350,16 @@ function finishPublicGame(roomId: string) {
   const room = publicRooms.get(roomId);
   if (!room || !io) return;
 
+  console.log(`[GAME ${roomId}] Game finished, ${room.players.size} players, ${room.questions.length} questions`);
+
   room.status = "finished";
   if (room.questionTimer) {
     clearTimeout(room.questionTimer);
     room.questionTimer = null;
+  }
+  if ((room as any).heartbeatTimer) {
+    clearInterval((room as any).heartbeatTimer);
+    (room as any).heartbeatTimer = null;
   }
 
   const leaderboard = Array.from(room.players.values())
@@ -587,6 +617,34 @@ async function checkScheduledQuizzes() {
         });
 
         sendPublicQuestion(roomId);
+
+        let lastSeenQuestionIndex = -1;
+        let stuckCheckCount = 0;
+        const heartbeat = setInterval(() => {
+          const r = publicRooms.get(roomId);
+          if (!r || r.status === "finished") {
+            clearInterval(heartbeat);
+            return;
+          }
+          if (r.status === "playing" && r.questionStartTime > 0) {
+            const elapsed = (Date.now() - r.questionStartTime) / 1000;
+            const maxExpected = (r.currentEffectiveTimeLimit || 30) + 5;
+            if (r.currentQuestionIndex === lastSeenQuestionIndex && elapsed > maxExpected) {
+              stuckCheckCount++;
+              if (stuckCheckCount >= 2) {
+                console.warn(`[GAME ${roomId}] Stuck confirmed! Q${r.currentQuestionIndex + 1}, elapsed=${Math.floor(elapsed)}s, no timer=${!r.questionTimer}. Forcing leaderboard.`);
+                stuckCheckCount = 0;
+                if (!r.questionTimer) {
+                  showPublicLeaderboard(roomId);
+                }
+              }
+            } else {
+              stuckCheckCount = 0;
+            }
+            lastSeenQuestionIndex = r.currentQuestionIndex;
+          }
+        }, 5000);
+        (room as any).heartbeatTimer = heartbeat;
       }, 5000);
     }
   } catch (err) {
