@@ -54,28 +54,25 @@ function CircularTimer({ timeLeft, totalTime }: { timeLeft: number; totalTime: n
   const progress = totalTime > 0 ? timeLeft / totalTime : 0;
   const strokeDashoffset = circumference * (1 - progress);
   const isUrgent = timeLeft <= 5;
+  const colorClass = isUrgent ? "text-red-500" : timeLeft <= 10 ? "text-amber-400" : "text-emerald-400";
 
   return (
     <div className="relative w-16 h-16 flex items-center justify-center">
       <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
-        <circle cx="32" cy="32" r={radius} fill="none" stroke="currentColor" strokeWidth="3" className="text-muted/20" />
-        <motion.circle
+        <circle cx="32" cy="32" r={radius} fill="none" stroke="currentColor" strokeWidth="3" className="text-white/15" />
+        <circle
           cx="32" cy="32" r={radius} fill="none"
           strokeWidth="3.5"
           strokeLinecap="round"
-          className={isUrgent ? "text-red-500" : "text-violet-400"}
+          className={colorClass}
           strokeDasharray={circumference}
-          animate={{ strokeDashoffset }}
-          transition={{ duration: 0.5, ease: "linear" }}
+          strokeDashoffset={strokeDashoffset}
+          style={{ transition: "stroke-dashoffset 0.8s linear, color 0.3s" }}
         />
       </svg>
-      <motion.span
-        className={`absolute text-lg font-bold font-mono ${isUrgent ? "text-red-500" : ""}`}
-        animate={isUrgent ? { scale: [1, 1.2, 1] } : {}}
-        transition={isUrgent ? { duration: 0.5, repeat: Infinity } : {}}
-      >
+      <span className={`absolute text-lg font-bold font-mono ${colorClass}`}>
         {timeLeft}
-      </motion.span>
+      </span>
     </div>
   );
 }
@@ -1144,17 +1141,14 @@ export default function QuizPlayPage() {
           <AnimatePresence mode="wait">
             <motion.div
               key={currentQuestion.id}
-              initial={{ opacity: 0, y: 40, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -40, scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 200, damping: 25 }}
+              initial={{ opacity: 0, x: 60 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -60 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
               className="w-full max-w-2xl"
             >
-              <motion.div
+              <div
                 className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/10 p-6 mb-6 shadow-2xl"
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.05 }}
               >
                 {currentQuestion.mediaUrl && (
                   <div className="rounded-lg overflow-hidden mb-4">
@@ -1166,21 +1160,18 @@ export default function QuizPlayPage() {
                   </div>
                 )}
 
-                <motion.p
+                <p
                   className="text-xl sm:text-2xl font-bold text-white text-center leading-relaxed"
                   dir="auto"
                   data-testid="text-question"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
                 >
                   {currentQuestion.questionText}
-                </motion.p>
+                </p>
                 <div className="flex items-center justify-center gap-2 mt-3">
                   <Badge className="bg-white/10 text-white/80 border-white/20">{currentQuestion.points} ball</Badge>
                   {currentQuestion.type === "multiple_select" && <Badge className="bg-violet-500/20 text-violet-200 border-violet-500/30">Bir nechta tanlang</Badge>}
                 </div>
-              </motion.div>
+              </div>
 
               {hasAnswered && lastAnswerResult ? (
                 <motion.div
@@ -1270,10 +1261,10 @@ export default function QuizPlayPage() {
                         return (
                           <motion.button
                             key={opt}
-                            initial={{ opacity: 0, y: 30 }}
+                            initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.1 + i * 0.05, type: "spring", stiffness: 300 }}
-                            whileTap={{ scale: 0.95 }}
+                            transition={{ delay: 0.05 + i * 0.05, duration: 0.2, ease: "easeOut" }}
+                            whileTap={{ scale: 0.97 }}
                             onClick={() => handleMultiAnswer(currentQuestion.id, opt)}
                             disabled={hasAnswered}
                             className={`relative rounded-xl p-6 bg-gradient-to-br ${color.bg} ${color.text} font-bold text-lg shadow-lg transition-all ${
@@ -1326,10 +1317,10 @@ export default function QuizPlayPage() {
                         return (
                           <motion.button
                             key={optIdx}
-                            initial={{ opacity: 0, y: 40, scale: 0.8 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            transition={{ delay: 0.1 + optIdx * 0.05, type: "spring", stiffness: 300, damping: 20 }}
-                            whileTap={{ scale: 0.95 }}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.05 + optIdx * 0.05, duration: 0.2, ease: "easeOut" }}
+                            whileTap={{ scale: 0.97 }}
                             onClick={() => handleMultiAnswer(currentQuestion.id, opt)}
                             disabled={hasAnswered && currentQuestion.type !== "multiple_select"}
                             className={`relative rounded-xl p-4 sm:p-5 bg-gradient-to-br ${color.bg} ${color.text} text-left shadow-lg transition-all ${
@@ -1424,17 +1415,14 @@ export default function QuizPlayPage() {
           <AnimatePresence mode="wait">
             <motion.div
               key={currentIndex}
-              initial={{ opacity: 0, y: 40, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -40, scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 200, damping: 25 }}
+              initial={{ opacity: 0, x: 60 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -60 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
               className="w-full max-w-2xl"
             >
-              <motion.div
+              <div
                 className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/10 p-6 mb-6 shadow-2xl"
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.05 }}
               >
                 {soloCurrentQuestion.mediaUrl && (
                   <div className="rounded-lg overflow-hidden mb-4">
@@ -1446,21 +1434,18 @@ export default function QuizPlayPage() {
                   </div>
                 )}
 
-                <motion.p
+                <p
                   className="text-xl sm:text-2xl font-bold text-white text-center leading-relaxed"
                   dir="auto"
                   data-testid="text-question"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
                 >
                   {soloCurrentQuestion.questionText}
-                </motion.p>
+                </p>
                 <div className="flex items-center justify-center gap-2 mt-3">
                   <Badge className="bg-white/10 text-white/80 border-white/20">{soloCurrentQuestion.points} ball</Badge>
                   {soloCurrentQuestion.type === "multiple_select" && <Badge className="bg-violet-500/20 text-violet-200 border-violet-500/30">Bir nechta tanlang</Badge>}
                 </div>
-              </motion.div>
+              </div>
 
               <div>
                 {soloCurrentQuestion.type === "true_false" ? (
@@ -1471,10 +1456,10 @@ export default function QuizPlayPage() {
                       return (
                         <motion.button
                           key={opt}
-                          initial={{ opacity: 0, y: 30 }}
+                          initial={{ opacity: 0, y: 20 }}
                           animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.1 + i * 0.05, type: "spring", stiffness: 300 }}
-                          whileTap={{ scale: 0.95 }}
+                          transition={{ delay: 0.05 + i * 0.05, duration: 0.2, ease: "easeOut" }}
+                          whileTap={{ scale: 0.97 }}
                           onClick={() => handleSoloAnswer(soloCurrentQuestion.id, opt)}
                           className={`relative rounded-xl p-6 bg-gradient-to-br ${color.bg} ${color.text} font-bold text-lg shadow-lg transition-all ${
                             isSelected ? "ring-4 ring-white shadow-2xl scale-[1.02]" : "ring-0"
@@ -1511,10 +1496,10 @@ export default function QuizPlayPage() {
                       return (
                         <motion.button
                           key={optIdx}
-                          initial={{ opacity: 0, y: 40, scale: 0.8 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          transition={{ delay: 0.1 + optIdx * 0.05, type: "spring", stiffness: 300, damping: 20 }}
-                          whileTap={{ scale: 0.95 }}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.05 + optIdx * 0.05, duration: 0.2, ease: "easeOut" }}
+                          whileTap={{ scale: 0.97 }}
                           onClick={() => handleSoloAnswer(soloCurrentQuestion.id, opt)}
                           className={`relative rounded-xl p-4 sm:p-5 bg-gradient-to-br ${color.bg} ${color.text} text-left shadow-lg transition-all ${
                             isSelected ? "ring-4 ring-white shadow-2xl scale-[1.02]" : "ring-0"

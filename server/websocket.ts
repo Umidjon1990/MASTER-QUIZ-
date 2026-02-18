@@ -90,7 +90,7 @@ async function serverShowLeaderboard(sessionId: string) {
       if (st.leaderboardTimer) clearTimeout(st.leaderboardTimer);
       st.leaderboardTimer = setTimeout(() => {
         serverNextQuestion(sessionId);
-      }, 5500);
+      }, 2000);
     }
   } catch (err) {
     console.error("Server show leaderboard error:", err);
@@ -207,7 +207,7 @@ function startServerQuestionTimer(sessionId: string, timeLimit: number) {
   if (timeLimit > 0) {
     st.questionTimer = setTimeout(() => {
       serverShowLeaderboard(sessionId);
-    }, (timeLimit + 2) * 1000);
+    }, (timeLimit + 1) * 1000);
   }
 }
 
@@ -266,7 +266,7 @@ function sendPublicQuestion(roomId: string) {
 
   room.questionTimer = setTimeout(() => {
     showPublicLeaderboard(roomId);
-  }, (timeLimit + 2) * 1000);
+  }, (timeLimit + 1) * 1000);
 }
 
 function showPublicLeaderboard(roomId: string) {
@@ -301,7 +301,7 @@ function showPublicLeaderboard(roomId: string) {
       } else {
         sendPublicQuestion(roomId);
       }
-    }, 3000);
+    }, 2000);
   }
 }
 
