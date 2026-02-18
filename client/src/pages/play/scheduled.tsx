@@ -42,6 +42,7 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
   const [isStarted, setIsStarted] = useState(false);
   const [roomCode, setRoomCode] = useState("");
   const [alreadyStartedRoomCode, setAlreadyStartedRoomCode] = useState("");
+  const [alreadyStartedQuizId, setAlreadyStartedQuizId] = useState("");
 
   useEffect(() => {
     const fetchUrl = mode === "code" && code
@@ -62,6 +63,7 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
               .then(statusData => {
                 if (statusData?.scheduledStatus === "started" && statusData?.roomCode) {
                   setAlreadyStartedRoomCode(statusData.roomCode);
+                  setAlreadyStartedQuizId(targetQuizId);
                   return null;
                 }
                 throw new Error("Quiz topilmadi");
@@ -72,7 +74,14 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
         return r.json();
       })
       .then(data => {
-        if (data) setQuizInfo(data);
+        if (data) {
+          if (data.scheduledStatus === "started" && data.scheduledRoomCode) {
+            setAlreadyStartedRoomCode(data.scheduledRoomCode);
+            setAlreadyStartedQuizId(data.id);
+          } else {
+            setQuizInfo(data);
+          }
+        }
         setLoading(false);
       })
       .catch(err => {
@@ -210,7 +219,7 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
             onChange={e => setPlayerName(e.target.value)}
             onKeyDown={e => {
               if (e.key === "Enter" && playerName.trim()) {
-                navigate(`/quiz/play/${quizId}?joinCode=${alreadyStartedRoomCode}&autoName=${encodeURIComponent(playerName.trim())}`);
+                navigate(`/quiz/play/${alreadyStartedQuizId || quizId}?joinCode=${alreadyStartedRoomCode}&autoName=${encodeURIComponent(playerName.trim())}`);
               }
             }}
             data-testid="input-player-name-late"
@@ -218,7 +227,7 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
           <Button
             className="w-full"
             disabled={!playerName.trim()}
-            onClick={() => navigate(`/quiz/play/${quizId}?joinCode=${alreadyStartedRoomCode}&autoName=${encodeURIComponent(playerName.trim())}`)}
+            onClick={() => navigate(`/quiz/play/${alreadyStartedQuizId || quizId}?joinCode=${alreadyStartedRoomCode}&autoName=${encodeURIComponent(playerName.trim())}`)}
             data-testid="button-join-late"
           >
             <Play className="w-4 h-4 mr-2" />

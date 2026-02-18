@@ -393,7 +393,11 @@ function formatTelegramResultsWs(
   }
 
   msg += `${line}\n`;
-  msg += `Jami ishtirokchilar: <b>${players.length}</b>\n`;
+  const activePlayers = players.filter(p => p.correctAnswers > 0 || p.score > 0);
+  msg += `Test yechganlar: <b>${activePlayers.length}</b>\n`;
+  if (activePlayers.length < players.length) {
+    msg += `Jami qo'shilganlar: <b>${players.length}</b>\n`;
+  }
   msg += `${new Date().toLocaleDateString("uz-UZ", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tashkent" })}`;
 
   return msg;
@@ -431,17 +435,19 @@ async function autoSendResultsToTelegram(
 
   await bot.sendMessage(targetChat, msg, { parse_mode: "HTML" });
 
-  const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType, AlignmentType } = await import("docx");
+  const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType, AlignmentType, TableLayoutType, BorderStyle } = await import("docx");
 
   const hasRtl = (s: string) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
   const makeRun = (text: string, bold: boolean, sz: number) => new TextRun({ text, bold, size: sz, font: "Arial", rightToLeft: hasRtl(text) });
   const makePara = (text: string, bold: boolean, sz: number, align?: (typeof AlignmentType)[keyof typeof AlignmentType]) =>
     new Paragraph({ children: [makeRun(text, bold, sz)], alignment: align, bidirectional: hasRtl(text) });
 
-  const headerCells = ["#", "Ism", "Ball", "To'g'ri", "Foiz"].map(text =>
+  const colWidths = [900, 4200, 1600, 1800, 1600];
+
+  const headerCells = ["#", "Ism", "Ball", "To'g'ri", "Foiz"].map((text, ci) =>
     new TableCell({
       children: [makePara(text, true, 20)],
-      width: { size: text === "Ism" ? 40 : 15, type: WidthType.PERCENTAGE },
+      width: { size: colWidths[ci], type: WidthType.DXA },
     })
   );
 
@@ -457,7 +463,7 @@ async function autoSendResultsToTelegram(
     ].map((text, ci) =>
       new TableCell({
         children: [makePara(text, isBold, 18)],
-        width: { size: ci === 1 ? 40 : 15, type: WidthType.PERCENTAGE },
+        width: { size: colWidths[ci], type: WidthType.DXA },
       })
     );
     return new TableRow({ children: cells });
@@ -466,12 +472,19 @@ async function autoSendResultsToTelegram(
   const titleHasRtl = hasRtl(quiz.title);
   const doc = new Document({
     sections: [{
+      properties: {
+        page: {
+          size: { width: 11906, height: 16838 },
+          margin: { top: 720, right: 720, bottom: 720, left: 720 },
+        },
+      },
       children: [
         new Paragraph({ children: [makeRun(quiz.title, true, 36)], alignment: AlignmentType.CENTER, spacing: { after: 100 }, bidirectional: titleHasRtl }),
         new Paragraph({ children: [makeRun(`Natijalar — ${new Date().toLocaleDateString("uz-UZ")}`, false, 22)], alignment: AlignmentType.CENTER, spacing: { after: 300 } }),
         new Table({
           rows: [new TableRow({ children: headerCells }), ...dataRows],
-          width: { size: 100, type: WidthType.PERCENTAGE },
+          width: { size: 10100, type: WidthType.DXA },
+          layout: TableLayoutType.FIXED,
         }),
       ],
     }],
