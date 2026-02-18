@@ -130,6 +130,9 @@ Preferred communication style: Simple, everyday language.
 - Quiz list page shows "Telegram" share button per quiz; dialog shows saved chats to choose from
 - Sends quiz title message first, then each question as Telegram quiz poll (type: "quiz", is_anonymous: true)
 - Ownership check: only quiz creator or admin can send
+- **Results to Telegram**: POST /api/telegram/send-results sends formatted results (top 3 + top 10 list) + PDF with all participants to selected chat
+- GET /api/sessions/:id/quiz-results — authenticated endpoint returning results by quizId (teacher/admin only, ownership-checked)
+- PDF generated server-side via `pdfkit` with A4 table layout (rank, name, score, correct answers, percentage)
 
 ### WebRTC Live Lesson Architecture
 - **ICE Servers**: 7 STUN servers (Google x4, Cloudflare, Mozilla) configured in ICE_SERVERS constant in both teacher and student files
