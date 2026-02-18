@@ -66,6 +66,7 @@ Preferred communication style: Simple, everyday language.
   - `user_profiles` — Role, plan, quiz limits, subscription info (linked to users via userId)
   - `quizzes` — Quiz metadata (title, description, category, visibility, creator, shuffleQuestions, shuffleOptions, totalLikes, scheduledTelegramChatId for auto-sending results)
   - `questions` — Quiz questions (multiple types: multiple_choice, true_false, open_ended, poll, multiple_select; with media support, points, time limits, JSONB options)
+  - `active_games` — Persisted live game state for server restart survival (roomId, quizId, players JSONB, questions JSONB, currentQuestionIndex, phase, scores). Games are restored from this table on server startup.
   - `live_sessions` — Active live quiz game sessions
   - `session_participants` — Players in a live session
   - `session_answers` — Individual answers submitted during live play

@@ -5,7 +5,7 @@ import { setupAuth, isAuthenticated } from "./replit_integrations/auth";
 import { registerAuthRoutes } from "./replit_integrations/auth";
 import { authStorage } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
-import { setupWebSocket, getScheduledQuizRoomCode } from "./websocket";
+import { setupWebSocket, getScheduledQuizRoomCode, isRestorationComplete } from "./websocket";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import bcrypt from "bcryptjs";
@@ -374,6 +374,16 @@ export async function registerRoutes(
       const quiz = await storage.getQuizByScheduledCode(req.params.code);
       if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
       const memRoomCode = getScheduledQuizRoomCode(quiz.id);
+      let effectiveStatus = quiz.scheduledStatus;
+      let effectiveRoomCode: string | null = null;
+      if (quiz.scheduledStatus === "started" && !memRoomCode && isRestorationComplete()) {
+        await storage.updateQuiz(quiz.id, { scheduledStatus: "finished" } as any);
+        effectiveStatus = "finished";
+      } else if (quiz.scheduledStatus === "started" && memRoomCode) {
+        effectiveRoomCode = memRoomCode;
+      } else if (quiz.scheduledStatus === "started" && !memRoomCode && !isRestorationComplete()) {
+        effectiveRoomCode = (quiz as any).scheduledRoomCode || null;
+      }
       res.json({
         id: quiz.id,
         title: quiz.title,
@@ -382,9 +392,9 @@ export async function registerRoutes(
         coverImage: quiz.coverImage,
         totalQuestions: quiz.totalQuestions,
         scheduledAt: quiz.scheduledAt,
-        scheduledStatus: quiz.scheduledStatus,
+        scheduledStatus: effectiveStatus,
         scheduledCode: quiz.scheduledCode,
-        scheduledRoomCode: quiz.scheduledStatus === "started" ? (memRoomCode || (quiz as any).scheduledRoomCode || null) : null,
+        scheduledRoomCode: effectiveRoomCode,
         scheduledRequireCode: quiz.scheduledRequireCode,
         creatorId: quiz.creatorId,
       });
@@ -427,9 +437,17 @@ export async function registerRoutes(
         return res.status(404).json({ status: "not_found" });
       }
       const memRoomCode = getScheduledQuizRoomCode(quiz.id);
-      const roomCode = quiz.scheduledStatus === "started"
-        ? (memRoomCode || (quiz as any).scheduledRoomCode || null)
-        : null;
+      if (quiz.scheduledStatus === "started" && !memRoomCode && isRestorationComplete()) {
+        await storage.updateQuiz(quiz.id, { scheduledStatus: "finished" } as any);
+        return res.json({
+          scheduledStatus: "finished",
+          roomCode: null,
+        });
+      }
+      let roomCode: string | null = null;
+      if (quiz.scheduledStatus === "started") {
+        roomCode = memRoomCode || (!isRestorationComplete() ? ((quiz as any).scheduledRoomCode || null) : null);
+      }
       res.json({
         scheduledStatus: quiz.scheduledStatus,
         roomCode,

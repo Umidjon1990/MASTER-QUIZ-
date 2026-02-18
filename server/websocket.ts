@@ -1,6 +1,9 @@
 import { Server as HttpServer } from "http";
 import { Server as SocketServer } from "socket.io";
 import { storage } from "./storage";
+import { db } from "./db";
+import { activeGames } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 let io: SocketServer;
 const questionAnswerCounts = new Map<string, number>();
@@ -8,6 +11,198 @@ const questionStartTimes = new Map<string, { startedAt: number; timeLimit: numbe
 
 export function getIO() {
   return io;
+}
+
+let restorationComplete = false;
+export function isRestorationComplete() {
+  return restorationComplete;
+}
+
+function serializePlayers(players: Map<string, PublicRoomPlayer>): any[] {
+  return Array.from(players.entries()).map(([key, p]) => ({
+    key,
+    socketId: p.socketId,
+    name: p.name,
+    score: p.score,
+    correctAnswers: p.correctAnswers,
+    totalAnswered: p.totalAnswered,
+    playerId: p.playerId,
+    rejoinToken: (p as any).rejoinToken || "",
+    disconnected: (p as any).disconnected || false,
+  }));
+}
+
+function deserializePlayers(data: any[]): Map<string, PublicRoomPlayer> {
+  const map = new Map<string, PublicRoomPlayer>();
+  for (const entry of data) {
+    const p: PublicRoomPlayer = {
+      socketId: entry.socketId,
+      name: entry.name,
+      score: entry.score || 0,
+      correctAnswers: entry.correctAnswers || 0,
+      totalAnswered: entry.totalAnswered || 0,
+      playerId: entry.playerId,
+    };
+    if (entry.rejoinToken) (p as any).rejoinToken = entry.rejoinToken;
+    if (entry.disconnected) (p as any).disconnected = true;
+    map.set(entry.key, p);
+  }
+  return map;
+}
+
+async function saveGameState(roomId: string, phase: string = "question") {
+  try {
+    const room = publicRooms.get(roomId);
+    if (!room || room.status === "finished") return;
+
+    const gameData = {
+      id: roomId,
+      quizId: room.quizId,
+      code: room.code,
+      hostSocketId: room.hostSocketId,
+      hostPlayerId: room.hostPlayerId,
+      status: room.status,
+      currentQuestionIndex: room.currentQuestionIndex,
+      questionStartTime: String(room.questionStartTime),
+      currentEffectiveTimeLimit: room.currentEffectiveTimeLimit,
+      players: serializePlayers(room.players),
+      questions: room.questions,
+      quizData: room.quiz,
+      answeredThisQuestion: Array.from(room.answeredThisQuestion),
+      phase,
+    };
+
+    await db.insert(activeGames).values(gameData)
+      .onConflictDoUpdate({
+        target: activeGames.id,
+        set: {
+          status: gameData.status,
+          currentQuestionIndex: gameData.currentQuestionIndex,
+          questionStartTime: gameData.questionStartTime,
+          currentEffectiveTimeLimit: gameData.currentEffectiveTimeLimit,
+          players: gameData.players,
+          answeredThisQuestion: gameData.answeredThisQuestion,
+          phase: gameData.phase,
+        },
+      });
+  } catch (err) {
+    console.error(`[PERSIST] Failed to save game state for ${roomId}:`, err);
+  }
+}
+
+async function deleteGameState(roomId: string) {
+  try {
+    await db.delete(activeGames).where(eq(activeGames.id, roomId));
+  } catch (err) {
+    console.error(`[PERSIST] Failed to delete game state for ${roomId}:`, err);
+  }
+}
+
+async function restoreGamesFromDB() {
+  try {
+    const savedGames = await db.select().from(activeGames);
+    if (savedGames.length === 0) {
+      console.log("[RESTORE] No active games to restore");
+      return;
+    }
+
+    console.log(`[RESTORE] Found ${savedGames.length} active game(s) to restore`);
+
+    for (const game of savedGames) {
+      try {
+        const players = deserializePlayers(game.players as any[]);
+        
+        players.forEach((p) => {
+          (p as any).disconnected = true;
+        });
+
+        const room: PublicRoom = {
+          id: game.id,
+          quizId: game.quizId,
+          code: game.code,
+          hostSocketId: game.hostSocketId,
+          hostPlayerId: game.hostPlayerId,
+          status: (game.status as "waiting" | "playing" | "finished"),
+          players,
+          questions: game.questions as any[],
+          quiz: game.quizData as any,
+          currentQuestionIndex: game.currentQuestionIndex,
+          questionTimer: null,
+          questionStartTime: parseInt(game.questionStartTime) || Date.now(),
+          currentEffectiveTimeLimit: game.currentEffectiveTimeLimit,
+          answeredThisQuestion: new Set(game.answeredThisQuestion as string[]),
+        };
+
+        publicRooms.set(game.id, room);
+        codeToRoomId.set(game.code, game.id);
+
+        if (game.hostSocketId === "scheduler") {
+          scheduledQuizRoomCodes.set(game.quizId, game.code);
+        }
+
+        if (room.status === "playing" && room.currentQuestionIndex >= 0) {
+          const elapsed = (Date.now() - room.questionStartTime) / 1000;
+          const timeLimit = room.currentEffectiveTimeLimit || 30;
+
+          if (game.phase === "leaderboard") {
+            const isLast = room.currentQuestionIndex >= room.questions.length - 1;
+            if (isLast) {
+              room.questionTimer = setTimeout(() => finishPublicGame(game.id), 2000);
+            } else if (room.hostSocketId === "scheduler") {
+              room.questionTimer = setTimeout(() => {
+                room.currentQuestionIndex++;
+                if (room.currentQuestionIndex >= room.questions.length) {
+                  finishPublicGame(game.id);
+                } else {
+                  sendPublicQuestion(game.id);
+                }
+              }, 2000);
+            }
+          } else {
+            const remaining = (timeLimit + 1) - elapsed;
+            if (remaining > 1) {
+              room.questionStartTime = Date.now() - (elapsed * 1000);
+              room.questionTimer = setTimeout(() => {
+                showPublicLeaderboard(game.id);
+              }, remaining * 1000);
+            } else {
+              showPublicLeaderboard(game.id);
+            }
+          }
+
+          if (room.hostSocketId === "scheduler") {
+            let lastSeenQI = room.currentQuestionIndex;
+            let stuckCount = 0;
+            const heartbeat = setInterval(() => {
+              const r = publicRooms.get(game.id);
+              if (!r || r.status === "finished") { clearInterval(heartbeat); return; }
+              if (r.status === "playing" && r.questionStartTime > 0) {
+                const el = (Date.now() - r.questionStartTime) / 1000;
+                const maxExp = (r.currentEffectiveTimeLimit || 30) + 5;
+                if (r.currentQuestionIndex === lastSeenQI && el > maxExp) {
+                  stuckCount++;
+                  if (stuckCount >= 2 && !r.questionTimer) {
+                    console.warn(`[RESTORE HEARTBEAT ${game.id}] Stuck! Forcing leaderboard.`);
+                    stuckCount = 0;
+                    showPublicLeaderboard(game.id);
+                  }
+                } else { stuckCount = 0; }
+                lastSeenQI = r.currentQuestionIndex;
+              }
+            }, 5000);
+            (room as any).heartbeatTimer = heartbeat;
+          }
+        }
+
+        console.log(`[RESTORE] Game ${game.id} restored: quiz="${(game.quizData as any).title}", Q${game.currentQuestionIndex + 1}/${(game.questions as any[]).length}, players=${players.size}, phase=${game.phase}`);
+      } catch (err) {
+        console.error(`[RESTORE] Failed to restore game ${game.id}:`, err);
+        await deleteGameState(game.id);
+      }
+    }
+  } catch (err) {
+    console.error("[RESTORE] Failed to load games from DB:", err);
+  }
 }
 
 interface PublicRoomPlayer {
@@ -243,6 +438,7 @@ function cleanupRoom(roomId: string) {
     codeToRoomId.delete(room.code);
     scheduledQuizRoomCodes.delete(room.quizId);
     publicRooms.delete(roomId);
+    deleteGameState(roomId);
   }
 }
 
@@ -297,6 +493,8 @@ function sendPublicQuestion(roomId: string) {
     console.log(`[GAME ${roomId}] Timer fired for question ${room.currentQuestionIndex + 1}/${room.questions.length}, showing leaderboard`);
     showPublicLeaderboard(roomId);
   }, (timeLimit + 1) * 1000);
+
+  saveGameState(roomId, "question");
 }
 
 function showPublicLeaderboard(roomId: string) {
@@ -344,6 +542,8 @@ function showPublicLeaderboard(roomId: string) {
       }
     }, 2000);
   }
+
+  saveGameState(roomId, "leaderboard");
 }
 
 function finishPublicGame(roomId: string) {
@@ -388,6 +588,8 @@ function finishPublicGame(roomId: string) {
       console.error("Auto-send Telegram results error:", err?.message || err);
     });
   }
+
+  deleteGameState(roomId);
 
   setTimeout(() => cleanupRoom(roomId), 5 * 60 * 1000);
 }
@@ -582,6 +784,8 @@ async function checkScheduledQuizzes() {
 
       await storage.updateQuiz(quiz.id, { scheduledStatus: "started", scheduledRoomCode: roomCode } as any);
 
+      saveGameState(roomId, "waiting");
+
       console.log(`[Scheduler] Quiz "${quiz.title}" started, roomCode=${roomCode}, scheduledCode=${quiz.scheduledCode}`);
 
       const scheduledRoom = `scheduled:${quiz.scheduledCode}`;
@@ -656,6 +860,14 @@ export function setupWebSocket(httpServer: HttpServer) {
   io = new SocketServer(httpServer, {
     cors: { origin: "*" },
     path: "/socket.io",
+  });
+
+  restoreGamesFromDB().then(() => {
+    restorationComplete = true;
+    console.log("[STARTUP] Game restoration complete");
+  }).catch(err => {
+    restorationComplete = true;
+    console.error("[STARTUP] Game restoration failed:", err);
   });
 
   setInterval(checkScheduledQuizzes, 3000);
@@ -1230,6 +1442,8 @@ export function setupWebSocket(httpServer: HttpServer) {
         socket.data.publicPlayerId = hostPlayerId;
         socket.data.isPublicHost = true;
 
+        saveGameState(roomId, "waiting");
+
         callback?.({
           success: true,
           roomId,
@@ -1338,6 +1552,10 @@ export function setupWebSocket(httpServer: HttpServer) {
           currentCorrect: existingPlayer ? existingPlayer.correctAnswers : 0,
           alreadyAnsweredCurrent,
         });
+
+        if (!isRejoin && !isLateJoin) {
+          saveGameState(roomId, room.status === "playing" ? "question" : "waiting");
+        }
 
         if ((isLateJoin || isRejoin) && room.currentQuestionIndex >= 0) {
           const q = room.questions[room.currentQuestionIndex];
@@ -1471,6 +1689,10 @@ export function setupWebSocket(httpServer: HttpServer) {
           answeredCount: Array.from(room.players.values()).filter(p => p.totalAnswered > room.currentQuestionIndex).length,
           totalPlayers: room.players.size,
         });
+
+        if (room.answeredThisQuestion.size >= room.players.size) {
+          saveGameState(roomId, "question");
+        }
       } catch (err) {
         console.error("Public answer error:", err);
       }

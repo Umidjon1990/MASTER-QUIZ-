@@ -43,6 +43,7 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
   const [roomCode, setRoomCode] = useState("");
   const [alreadyStartedRoomCode, setAlreadyStartedRoomCode] = useState("");
   const [alreadyStartedQuizId, setAlreadyStartedQuizId] = useState("");
+  const [quizFinished, setQuizFinished] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<"connected" | "reconnecting" | "disconnected">("connected");
   const socketRef = useRef<Socket | null>(null);
 
@@ -68,6 +69,10 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
                   setAlreadyStartedQuizId(targetQuizId);
                   return null;
                 }
+                if (statusData?.scheduledStatus === "finished") {
+                  setQuizFinished(true);
+                  return null;
+                }
                 throw new Error("Quiz topilmadi");
               });
           }
@@ -77,7 +82,9 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
       })
       .then(data => {
         if (data) {
-          if (data.scheduledStatus === "started" && data.scheduledRoomCode) {
+          if (data.scheduledStatus === "finished") {
+            setQuizFinished(true);
+          } else if (data.scheduledStatus === "started" && data.scheduledRoomCode) {
             setAlreadyStartedRoomCode(data.scheduledRoomCode);
             setAlreadyStartedQuizId(data.id);
           } else {
@@ -226,6 +233,23 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (quizFinished) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="p-8 text-center max-w-md w-full space-y-4">
+          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto">
+            <CheckCircle className="w-8 h-8 text-muted-foreground" />
+          </div>
+          <h2 className="text-xl font-bold" data-testid="text-quiz-finished">Quiz tugagan</h2>
+          <p className="text-muted-foreground text-sm">Bu rejalashtirilgan quiz allaqachon yakunlangan.</p>
+          <Button onClick={() => navigate("/")} data-testid="button-go-home">
+            Bosh sahifaga qaytish
+          </Button>
+        </Card>
       </div>
     );
   }
