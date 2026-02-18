@@ -62,6 +62,7 @@ interface SubmitResult {
   totalQuestions: number;
   playerName: string;
   results: Record<string, { answer: string | string[]; isCorrect: boolean; correctAnswer: string; points: number }>;
+  showCorrectAnswers?: boolean;
 }
 
 interface LeaderboardEntry {
@@ -105,7 +106,7 @@ export default function QuizPlayPage() {
   const [questionIndex, setQuestionIndex] = useState(0);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [myScore, setMyScore] = useState(0);
-  const [lastAnswerResult, setLastAnswerResult] = useState<{ isCorrect: boolean; points: number; correctAnswer: string; answerOrder?: number } | null>(null);
+  const [lastAnswerResult, setLastAnswerResult] = useState<{ isCorrect: boolean; points: number; correctAnswer?: string; answerOrder?: number; showCorrectAnswers?: boolean } | null>(null);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [answeredCount, setAnsweredCount] = useState(0);
   const [totalPlayers, setTotalPlayers] = useState(0);
@@ -185,7 +186,7 @@ export default function QuizPlayPage() {
     });
 
     s.on("public:answer-result", (data) => {
-      setLastAnswerResult({ isCorrect: data.isCorrect, points: data.points, correctAnswer: data.correctAnswer, answerOrder: data.answerOrder });
+      setLastAnswerResult({ isCorrect: data.isCorrect, points: data.points, correctAnswer: data.correctAnswer, answerOrder: data.answerOrder, showCorrectAnswers: data.showCorrectAnswers });
       setMyScore(data.totalScore);
     });
 
@@ -842,8 +843,8 @@ export default function QuizPlayPage() {
                     <div className="flex items-start gap-2">
                       {r.isCorrect ? <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 shrink-0" /> : <XCircle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />}
                       <div className="min-w-0">
-                        <p className="text-sm font-medium">{i + 1}. {q.questionText}</p>
-                        {!r.isCorrect && r.correctAnswer && <p className="text-xs text-muted-foreground mt-1">To'g'ri javob: {r.correctAnswer}</p>}
+                        <p className="text-sm font-medium" dir="auto">{i + 1}. {q.questionText}</p>
+                        {!r.isCorrect && r.correctAnswer && submitResult?.showCorrectAnswers !== false && <p className="text-xs text-muted-foreground mt-1" dir="auto">To'g'ri javob: {r.correctAnswer}</p>}
                       </div>
                     </div>
                   </div>
@@ -918,7 +919,7 @@ export default function QuizPlayPage() {
                 )}
 
                 <div>
-                  <p className="text-lg font-semibold" data-testid="text-question">{currentQuestion.questionText}</p>
+                  <p className="text-lg font-semibold" dir="auto" data-testid="text-question">{currentQuestion.questionText}</p>
                   <div className="flex items-center gap-2 mt-2">
                     <Badge variant="secondary" className="text-xs">{currentQuestion.points} ball</Badge>
                     {currentQuestion.type === "multiple_select" && <Badge variant="outline" className="text-xs">Bir nechta tanlang</Badge>}
@@ -943,7 +944,7 @@ export default function QuizPlayPage() {
                       <div className="space-y-1">
                         <XCircle className="w-8 h-8 text-red-600 mx-auto" />
                         <p className="font-semibold text-red-700 dark:text-red-400">Noto'g'ri</p>
-                        <p className="text-xs text-muted-foreground">To'g'ri javob: {lastAnswerResult.correctAnswer}</p>
+                        {lastAnswerResult.showCorrectAnswers !== false && lastAnswerResult.correctAnswer && <p className="text-xs text-muted-foreground" dir="auto">To'g'ri javob: {lastAnswerResult.correctAnswer}</p>}
                         {lastAnswerResult.answerOrder && (
                           <p className="text-xs text-muted-foreground" data-testid="text-answer-order">Siz {lastAnswerResult.answerOrder}-bo'lib javob berdingiz</p>
                         )}
@@ -1006,7 +1007,7 @@ export default function QuizPlayPage() {
                               data-testid={`button-option-${optIdx}`}
                             >
                               <span className="mr-3 font-semibold shrink-0">{String.fromCharCode(65 + optIdx)}</span>
-                              <span className="break-words">{opt}</span>
+                              <span className="break-words" dir="auto">{opt}</span>
                             </Button>
                           );
                         })}
@@ -1072,7 +1073,7 @@ export default function QuizPlayPage() {
                 )}
 
                 <div>
-                  <p className="text-lg font-semibold" data-testid="text-question">{soloCurrentQuestion.questionText}</p>
+                  <p className="text-lg font-semibold" dir="auto" data-testid="text-question">{soloCurrentQuestion.questionText}</p>
                   <div className="flex items-center gap-2 mt-2">
                     <Badge variant="secondary" className="text-xs">{soloCurrentQuestion.points} ball</Badge>
                     {soloCurrentQuestion.type === "multiple_select" && <Badge variant="outline" className="text-xs">Bir nechta tanlang</Badge>}
@@ -1116,7 +1117,7 @@ export default function QuizPlayPage() {
                             data-testid={`button-option-${optIdx}`}
                           >
                             <span className="mr-3 font-semibold shrink-0">{String.fromCharCode(65 + optIdx)}</span>
-                            <span className="break-words">{opt}</span>
+                            <span className="break-words" dir="auto">{opt}</span>
                           </Button>
                         );
                       })}

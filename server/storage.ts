@@ -13,10 +13,11 @@ import {
   type QuestionBankItem, type InsertQuestionBank,
   type QuizLike, type InsertQuizLike,
   type LiveLesson, type InsertLiveLesson,
+  type QuizCategory,
   userProfiles, quizzes, questions, liveSessions,
   sessionParticipants, sessionAnswers, quizResults,
   assignments, assignmentAttempts, classes, classMembers, questionBank, quizLikes,
-  liveLessons,
+  liveLessons, quizCategories,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, ilike, isNull, or, inArray, lte } from "drizzle-orm";
@@ -102,6 +103,11 @@ export interface IStorage {
   getLiveLessonsByTeacher(teacherId: string): Promise<LiveLesson[]>;
   updateLiveLesson(id: string, data: Partial<LiveLesson>): Promise<LiveLesson | undefined>;
   deleteLiveLesson(id: string): Promise<void>;
+
+  createQuizCategory(data: { name: string; creatorId: string }): Promise<QuizCategory>;
+  getQuizCategoriesByCreator(creatorId: string): Promise<QuizCategory[]>;
+  deleteQuizCategory(id: string): Promise<void>;
+  getAllQuizCategories(): Promise<QuizCategory[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -448,6 +454,23 @@ export class DatabaseStorage implements IStorage {
 
   async deleteLiveLesson(id: string): Promise<void> {
     await db.delete(liveLessons).where(eq(liveLessons.id, id));
+  }
+
+  async createQuizCategory(data: { name: string; creatorId: string }): Promise<QuizCategory> {
+    const [cat] = await db.insert(quizCategories).values(data).returning();
+    return cat;
+  }
+
+  async getQuizCategoriesByCreator(creatorId: string): Promise<QuizCategory[]> {
+    return db.select().from(quizCategories).where(eq(quizCategories.creatorId, creatorId)).orderBy(quizCategories.name);
+  }
+
+  async deleteQuizCategory(id: string): Promise<void> {
+    await db.delete(quizCategories).where(eq(quizCategories.id, id));
+  }
+
+  async getAllQuizCategories(): Promise<QuizCategory[]> {
+    return db.select().from(quizCategories).orderBy(quizCategories.name);
   }
 }
 

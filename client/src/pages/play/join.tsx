@@ -103,7 +103,7 @@ export default function JoinPlay() {
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [selectedMulti, setSelectedMulti] = useState<string[]>([]);
-  const [answerResult, setAnswerResult] = useState<{ isCorrect: boolean; points: number; correctAnswer: string } | null>(null);
+  const [answerResult, setAnswerResult] = useState<{ isCorrect: boolean; points: number; correctAnswer?: string; showCorrectAnswers?: boolean } | null>(null);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [timeLeft, setTimeLeft] = useState(0);
   const [totalTime, setTotalTime] = useState(30);
@@ -423,7 +423,7 @@ export default function JoinPlay() {
             )}
 
             <Card className="p-6 text-center space-y-3">
-              <h2 className="text-xl md:text-2xl font-bold" data-testid="text-question">{currentQuestion.questionText}</h2>
+              <h2 className="text-xl md:text-2xl font-bold" dir="auto" data-testid="text-question">{currentQuestion.questionText}</h2>
               {currentQuestion.type === "poll" && (
                 <p className="text-sm text-muted-foreground">Ball berilmaydi — faqat fikringizni bildiring</p>
               )}
@@ -457,8 +457,7 @@ export default function JoinPlay() {
                     } ${answered ? "opacity-70" : ""}`}
                     data-testid={`button-option-${i}`}
                   >
-                    <span className="mr-2 font-bold">{String.fromCharCode(65 + i)}.</span>
-                    {opt}
+                    <span dir="auto"><span className="mr-2 font-bold">{String.fromCharCode(65 + i)}.</span>{opt}</span>
                   </motion.button>
                 ))}
               </div>
@@ -482,7 +481,7 @@ export default function JoinPlay() {
                       >
                         <div className="flex items-center gap-2">
                           <Checkbox checked={isSelected} className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black" />
-                          <span><span className="mr-2 font-bold">{String.fromCharCode(65 + i)}.</span>{opt}</span>
+                          <span dir="auto"><span className="mr-2 font-bold">{String.fromCharCode(65 + i)}.</span>{opt}</span>
                         </div>
                       </motion.button>
                     );
@@ -544,8 +543,8 @@ export default function JoinPlay() {
                 +{answerResult.points} ball
               </motion.p>
             )}
-            {!answerResult.isCorrect && (
-              <p className="text-muted-foreground">To'g'ri javob: <span className="font-semibold">{answerResult.correctAnswer}</span></p>
+            {!answerResult.isCorrect && answerResult.showCorrectAnswers !== false && answerResult.correctAnswer && (
+              <p className="text-muted-foreground" dir="auto">To'g'ri javob: <span className="font-semibold">{answerResult.correctAnswer}</span></p>
             )}
             {answerOrder > 0 && (
               <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="text-muted-foreground" data-testid="text-answer-order">

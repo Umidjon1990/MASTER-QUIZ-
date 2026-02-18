@@ -12,7 +12,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import type { Quiz, UserProfile, TelegramChat } from "@shared/schema";
+import type { Quiz, UserProfile, TelegramChat, QuizCategory } from "@shared/schema";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FolderOpen } from "lucide-react";
 
 export default function TeacherQuizzes() {
   const [, navigate] = useLocation();
@@ -22,10 +25,21 @@ export default function TeacherQuizzes() {
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
   const [scheduleRequireCode, setScheduleRequireCode] = useState(true);
+  const [categoryFilter, setCategoryFilter] = useState("all");
 
   const { data: quizzes, isLoading } = useQuery<Quiz[]>({
     queryKey: ["/api/quizzes"],
     refetchInterval: 30000,
+  });
+
+  const { data: categories } = useQuery<QuizCategory[]>({
+    queryKey: ["/api/quiz-categories"],
+  });
+
+  const filteredQuizzes = quizzes?.filter(q => {
+    if (categoryFilter === "all") return true;
+    if (categoryFilter === "__uncategorized") return !q.category;
+    return q.category === categoryFilter;
   });
 
   const { data: profile } = useQuery<UserProfile>({
@@ -143,6 +157,41 @@ export default function TeacherQuizzes() {
         </Button>
       </motion.div>
 
+      {categories && categories.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <FolderOpen className="w-4 h-4 text-muted-foreground" />
+          <div className="flex gap-1.5 flex-wrap">
+            <Button
+              variant={categoryFilter === "all" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setCategoryFilter("all")}
+              data-testid="filter-category-all"
+            >
+              Barchasi
+            </Button>
+            {categories.map(cat => (
+              <Button
+                key={cat.id}
+                variant={categoryFilter === cat.name ? "default" : "outline"}
+                size="sm"
+                onClick={() => setCategoryFilter(cat.name)}
+                data-testid={`filter-category-${cat.id}`}
+              >
+                {cat.name}
+              </Button>
+            ))}
+            <Button
+              variant={categoryFilter === "__uncategorized" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setCategoryFilter("__uncategorized")}
+              data-testid="filter-category-uncategorized"
+            >
+              Kategoriyasiz
+            </Button>
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
@@ -153,14 +202,14 @@ export default function TeacherQuizzes() {
             </Card>
           ))}
         </div>
-      ) : quizzes && quizzes.length > 0 ? (
+      ) : filteredQuizzes && filteredQuizzes.length > 0 ? (
         <motion.div
           initial="hidden"
           animate="show"
           variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}
           className="grid md:grid-cols-2 lg:grid-cols-3 gap-4"
         >
-          {quizzes.map((quiz) => (
+          {filteredQuizzes.map((quiz) => (
             <motion.div key={quiz.id} variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}>
               <Card className="p-5 hover-elevate" data-testid={`card-quiz-${quiz.id}`}>
                 <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
@@ -194,8 +243,9 @@ export default function TeacherQuizzes() {
                 {quiz.description && (
                   <p className="text-sm text-muted-foreground mb-2 line-clamp-2">{quiz.description}</p>
                 )}
-                <div className="text-sm text-muted-foreground mb-2">
-                  {quiz.totalQuestions} savol | {quiz.totalPlays} marta o'ynalgan
+                <div className="flex gap-1.5 items-center mb-1 flex-wrap">
+                  {quiz.category && <Badge variant="secondary" className="text-xs">{quiz.category}</Badge>}
+                  <span className="text-sm text-muted-foreground">{quiz.totalQuestions} savol | {quiz.totalPlays} marta o'ynalgan</span>
                 </div>
 
                 {quiz.scheduledStatus === "pending" && quiz.scheduledAt && (

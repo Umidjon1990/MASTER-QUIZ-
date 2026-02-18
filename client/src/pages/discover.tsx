@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { Search, Heart, Play, BookOpen, Filter, Share2, Copy, Check } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { Quiz } from "@shared/schema";
+import type { Quiz, QuizCategory } from "@shared/schema";
 
 export default function DiscoverPage() {
   const { toast } = useToast();
@@ -43,7 +43,10 @@ export default function DiscoverPage() {
     },
   });
 
-  const categories = Array.from(new Set(quizzes?.map(q => q.category).filter(Boolean) || []));
+  const { data: dbCategories } = useQuery<QuizCategory[]>({
+    queryKey: ["/api/quiz-categories/all"],
+  });
+  const categories = dbCategories?.map(c => c.name) || [];
 
   const toggleLike = useMutation({
     mutationFn: async (quizId: string) => {

@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, ListChecks, ToggleLeft, MessageSquare, Pencil, BarChart3, CheckSquare } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { Quiz, Question } from "@shared/schema";
+import type { Quiz, Question, QuizCategory } from "@shared/schema";
 
 function MediaPreview({ mediaUrl, mediaType, className }: { mediaUrl: string; mediaType: string; className?: string }) {
   if (!mediaUrl) return null;
@@ -53,10 +53,37 @@ export default function QuizEditor() {
   const [timerEnabled, setTimerEnabled] = useState(true);
   const [shuffleQuestions, setShuffleQuestions] = useState(false);
   const [shuffleOptions, setShuffleOptions] = useState(false);
+  const [showCorrectAnswers, setShowCorrectAnswers] = useState(true);
   const [timePerQuestion, setTimePerQuestion] = useState(30);
   const [initialized, setInitialized] = useState(false);
   const [textImportOpen, setTextImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [showNewCategory, setShowNewCategory] = useState(false);
+
+  const { data: categories } = useQuery<QuizCategory[]>({
+    queryKey: ["/api/quiz-categories"],
+  });
+
+  const createCategory = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await fetch("/api/quiz-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quiz-categories"] });
+      setCategory(data.name);
+      setNewCategoryName("");
+      setShowNewCategory(false);
+      toast({ title: "Kategoriya yaratildi!" });
+    },
+  });
 
 
   const { data: quiz, isLoading: quizLoading } = useQuery<Quiz>({
@@ -85,6 +112,7 @@ export default function QuizEditor() {
     setTimerEnabled(quiz.timerEnabled ?? true);
     setShuffleQuestions(quiz.shuffleQuestions ?? false);
     setShuffleOptions(quiz.shuffleOptions ?? false);
+    setShowCorrectAnswers(quiz.showCorrectAnswers ?? true);
     setTimePerQuestion(quiz.timePerQuestion);
     setInitialized(true);
   }
@@ -94,7 +122,7 @@ export default function QuizEditor() {
       const res = await fetch("/api/quizzes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, timePerQuestion, status: "draft" }),
+        body: JSON.stringify({ title, description, category: category === "__none" ? "" : category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, showCorrectAnswers, timePerQuestion, status: "draft" }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed");
@@ -119,7 +147,7 @@ export default function QuizEditor() {
       const res = await fetch(`/api/quizzes/${quizId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, timePerQuestion }),
+        body: JSON.stringify({ title, description, category: category === "__none" ? "" : category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, showCorrectAnswers, timePerQuestion }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed");
@@ -515,9 +543,47 @@ export default function QuizEditor() {
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Quiz haqida qisqacha..." data-testid="input-quiz-description" />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
+          <div className="space-y-1.5">
             <Label>Kategoriya</Label>
-            <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Masalan: Matematika" data-testid="input-quiz-category" />
+            {showNewCategory ? (
+              <div className="flex gap-2">
+                <Input
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="Yangi kategoriya nomi"
+                  onKeyDown={(e) => e.key === "Enter" && newCategoryName.trim() && createCategory.mutate(newCategoryName.trim())}
+                  data-testid="input-new-category"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => newCategoryName.trim() && createCategory.mutate(newCategoryName.trim())}
+                  disabled={createCategory.isPending}
+                  data-testid="button-save-category"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowNewCategory(false)} data-testid="button-cancel-category">
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Select value={category} onValueChange={setCategory}>
+                  <SelectTrigger data-testid="select-quiz-category">
+                    <SelectValue placeholder="Kategoriya tanlang" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">Kategoriyasiz</SelectItem>
+                    {categories?.map(cat => (
+                      <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button size="icon" variant="outline" onClick={() => setShowNewCategory(true)} data-testid="button-add-category">
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
           </div>
           {timerEnabled && (
             <div>
@@ -541,6 +607,10 @@ export default function QuizEditor() {
         <div className="flex items-center gap-3">
           <Switch checked={shuffleOptions} onCheckedChange={setShuffleOptions} data-testid="switch-shuffle-options" />
           <Label>Variant javoblarni aralashtirish</Label>
+        </div>
+        <div className="flex items-center gap-3">
+          <Switch checked={showCorrectAnswers} onCheckedChange={setShowCorrectAnswers} data-testid="switch-show-correct-answers" />
+          <Label>To'g'ri javobni ko'rsatish</Label>
         </div>
         <Button
           onClick={() => isNew ? createQuiz.mutate() : handleSaveQuiz()}
@@ -619,7 +689,7 @@ export default function QuizEditor() {
                           </Badge>
                           <span className="text-xs text-muted-foreground">{q.points} ball | {q.timeLimit}s</span>
                         </div>
-                        <p className="font-medium">{q.questionText}</p>
+                        <p className="font-medium" dir="auto">{q.questionText}</p>
                         {q.mediaUrl && q.mediaType && (
                           <MediaPreview mediaUrl={q.mediaUrl} mediaType={q.mediaType} />
                         )}
@@ -696,7 +766,7 @@ export default function QuizEditor() {
 
             <div>
               <Label>Savol matni</Label>
-              <Textarea value={newQ.questionText} onChange={(e) => setNewQ({ ...newQ, questionText: e.target.value })} placeholder="Savolingizni yozing..." data-testid="input-question-text" />
+              <Textarea dir="auto" value={newQ.questionText} onChange={(e) => setNewQ({ ...newQ, questionText: e.target.value })} placeholder="Savolingizni yozing..." data-testid="input-question-text" />
             </div>
 
             <div className="space-y-2">
@@ -767,6 +837,7 @@ export default function QuizEditor() {
                       }}
                       placeholder={`Variant ${String.fromCharCode(65 + i)}`}
                       className="flex-1"
+                      dir="auto"
                       data-testid={`input-option-${i}`}
                     />
                   </label>
@@ -947,7 +1018,7 @@ export default function QuizEditor() {
             </div>
             <div>
               <Label>Savol matni</Label>
-              <Textarea value={editQ.questionText} onChange={(e) => setEditQ({ ...editQ, questionText: e.target.value })} data-testid="edit-input-question-text" />
+              <Textarea dir="auto" value={editQ.questionText} onChange={(e) => setEditQ({ ...editQ, questionText: e.target.value })} data-testid="edit-input-question-text" />
             </div>
 
             {editQ.type === "multiple_choice" && (
@@ -980,6 +1051,7 @@ export default function QuizEditor() {
                       }}
                       placeholder={`Variant ${String.fromCharCode(65 + i)}`}
                       className="flex-1"
+                      dir="auto"
                       data-testid={`edit-input-option-${i}`}
                     />
                   </label>

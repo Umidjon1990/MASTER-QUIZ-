@@ -29,6 +29,15 @@ export const userProfiles = pgTable("user_profiles", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const quizCategories = pgTable("quiz_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 100 }).notNull(),
+  creatorId: varchar("creator_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type QuizCategory = typeof quizCategories.$inferSelect;
+
 export const quizzes = pgTable("quizzes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   title: varchar("title", { length: 255 }).notNull(),
@@ -41,6 +50,7 @@ export const quizzes = pgTable("quizzes", {
   timePerQuestion: integer("time_per_question").notNull().default(30),
   shuffleQuestions: boolean("shuffle_questions").notNull().default(false),
   shuffleOptions: boolean("shuffle_options").notNull().default(false),
+  showCorrectAnswers: boolean("show_correct_answers").notNull().default(true),
   totalQuestions: integer("total_questions").notNull().default(0),
   totalPlays: integer("total_plays").notNull().default(0),
   totalLikes: integer("total_likes").notNull().default(0),

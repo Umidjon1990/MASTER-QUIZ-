@@ -648,6 +648,8 @@ export function setupWebSocket(httpServer: HttpServer) {
         const { sessionId, participantId, questionId, answer, timeSpent } = data;
         const question = await storage.getQuestion(questionId);
         if (!question) return;
+        const session = await storage.getLiveSession(sessionId);
+        const quiz = session ? await storage.getQuiz(session.quizId) : null;
 
         let isCorrect = false;
         let points = 0;
@@ -719,7 +721,8 @@ export function setupWebSocket(httpServer: HttpServer) {
           remainingTime = Math.max(0, qTime.timeLimit - elapsed);
         }
 
-        socket.emit("answer:result", { isCorrect, points, correctAnswer: question.correctAnswer, rank: myRank, totalScore, totalPlayers, answerOrder: currentCount, remainingTime });
+        const showCorrect = quiz?.showCorrectAnswers !== false;
+        socket.emit("answer:result", { isCorrect, points, correctAnswer: showCorrect ? question.correctAnswer : undefined, rank: myRank, totalScore, totalPlayers, answerOrder: currentCount, remainingTime, showCorrectAnswers: showCorrect });
 
         io.to(`session:${sessionId}`).emit("answer:received", {
           participantId,
@@ -1134,12 +1137,14 @@ export function setupWebSocket(httpServer: HttpServer) {
         player.correctAnswers += isCorrect ? 1 : 0;
         player.totalAnswered += 1;
 
+        const showCorrectPublic = room.quiz.showCorrectAnswers !== false;
         socket.emit("public:answer-result", {
           isCorrect,
           points,
-          correctAnswer: question.correctAnswer,
+          correctAnswer: showCorrectPublic ? question.correctAnswer : undefined,
           totalScore: player.score,
           answerOrder: room.answeredThisQuestion.size,
+          showCorrectAnswers: showCorrectPublic,
         });
 
         io.to(`pubroom:${roomId}`).emit("public:answer-received", {

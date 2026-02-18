@@ -248,6 +248,45 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/quiz-categories", requireAuth, async (req: any, res) => {
+    try {
+      const cats = await storage.getQuizCategoriesByCreator(req.userId);
+      res.json(cats);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/quiz-categories/all", async (_req, res) => {
+    try {
+      const cats = await storage.getAllQuizCategories();
+      const unique = Array.from(new Map(cats.map(c => [c.name, c])).values());
+      res.json(unique);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/quiz-categories", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { name } = req.body;
+      if (!name || !name.trim()) return res.status(400).json({ message: "Nomi kerak" });
+      const cat = await storage.createQuizCategory({ name: name.trim(), creatorId: req.userId });
+      res.json(cat);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/quiz-categories/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      await storage.deleteQuizCategory(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.get("/api/quizzes/:id", async (req, res) => {
     try {
       const quiz = await storage.getQuiz(req.params.id);
@@ -1516,12 +1555,18 @@ export async function registerRoutes(
 
       await storage.incrementQuizPlays(req.params.id);
 
+      const showCorrect = quiz.showCorrectAnswers !== false;
+      const safeResults = showCorrect ? results : Object.fromEntries(
+        Object.entries(results).map(([k, v]) => [k, { ...v, correctAnswer: "" }])
+      );
+
       res.json({
         score,
         correctAnswers: correctCount,
         totalQuestions: questionsList.length,
         playerName,
-        results,
+        results: safeResults,
+        showCorrectAnswers: showCorrect,
       });
     } catch (error) {
       res.status(500).json({ message: "Server error" });
