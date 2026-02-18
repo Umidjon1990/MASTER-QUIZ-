@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock } from "lucide-react";
+import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock, School } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import type { Quiz, UserProfile, TelegramChat, QuizCategory } from "@shared/schema";
@@ -309,6 +309,11 @@ export default function TeacherQuizzes() {
                   {quiz.status === "published" && (
                     <Button size="sm" className="gradient-purple border-0" onClick={() => navigate(`/teacher/live?quizId=${quiz.id}`)} data-testid={`button-start-live-${quiz.id}`}>
                       <Play className="w-3 h-3 mr-1" /> Jonli
+                    </Button>
+                  )}
+                  {quiz.status === "published" && (
+                    <Button size="sm" variant="outline" onClick={() => navigate(`/classroom/${quiz.id}`)} data-testid={`button-classroom-${quiz.id}`}>
+                      <School className="w-3 h-3 mr-1" /> Sinf Xona
                     </Button>
                   )}
                   {quiz.status === "published" && quiz.scheduledStatus !== "pending" && (

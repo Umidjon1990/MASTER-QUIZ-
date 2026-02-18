@@ -43,6 +43,7 @@ Preferred communication style: Simple, everyday language.
 - `/play/join` — Quiz join page (by 6-digit code)
 - `/teacher/lessons` — Live lesson management (create, list, delete)
 - `/teacher/lesson/:id` — Live lesson hosting (PDF viewer + pointer + audio/video + zoom sync + recording + device selection + screen sharing)
+- `/classroom/:id` — Classroom-style quiz (visual sinf xona theme with blackboard, desks, avatars — reuses public:* WebSocket events)
 - `/lesson/join` — Student lesson join page (by code)
 - `/lesson/join/:code` — Direct lesson join (codeless)
 

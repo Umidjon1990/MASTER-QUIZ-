@@ -750,6 +750,23 @@ export default function QuizPlayPage() {
                   </div>
                 </div>
               </Button>
+
+              <Button
+                className="w-full h-auto py-4"
+                variant="outline"
+                onClick={() => navigate(`/classroom/${id}`)}
+                data-testid="button-classroom-mode"
+              >
+                <div className="flex items-center gap-3 w-full">
+                  <div className="w-10 h-10 rounded-md bg-gradient-to-br from-emerald-600 to-green-700 flex items-center justify-center shrink-0">
+                    <Gamepad2 className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-semibold">Sinf Xona</p>
+                    <p className="text-xs text-muted-foreground">Sinf xona uslubida interaktiv quiz</p>
+                  </div>
+                </div>
+              </Button>
             </div>
 
             <Button variant="ghost" onClick={() => navigate("/discover")} className="w-full" data-testid="button-back-discover">
