@@ -326,7 +326,11 @@ export default function QuizPlayPage() {
             setIsHost(false);
             setPlayers(res.players);
             setTotalQuestions(res.totalQuestions);
-            setStage("lobby");
+            if (res.isLateJoin) {
+              setStage("playing");
+            } else {
+              setStage("lobby");
+            }
           } else {
             toast({ title: res.error || "Qo'shilishda xatolik", variant: "destructive" });
             setStage("mode-select");

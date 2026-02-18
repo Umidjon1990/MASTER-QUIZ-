@@ -118,11 +118,9 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
     s.on("scheduled:game-starting", (data: { roomCode: string }) => {
       setRoomCode(data.roomCode);
       setIsStarted(true);
-      setTimeout(() => {
-        if (quizInfo) {
-          navigate(`/quiz/play/${quizInfo.id}?joinCode=${data.roomCode}&autoName=${encodeURIComponent(playerName)}`);
-        }
-      }, 500);
+      if (quizInfo) {
+        navigate(`/quiz/play/${quizInfo.id}?joinCode=${data.roomCode}&autoName=${encodeURIComponent(playerName)}`);
+      }
     });
 
     socket = s;

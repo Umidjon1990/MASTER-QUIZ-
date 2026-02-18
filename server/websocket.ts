@@ -545,7 +545,7 @@ async function checkScheduledQuizzes() {
         });
 
         sendPublicQuestion(roomId);
-      }, 3000);
+      }, 5000);
     }
   } catch (err) {
     console.error("Scheduler error:", err);
@@ -1154,7 +1154,9 @@ export function setupWebSocket(httpServer: HttpServer) {
 
         const room = publicRooms.get(roomId);
         if (!room) return callback?.({ success: false, error: "Xona topilmadi" });
-        if (room.status !== "waiting") return callback?.({ success: false, error: "O'yin allaqachon boshlangan" });
+
+        const isLateJoin = room.status === "playing";
+        if (room.status !== "waiting" && !isLateJoin) return callback?.({ success: false, error: "O'yin allaqachon tugagan" });
 
         const playerId = `p_${socket.id}_${Date.now()}`;
 
@@ -1188,7 +1190,33 @@ export function setupWebSocket(httpServer: HttpServer) {
           quizTitle: room.quiz.title,
           totalQuestions: room.questions.length,
           players: playerList,
+          isLateJoin,
         });
+
+        if (isLateJoin && room.currentQuestionIndex >= 0) {
+          const q = room.questions[room.currentQuestionIndex];
+          if (q) {
+            const timeLimit = q.timeLimit || 30;
+            const elapsed = Math.floor((Date.now() - room.questionStartTime) / 1000);
+            const remainingTime = Math.max(0, timeLimit - elapsed);
+
+            const questionOptions = q.options ? (room.quiz.shuffleOptions ? [...q.options].sort(() => Math.random() - 0.5) : q.options) : null;
+            socket.emit("public:game-started", { totalQuestions: room.questions.length });
+            socket.emit("public:question", {
+              question: {
+                id: q.id,
+                questionText: q.questionText,
+                type: q.type,
+                options: questionOptions,
+                timeLimit: remainingTime,
+                points: q.type === "poll" ? 0 : q.points,
+                mediaUrl: q.mediaUrl,
+              },
+              index: room.currentQuestionIndex,
+              total: room.questions.length,
+            });
+          }
+        }
       } catch (err) {
         console.error("Join public room error:", err);
         callback?.({ success: false, error: "Qo'shilishda xatolik" });
