@@ -5,7 +5,7 @@ import { setupAuth, isAuthenticated } from "./replit_integrations/auth";
 import { registerAuthRoutes } from "./replit_integrations/auth";
 import { authStorage } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
-import { setupWebSocket } from "./websocket";
+import { setupWebSocket, getScheduledQuizRoomCode } from "./websocket";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import bcrypt from "bcryptjs";
@@ -413,6 +413,22 @@ export async function registerRoutes(
       });
     } catch (error) {
       res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/scheduled-quiz-status/:quizId", async (req, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.quizId);
+      if (!quiz) {
+        return res.status(404).json({ status: "not_found" });
+      }
+      const roomCode = quiz.scheduledStatus === "started" ? getScheduledQuizRoomCode(quiz.id) : null;
+      res.json({
+        scheduledStatus: quiz.scheduledStatus,
+        roomCode: roomCode || null,
+      });
+    } catch (error) {
+      res.status(500).json({ status: "error" });
     }
   });
 

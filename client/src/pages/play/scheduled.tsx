@@ -142,6 +142,34 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
   const totalDiff = quizInfo?.scheduledAt ? new Date(quizInfo.scheduledAt).getTime() - Date.now() : 0;
   const isTimeUp = totalDiff <= 0;
 
+  useEffect(() => {
+    if (!isTimeUp || !isJoined || isStarted || !quizInfo) return;
+
+    const quizIdToCheck = quizInfo.id;
+    let cancelled = false;
+
+    const pollStatus = async () => {
+      try {
+        const res = await fetch(`/api/scheduled-quiz-status/${quizIdToCheck}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.scheduledStatus === "started" && data.roomCode && !cancelled) {
+          setRoomCode(data.roomCode);
+          setIsStarted(true);
+          navigate(`/quiz/play/${quizIdToCheck}?joinCode=${data.roomCode}&autoName=${encodeURIComponent(playerName)}`);
+        }
+      } catch {}
+    };
+
+    const interval = setInterval(pollStatus, 2000);
+    pollStatus();
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isTimeUp, isJoined, isStarted, quizInfo, playerName, navigate]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">

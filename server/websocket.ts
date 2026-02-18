@@ -41,6 +41,12 @@ const codeToRoomId = new Map<string, string>();
 
 const scheduledLobbies = new Map<string, { players: Map<string, { socketId: string; name: string }> }>();
 
+const scheduledQuizRoomCodes = new Map<string, string>();
+
+export function getScheduledQuizRoomCode(quizId: string): string | undefined {
+  return scheduledQuizRoomCodes.get(quizId);
+}
+
 interface LiveSessionTimer {
   sessionId: string;
   questionTimer: ReturnType<typeof setTimeout> | null;
@@ -224,6 +230,7 @@ function cleanupRoom(roomId: string) {
   if (room) {
     if (room.questionTimer) clearTimeout(room.questionTimer);
     codeToRoomId.delete(room.code);
+    scheduledQuizRoomCodes.delete(room.quizId);
     publicRooms.delete(roomId);
   }
 }
@@ -517,6 +524,8 @@ async function checkScheduledQuizzes() {
 
       publicRooms.set(roomId, room);
       codeToRoomId.set(roomCode, roomId);
+
+      scheduledQuizRoomCodes.set(quiz.id, roomCode);
 
       io.to(`scheduled:${quiz.scheduledCode}`).emit("scheduled:game-starting", { roomCode });
 
