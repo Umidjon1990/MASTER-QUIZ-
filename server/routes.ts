@@ -751,6 +751,20 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/sessions/:id/quiz-results", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
+      }
+      const results = await storage.getResultsByQuiz(req.params.id);
+      res.json(results);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.get("/api/my-results", requireAuth, async (req: any, res) => {
     try {
       const userId = req.userId;
@@ -793,7 +807,7 @@ export async function registerRoutes(
       for (let i = 0; i < questionsList.length; i++) {
         const q = questionsList[i];
         if (q.type === "open_ended") {
-          const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          
           await bot.sendMessage(targetChat, `<b>${i + 1}. ${escHtml(q.questionText)}</b>\n\n<i>Yozma javob talab qilinadi</i>\nTo'g'ri javob: <tg-spoiler>${escHtml(q.correctAnswer)}</tg-spoiler>`, { parse_mode: "HTML" });
           sent++;
         } else if (q.type === "true_false") {
@@ -842,6 +856,135 @@ export async function registerRoutes(
       res.status(500).json({ message: msg });
     }
   });
+
+  app.post("/api/telegram/send-results", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { quizId, sessionId, chatId } = req.body;
+      if (!chatId) return res.status(400).json({ message: "Chat ID kerak" });
+
+      const profile = await storage.getUserProfile(req.userId);
+      if (!profile?.telegramBotToken) {
+        return res.status(400).json({ message: "Avval Telegram bot sozlamalarida tokenni saqlang" });
+      }
+
+      const quiz = await storage.getQuiz(quizId);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
+      }
+
+      let results = sessionId
+        ? await storage.getResultsBySession(sessionId)
+        : await storage.getResultsByQuiz(quizId);
+
+      if (results.length === 0) return res.status(400).json({ message: "Natijalar topilmadi" });
+
+      results.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+
+      const medalMap: Record<number, string> = { 0: "[1]", 1: "[2]", 2: "[3]" };
+
+      const TelegramBot = (await import("node-telegram-bot-api")).default;
+      const bot = new TelegramBot(profile.telegramBotToken);
+      const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
+
+      let msg = `<b>${quiz.title}</b>\n`;
+      msg += `<i>Natijalar</i>\n\n`;
+
+      const top3 = results.slice(0, 3);
+      for (let i = 0; i < top3.length; i++) {
+        const r = top3[i];
+        const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
+        const medal = medalMap[i] || "";
+        msg += `${medal} <b>${i + 1}-o'rin:</b> ${escHtml(name)}\n`;
+        msg += `   Ball: <b>${r.totalScore}</b> | To'g'ri: ${r.correctAnswers}/${r.totalQuestions}\n\n`;
+      }
+
+      if (results.length > 3) {
+        msg += `<b>Top 10 ro'yxat:</b>\n`;
+        const top10 = results.slice(3, 10);
+        for (let i = 0; i < top10.length; i++) {
+          const r = top10[i];
+          const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
+          msg += `${i + 4}. ${escHtml(name)} — <b>${r.totalScore}</b> ball (${r.correctAnswers}/${r.totalQuestions})\n`;
+        }
+      }
+
+      msg += `\nJami ishtirokchilar: <b>${results.length}</b>`;
+
+      await bot.sendMessage(targetChat, msg, { parse_mode: "HTML" });
+
+      const PDFDocument = (await import("pdfkit")).default;
+      const pdfDoc = new PDFDocument({ size: "A4", margin: 40 });
+      const chunks: Buffer[] = [];
+      pdfDoc.on("data", (c: Buffer) => chunks.push(c));
+
+      const pdfDone = new Promise<Buffer>((resolve) => {
+        pdfDoc.on("end", () => resolve(Buffer.concat(chunks)));
+      });
+
+      pdfDoc.fontSize(18).font("Helvetica-Bold").text(quiz.title, { align: "center" });
+      pdfDoc.moveDown(0.3);
+      pdfDoc.fontSize(11).font("Helvetica").text(`Natijalar — ${new Date().toLocaleDateString("uz-UZ")}`, { align: "center" });
+      pdfDoc.moveDown(1);
+
+      const tableTop = pdfDoc.y;
+      const col = { rank: 40, name: 180, score: 80, correct: 80, percent: 80 };
+      const startX = 50;
+
+      pdfDoc.fontSize(10).font("Helvetica-Bold");
+      pdfDoc.text("#", startX, tableTop, { width: col.rank });
+      pdfDoc.text("Ism", startX + col.rank, tableTop, { width: col.name });
+      pdfDoc.text("Ball", startX + col.rank + col.name, tableTop, { width: col.score, align: "center" });
+      pdfDoc.text("To'g'ri", startX + col.rank + col.name + col.score, tableTop, { width: col.correct, align: "center" });
+      pdfDoc.text("Foiz", startX + col.rank + col.name + col.score + col.correct, tableTop, { width: col.percent, align: "center" });
+
+      pdfDoc.moveTo(startX, tableTop + 15).lineTo(startX + col.rank + col.name + col.score + col.correct + col.percent, tableTop + 15).stroke();
+
+      let y = tableTop + 22;
+      pdfDoc.font("Helvetica").fontSize(9);
+      for (let i = 0; i < results.length; i++) {
+        if (y > 760) {
+          pdfDoc.addPage();
+          y = 40;
+        }
+        const r = results[i];
+        const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
+        const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
+
+        if (i < 3) pdfDoc.font("Helvetica-Bold"); else pdfDoc.font("Helvetica");
+
+        pdfDoc.text(`${i + 1}`, startX, y, { width: col.rank });
+        pdfDoc.text(name, startX + col.rank, y, { width: col.name });
+        pdfDoc.text(`${r.totalScore}`, startX + col.rank + col.name, y, { width: col.score, align: "center" });
+        pdfDoc.text(`${r.correctAnswers}/${r.totalQuestions}`, startX + col.rank + col.name + col.score, y, { width: col.correct, align: "center" });
+        pdfDoc.text(`${pct}%`, startX + col.rank + col.name + col.score + col.correct, y, { width: col.percent, align: "center" });
+        y += 16;
+      }
+
+      pdfDoc.end();
+      const pdfBuffer = await pdfDone;
+
+      await bot.sendDocument(targetChat, pdfBuffer, {
+        caption: `${quiz.title} — barcha natijalar`,
+      }, {
+        filename: `${quiz.title.replace(/[^a-zA-Z0-9\u0400-\u04FF]/g, "_")}_natijalar.pdf`,
+        contentType: "application/pdf",
+      });
+
+      res.json({ success: true, totalResults: results.length });
+    } catch (error: any) {
+      console.error("Telegram results error:", error?.message || error);
+      const msg = error?.message?.includes("chat not found") ? "Chat topilmadi. Bot guruhga admin qilib qo'shilganligini tekshiring"
+        : error?.message?.includes("Unauthorized") ? "Bot tokeni noto'g'ri"
+        : error?.message?.includes("bot was blocked") ? "Bot bloklangan yoki guruhdan chiqarilgan"
+        : "Natijalarni yuborishda xatolik yuz berdi";
+      res.status(500).json({ message: msg });
+    }
+  });
+
+  function escHtml(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
 
   app.post("/api/telegram/save-token", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
