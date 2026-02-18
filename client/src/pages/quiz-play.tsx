@@ -157,6 +157,9 @@ export default function QuizPlayPage() {
   const [isLastQuestion, setIsLastQuestion] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [autoJoined, setAutoJoined] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<"connected" | "reconnecting" | "disconnected">("connected");
+  const reconnectInfoRef = useRef<{ code: string; playerName: string; playerId: string } | null>(null);
+  const stateRecoveryRef = useRef(false);
 
   const { data, isLoading, error } = useQuery<QuizData>({
     queryKey: ["/api/quizzes", id, "play"],
@@ -199,18 +202,100 @@ export default function QuizPlayPage() {
     };
   }, []);
 
+  const recoverGameState = useCallback((s: Socket) => {
+    if (stateRecoveryRef.current) return;
+    stateRecoveryRef.current = true;
+    s.emit("public:request-state", {}, (res: any) => {
+      stateRecoveryRef.current = false;
+      if (!res?.success) return;
+
+      if (res.gameStatus === "finished") {
+        setMultiResult({
+          leaderboard: res.leaderboard,
+          totalQuestions: res.totalQuestions,
+          maxScore: res.maxScore,
+          quizTitle: res.quizTitle,
+        });
+        setMyScore(res.myScore || 0);
+        setStage("multi-result");
+      } else if (res.gameStatus === "playing" && res.question) {
+        setCurrentQuestion(res.question);
+        setQuestionIndex(res.questionIndex);
+        setTotalQuestions(res.totalQuestions);
+        setTimeLeft(res.question.timeLimit || 0);
+        setHasAnswered(res.hasAnswered || false);
+        setMyScore(res.myScore || 0);
+        setLastAnswerResult(null);
+        setStage("playing");
+      }
+      setConnectionStatus("connected");
+    });
+  }, []);
+
   const connectSocket = useCallback(() => {
     if (socketRef.current?.connected) return socketRef.current;
+
+    if (socketRef.current) {
+      socketRef.current.removeAllListeners();
+      socketRef.current.disconnect();
+    }
+
     const s = socketIO({
       path: "/socket.io",
       transports: ["websocket", "polling"],
       reconnection: true,
-      reconnectionAttempts: 10,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 500,
-      reconnectionDelayMax: 3000,
-      timeout: 10000,
+      reconnectionDelayMax: 5000,
+      timeout: 15000,
+      forceNew: true,
     });
     socketRef.current = s;
+
+    s.on("connect", () => {
+      console.log("[Socket] Connected:", s.id);
+      setConnectionStatus("connected");
+    });
+
+    s.on("disconnect", (reason) => {
+      console.log("[Socket] Disconnected:", reason);
+      if (reason !== "io client disconnect") {
+        setConnectionStatus("reconnecting");
+      }
+    });
+
+    s.on("reconnect_attempt", (attempt) => {
+      console.log("[Socket] Reconnect attempt:", attempt);
+      setConnectionStatus("reconnecting");
+    });
+
+    s.on("reconnect", () => {
+      console.log("[Socket] Reconnected, recovering state...");
+      setConnectionStatus("reconnecting");
+      const info = reconnectInfoRef.current;
+      if (info) {
+        const storedToken = localStorage.getItem(`rejoin_${info.code}_${info.playerName.trim().toLowerCase()}`);
+        s.emit("public:join-room", {
+          code: info.code,
+          playerName: info.playerName,
+          rejoinToken: storedToken || undefined,
+        }, (res: any) => {
+          if (res?.success) {
+            setRoomId(res.roomId);
+            setPlayerId(res.playerId);
+            setPlayers(res.players);
+            if (res.rejoinToken) {
+              localStorage.setItem(`rejoin_${info.code}_${info.playerName.trim().toLowerCase()}`, res.rejoinToken);
+            }
+            setMyScore(res.currentScore || 0);
+            setTimeout(() => recoverGameState(s), 300);
+          } else {
+            console.log("[Socket] Rejoin failed:", res?.error);
+            setConnectionStatus("disconnected");
+          }
+        });
+      }
+    });
 
     s.on("public:player-joined", (data) => {
       setPlayers(data.players);
@@ -234,6 +319,7 @@ export default function QuizPlayPage() {
       setLastAnswerResult(null);
       setAnsweredCount(0);
       setStage("playing");
+      setConnectionStatus("connected");
     });
 
     s.on("public:answer-result", (data) => {
@@ -267,7 +353,7 @@ export default function QuizPlayPage() {
     });
 
     return s;
-  }, []);
+  }, [recoverGameState]);
 
   const handleCreateRoom = () => {
     if (!playerName.trim()) return;
@@ -282,6 +368,7 @@ export default function QuizPlayPage() {
         setIsHost(true);
         setPlayers([{ playerId: res.playerId, name: playerName.trim() }]);
         setTotalQuestions(res.totalQuestions);
+        reconnectInfoRef.current = { code: res.code, playerName: playerName.trim(), playerId: res.playerId };
         setStage("lobby");
       } else {
         toast({ title: res.error || "Xona yaratishda xatolik", variant: "destructive" });
@@ -303,6 +390,7 @@ export default function QuizPlayPage() {
         setIsHost(false);
         setPlayers(res.players);
         setTotalQuestions(res.totalQuestions);
+        reconnectInfoRef.current = { code: joinCode.trim(), playerName: playerName.trim(), playerId: res.playerId };
         if (res.rejoinToken) {
           localStorage.setItem(`rejoin_${joinCode.trim()}_${playerName.trim().toLowerCase()}`, res.rejoinToken);
         }
@@ -328,6 +416,7 @@ export default function QuizPlayPage() {
       setAutoJoined(true);
       setGameMode("multi");
       setConnecting(true);
+      reconnectInfoRef.current = { code: autoJoinCode, playerName: autoName, playerId: "" };
       const s = connectSocket();
 
       const doJoin = () => {
@@ -341,6 +430,7 @@ export default function QuizPlayPage() {
             setIsHost(false);
             setPlayers(res.players);
             setTotalQuestions(res.totalQuestions);
+            reconnectInfoRef.current = { code: autoJoinCode, playerName: autoName, playerId: res.playerId };
             if (res.rejoinToken) {
               localStorage.setItem(`rejoin_${autoJoinCode}_${autoName.trim().toLowerCase()}`, res.rejoinToken);
             }
@@ -367,13 +457,6 @@ export default function QuizPlayPage() {
       } else {
         s.once("connect", doJoin);
       }
-
-      s.on("reconnect", () => {
-        if (roomId) {
-          const token = localStorage.getItem(`rejoin_${autoJoinCode}_${autoName.trim().toLowerCase()}`);
-          s.emit("public:join-room", { code: autoJoinCode, playerName: autoName, rejoinToken: token || undefined }, () => {});
-        }
-      });
     }
   }, [autoJoinCode, autoName, autoJoined, data]);
 
@@ -426,6 +509,42 @@ export default function QuizPlayPage() {
     }, 1000);
     return () => clearInterval(timer);
   }, [stage, timeLeft > 0, currentQuestion, gameMode]);
+
+  useEffect(() => {
+    if (gameMode !== "multi" || !socketRef.current || !reconnectInfoRef.current) return;
+    if (stage !== "playing" && stage !== "leaderboard") return;
+
+    const syncInterval = setInterval(() => {
+      const s = socketRef.current;
+      if (!s?.connected) return;
+      s.emit("public:request-state", {}, (res: any) => {
+        if (!res?.success) return;
+        if (res.gameStatus === "finished") {
+          setMultiResult({
+            leaderboard: res.leaderboard,
+            totalQuestions: res.totalQuestions,
+            maxScore: res.maxScore,
+            quizTitle: res.quizTitle,
+          });
+          setMyScore(res.myScore || 0);
+          setStage("multi-result");
+        } else if (res.gameStatus === "playing" && res.question) {
+          if (res.questionIndex !== questionIndex || (stage === "leaderboard" && res.questionIndex >= 0)) {
+            setCurrentQuestion(res.question);
+            setQuestionIndex(res.questionIndex);
+            setTotalQuestions(res.totalQuestions);
+            setTimeLeft(res.question.timeLimit || 0);
+            setHasAnswered(res.hasAnswered || false);
+            setMyScore(res.myScore || 0);
+            setLastAnswerResult(null);
+            setStage("playing");
+          }
+        }
+      });
+    }, 5000);
+
+    return () => clearInterval(syncInterval);
+  }, [gameMode, stage, questionIndex]);
 
   const soloCurrentQuestion = data?.questions?.[currentIndex];
 
@@ -490,6 +609,8 @@ export default function QuizPlayPage() {
     setJoinCode("");
     setHasAnswered(false);
     setCurrentQuestion(null);
+    setConnectionStatus("connected");
+    reconnectInfoRef.current = null;
     if (socketRef.current) {
       socketRef.current.disconnect();
       socketRef.current = null;
@@ -801,7 +922,14 @@ export default function QuizPlayPage() {
 
   if (stage === "leaderboard") {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-indigo-950 via-violet-950 to-slate-950">
+      <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-950 via-violet-950 to-slate-950">
+        {connectionStatus === "reconnecting" && (
+          <div className="sticky top-0 z-[60] bg-amber-500 text-white text-center py-1.5 px-3 text-sm font-medium flex items-center justify-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Qayta ulanmoqda...
+          </div>
+        )}
+        <div className="flex-1 flex items-center justify-center p-4">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-lg">
           <div className="text-center mb-6">
             <motion.div
@@ -868,6 +996,7 @@ export default function QuizPlayPage() {
             )}
           </div>
         </motion.div>
+        </div>
       </div>
     );
   }
@@ -1134,6 +1263,23 @@ export default function QuizPlayPage() {
 
     return (
       <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-950 via-violet-950 to-slate-950 overflow-hidden">
+        {connectionStatus === "reconnecting" && (
+          <div className="sticky top-0 z-[60] bg-amber-500 text-white text-center py-1.5 px-3 text-sm font-medium flex items-center justify-center gap-2" data-testid="banner-reconnecting">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Qayta ulanmoqda...
+          </div>
+        )}
+        {connectionStatus === "disconnected" && (
+          <div className="sticky top-0 z-[60] bg-red-500 text-white text-center py-1.5 px-3 text-sm font-medium flex items-center justify-center gap-2" data-testid="banner-disconnected">
+            <XCircle className="w-4 h-4" />
+            Aloqa uzildi
+            <Button size="sm" variant="outline" className="ml-2 h-6 text-xs border-white/40 text-white" onClick={() => {
+              socketRef.current?.connect();
+            }} data-testid="button-retry-connection">
+              Qayta ulanish
+            </Button>
+          </div>
+        )}
         <div className="sticky top-0 z-50 bg-black/30 backdrop-blur-xl border-b border-white/10 p-3">
           <div className="max-w-2xl mx-auto flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 min-w-0">

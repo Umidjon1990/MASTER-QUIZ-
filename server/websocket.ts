@@ -43,6 +43,9 @@ const scheduledLobbies = new Map<string, { players: Map<string, { socketId: stri
 
 const scheduledQuizRoomCodes = new Map<string, string>();
 
+const disconnectedPlayers = new Map<string, { roomId: string; playerId: string; timeout: ReturnType<typeof setTimeout> }>();
+const RECONNECT_GRACE_MS = 120_000;
+
 export function getScheduledQuizRoomCode(quizId: string): string | undefined {
   return scheduledQuizRoomCodes.get(quizId);
 }
@@ -229,6 +232,12 @@ function cleanupRoom(roomId: string) {
   const room = publicRooms.get(roomId);
   if (room) {
     if (room.questionTimer) clearTimeout(room.questionTimer);
+    for (const [key, entry] of disconnectedPlayers.entries()) {
+      if (entry.roomId === roomId) {
+        clearTimeout(entry.timeout);
+        disconnectedPlayers.delete(key);
+      }
+    }
     codeToRoomId.delete(room.code);
     scheduledQuizRoomCodes.delete(room.quizId);
     publicRooms.delete(roomId);
@@ -1196,8 +1205,24 @@ export function setupWebSocket(httpServer: HttpServer) {
           if (rejoinToken && (existingPlayer as any).rejoinToken === rejoinToken) {
             playerId = existingPlayer.playerId;
             existingPlayer.socketId = socket.id;
+            (existingPlayer as any).disconnected = false;
             isRejoin = true;
             newToken = rejoinToken;
+            const dcKey = `${roomId}:${playerId}`;
+            const dcEntry = disconnectedPlayers.get(dcKey);
+            if (dcEntry?.timeout) { clearTimeout(dcEntry.timeout); disconnectedPlayers.delete(dcKey); }
+            console.log(`Player ${playerName} reconnected to room ${code}`);
+          } else if ((existingPlayer as any).disconnected) {
+            playerId = existingPlayer.playerId;
+            existingPlayer.socketId = socket.id;
+            (existingPlayer as any).disconnected = false;
+            isRejoin = true;
+            newToken = (existingPlayer as any).rejoinToken || `tok_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+            (existingPlayer as any).rejoinToken = newToken;
+            const dcKey = `${roomId}:${playerId}`;
+            const dcEntry = disconnectedPlayers.get(dcKey);
+            if (dcEntry?.timeout) { clearTimeout(dcEntry.timeout); disconnectedPlayers.delete(dcKey); }
+            console.log(`Disconnected player ${playerName} reclaimed spot in room ${code}`);
           } else {
             return callback?.({ success: false, error: "Bu ism allaqachon band. Boshqa ism tanlang." });
           }
@@ -1405,6 +1430,71 @@ export function setupWebSocket(httpServer: HttpServer) {
       }
     });
 
+    socket.on("public:request-state", (data, callback) => {
+      try {
+        const roomId = socket.data.publicRoomId;
+        const playerId = socket.data.publicPlayerId;
+        if (!roomId || !playerId) return callback?.({ success: false, error: "Not in a room" });
+
+        const room = publicRooms.get(roomId);
+        if (!room) return callback?.({ success: false, error: "Room not found" });
+
+        const player = room.players.get(playerId);
+
+        if (room.status === "finished") {
+          const lb = Array.from(room.players.values())
+            .sort((a, b) => b.score - a.score)
+            .map((p, i) => ({ rank: i + 1, name: p.name, score: p.score, correctAnswers: p.correctAnswers, playerId: p.playerId }));
+          return callback?.({
+            success: true,
+            gameStatus: "finished",
+            leaderboard: lb,
+            totalQuestions: room.questions.length,
+            maxScore: room.questions.reduce((s: number, q: any) => s + (q.type === "poll" ? 0 : (q.points || 100)), 0),
+            quizTitle: room.quiz.title,
+            myScore: player?.score || 0,
+          });
+        }
+
+        if (room.status === "playing") {
+          const q = room.questions[room.currentQuestionIndex];
+          const alreadyAnswered = room.answeredThisQuestion.has(playerId);
+          const timeLimit = q ? (q.timeLimit || room.quiz.timePerQuestion || 30) : 30;
+          const elapsed = Math.floor((Date.now() - room.questionStartTime) / 1000);
+          const remainingTime = Math.max(0, timeLimit - elapsed);
+
+          const questionOptions = q?.options ? [...(q.options as string[])] : null;
+
+          return callback?.({
+            success: true,
+            gameStatus: "playing",
+            question: q ? {
+              id: q.id,
+              questionText: q.questionText,
+              type: q.type,
+              options: questionOptions,
+              timeLimit: remainingTime,
+              points: q.type === "poll" ? 0 : q.points,
+              mediaUrl: q.mediaUrl,
+            } : null,
+            questionIndex: room.currentQuestionIndex,
+            totalQuestions: room.questions.length,
+            hasAnswered: alreadyAnswered,
+            myScore: player?.score || 0,
+          });
+        }
+
+        callback?.({
+          success: true,
+          gameStatus: room.status,
+          totalQuestions: room.questions.length,
+        });
+      } catch (err) {
+        console.error("Request state error:", err);
+        callback?.({ success: false, error: "State request failed" });
+      }
+    });
+
     socket.on("scheduled:join-lobby", (data) => {
       const { code, playerName } = data;
       if (!code || !playerName) return;
@@ -1483,39 +1573,77 @@ export function setupWebSocket(httpServer: HttpServer) {
         const pubRoom = publicRooms.get(socket.data.publicRoomId);
         if (pubRoom) {
           const playerId = socket.data.publicPlayerId;
-          if (playerId) {
-            pubRoom.players.delete(playerId);
-          }
 
-          if (pubRoom.players.size === 0) {
-            cleanupRoom(pubRoom.id);
-          } else if (socket.data.isPublicHost) {
-            const nextPlayer = Array.from(pubRoom.players.values())[0];
-            if (nextPlayer) {
-              pubRoom.hostSocketId = nextPlayer.socketId;
-              pubRoom.hostPlayerId = nextPlayer.playerId;
-              const nextSocket = io.sockets.sockets.get(nextPlayer.socketId);
-              if (nextSocket) {
-                nextSocket.data.isPublicHost = true;
+          if (pubRoom.status === "playing" && playerId) {
+            const player = pubRoom.players.get(playerId);
+            if (player) {
+              (player as any).disconnected = true;
+              const dcKey = `${pubRoom.id}:${playerId}`;
+              const existing = disconnectedPlayers.get(dcKey);
+              if (existing?.timeout) clearTimeout(existing.timeout);
+              const timeout = setTimeout(() => {
+                disconnectedPlayers.delete(dcKey);
+                const stillRoom = publicRooms.get(pubRoom.id);
+                if (stillRoom) {
+                  const p = stillRoom.players.get(playerId);
+                  if (p && (p as any).disconnected) {
+                    stillRoom.players.delete(playerId);
+                    const playerList = Array.from(stillRoom.players.values()).map(pl => ({ playerId: pl.playerId, name: pl.name }));
+                    io.to(`pubroom:${pubRoom.id}`).emit("public:player-left", { playerId, players: playerList, count: stillRoom.players.size });
+                    if (stillRoom.players.size === 0) cleanupRoom(pubRoom.id);
+                  }
+                }
+              }, RECONNECT_GRACE_MS);
+              disconnectedPlayers.set(dcKey, { roomId: pubRoom.id, playerId, timeout });
+              console.log(`Player ${player.name} disconnected during game, grace period ${RECONNECT_GRACE_MS / 1000}s`);
+            }
+
+            if (socket.data.isPublicHost && pubRoom.hostSocketId !== "scheduler") {
+              const activePlayers = Array.from(pubRoom.players.values()).filter(p => !(p as any).disconnected);
+              const nextPlayer = activePlayers[0];
+              if (nextPlayer) {
+                pubRoom.hostSocketId = nextPlayer.socketId;
+                pubRoom.hostPlayerId = nextPlayer.playerId;
+                const nextSocket = io.sockets.sockets.get(nextPlayer.socketId);
+                if (nextSocket) nextSocket.data.isPublicHost = true;
+                io.to(`pubroom:${pubRoom.id}`).emit("public:host-changed", { newHostId: nextPlayer.playerId, newHostName: nextPlayer.name });
               }
-              io.to(`pubroom:${pubRoom.id}`).emit("public:host-changed", {
-                newHostId: nextPlayer.playerId,
-                newHostName: nextPlayer.name,
+            }
+          } else {
+            if (playerId) {
+              pubRoom.players.delete(playerId);
+            }
+
+            if (pubRoom.players.size === 0) {
+              cleanupRoom(pubRoom.id);
+            } else if (socket.data.isPublicHost) {
+              const nextPlayer = Array.from(pubRoom.players.values())[0];
+              if (nextPlayer) {
+                pubRoom.hostSocketId = nextPlayer.socketId;
+                pubRoom.hostPlayerId = nextPlayer.playerId;
+                const nextSocket = io.sockets.sockets.get(nextPlayer.socketId);
+                if (nextSocket) {
+                  nextSocket.data.isPublicHost = true;
+                }
+                io.to(`pubroom:${pubRoom.id}`).emit("public:host-changed", {
+                  newHostId: nextPlayer.playerId,
+                  newHostName: nextPlayer.name,
+                });
+              }
+              const playerList = Array.from(pubRoom.players.values()).map(p => ({ playerId: p.playerId, name: p.name }));
+              io.to(`pubroom:${pubRoom.id}`).emit("public:player-left", {
+                playerId,
+                players: playerList,
+                count: pubRoom.players.size,
+              });
+            } else {
+              const playerList = Array.from(pubRoom.players.values()).map(p => ({ playerId: p.playerId, name: p.name }));
+              io.to(`pubroom:${pubRoom.id}`).emit("public:player-left", {
+                playerId,
+                players: playerList,
+                count: pubRoom.players.size,
               });
             }
-            const playerList = Array.from(pubRoom.players.values()).map(p => ({ playerId: p.playerId, name: p.name }));
-            io.to(`pubroom:${pubRoom.id}`).emit("public:player-left", {
-              playerId,
-              players: playerList,
-              count: pubRoom.players.size,
-            });
-          } else {
-            const playerList = Array.from(pubRoom.players.values()).map(p => ({ playerId: p.playerId, name: p.name }));
-            io.to(`pubroom:${pubRoom.id}`).emit("public:player-left", {
-              playerId,
-              players: playerList,
-              count: pubRoom.players.size,
-            });
           }
         }
       }
