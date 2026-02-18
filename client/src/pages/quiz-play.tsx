@@ -1112,16 +1112,9 @@ export default function QuizPlayPage() {
         <div className="sticky top-0 z-50 bg-black/30 backdrop-blur-xl border-b border-white/10 p-3">
           <div className="max-w-2xl mx-auto flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 min-w-0">
-              <motion.div
-                key={questionIndex}
-                initial={{ scale: 0, rotate: -90 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: "spring", stiffness: 300 }}
-              >
-                <Badge variant="secondary" className="shrink-0 bg-primary/20 text-primary-foreground border-primary/30">
-                  {questionIndex + 1}/{totalQuestions}
-                </Badge>
-              </motion.div>
+              <Badge variant="secondary" className="shrink-0 bg-primary/20 text-primary-foreground border-primary/30">
+                {questionIndex + 1}/{totalQuestions}
+              </Badge>
               <span className="text-sm font-medium truncate text-white/80">{data.quiz.title}</span>
             </div>
             <div className="flex items-center gap-3">
@@ -1179,9 +1172,9 @@ export default function QuizPlayPage() {
 
               {hasAnswered && lastAnswerResult ? (
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, ease: "easeOut" }}
                   className="relative"
                 >
                   {lastAnswerResult.isCorrect && (
@@ -1212,46 +1205,25 @@ export default function QuizPlayPage() {
                       ? "bg-gradient-to-br from-emerald-500/30 to-green-600/30 border-2 border-emerald-400/50"
                       : "bg-gradient-to-br from-red-500/30 to-rose-600/30 border-2 border-red-400/50"
                   }`}>
-                    <motion.div
-                      initial={{ scale: 0, rotate: -180 }}
-                      animate={{ scale: 1, rotate: 0 }}
-                      transition={{ type: "spring", stiffness: 200 }}
-                    >
+                    <div>
                       {lastAnswerResult.isCorrect ? (
                         <CheckCircle2 className="w-16 h-16 text-emerald-400 mx-auto" />
                       ) : (
                         <XCircle className="w-16 h-16 text-red-400 mx-auto" />
                       )}
-                    </motion.div>
-                    <motion.p
-                      className={`text-2xl font-bold mt-3 ${lastAnswerResult.isCorrect ? "text-emerald-300" : "text-red-300"}`}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.15 }}
-                    >
+                    </div>
+                    <p className={`text-2xl font-bold mt-3 ${lastAnswerResult.isCorrect ? "text-emerald-300" : "text-red-300"}`}>
                       {lastAnswerResult.isCorrect ? `To'g'ri! +${lastAnswerResult.points}` : "Noto'g'ri"}
-                    </motion.p>
+                    </p>
                     {lastAnswerResult.answerOrder && (
-                      <motion.p
-                        className="text-sm text-white/60 mt-1"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.2 }}
-                        data-testid="text-answer-order"
-                      >
+                      <p className="text-sm text-white/60 mt-1" data-testid="text-answer-order">
                         Siz {lastAnswerResult.answerOrder}-bo'lib javob berdingiz
-                      </motion.p>
+                      </p>
                     )}
                     {!lastAnswerResult.isCorrect && lastAnswerResult.showCorrectAnswers !== false && lastAnswerResult.correctAnswer && (
-                      <motion.p
-                        className="text-sm text-white/50 mt-2"
-                        dir="auto"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.2 }}
-                      >
+                      <p className="text-sm text-white/50 mt-2" dir="auto">
                         To'g'ri javob: {lastAnswerResult.correctAnswer}
-                      </motion.p>
+                      </p>
                     )}
                   </div>
                 </motion.div>
@@ -1339,14 +1311,11 @@ export default function QuizPlayPage() {
                               <span className="font-semibold text-sm sm:text-base break-words" dir="auto">{opt}</span>
                             </div>
                             {isSelected && (
-                              <motion.div
+                              <div
                                 className="absolute top-2 right-2"
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1 }}
-                                transition={{ type: "spring" }}
                               >
                                 <Check className="w-5 h-5 text-white drop-shadow" />
-                              </motion.div>
+                              </div>
                             )}
                           </motion.button>
                         );
@@ -1517,14 +1486,9 @@ export default function QuizPlayPage() {
                             <span className="font-semibold text-sm sm:text-base break-words" dir="auto">{opt}</span>
                           </div>
                           {isSelected && (
-                            <motion.div
-                              className="absolute top-2 right-2"
-                              initial={{ scale: 0 }}
-                              animate={{ scale: 1 }}
-                              transition={{ type: "spring" }}
-                            >
+                            <div className="absolute top-2 right-2">
                               <Check className="w-5 h-5 text-white drop-shadow" />
-                            </motion.div>
+                            </div>
                           )}
                         </motion.button>
                       );
