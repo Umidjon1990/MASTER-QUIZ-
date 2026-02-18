@@ -896,62 +896,60 @@ export async function registerRoutes(
 
       await bot.sendMessage(targetChat, msg, { parse_mode: "HTML" });
 
-      const PDFDocument = (await import("pdfkit")).default;
-      const pdfDoc = new PDFDocument({ size: "A4", margin: 40 });
-      const chunks: Buffer[] = [];
-      pdfDoc.on("data", (c: Buffer) => chunks.push(c));
+      const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType, AlignmentType } = await import("docx");
 
-      const pdfDone = new Promise<Buffer>((resolve) => {
-        pdfDoc.on("end", () => resolve(Buffer.concat(chunks)));
-      });
+      const hasRtl = (s: string) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
+      const makeRun = (text: string, bold: boolean, sz: number) => new TextRun({ text, bold, size: sz, font: "Arial", rightToLeft: hasRtl(text) });
+      const makePara = (text: string, bold: boolean, sz: number, align?: (typeof AlignmentType)[keyof typeof AlignmentType]) =>
+        new Paragraph({ children: [makeRun(text, bold, sz)], alignment: align, bidirectional: hasRtl(text) });
 
-      pdfDoc.fontSize(18).font("Helvetica-Bold").text(quiz.title, { align: "center" });
-      pdfDoc.moveDown(0.3);
-      pdfDoc.fontSize(11).font("Helvetica").text(`Natijalar — ${new Date().toLocaleDateString("uz-UZ")}`, { align: "center" });
-      pdfDoc.moveDown(1);
+      const headerCells = ["#", "Ism", "Ball", "To'g'ri", "Foiz"].map(text =>
+        new TableCell({
+          children: [makePara(text, true, 20)],
+          width: { size: text === "Ism" ? 40 : 15, type: WidthType.PERCENTAGE },
+        })
+      );
 
-      const tableTop = pdfDoc.y;
-      const col = { rank: 40, name: 180, score: 80, correct: 80, percent: 80 };
-      const startX = 50;
-
-      pdfDoc.fontSize(10).font("Helvetica-Bold");
-      pdfDoc.text("#", startX, tableTop, { width: col.rank });
-      pdfDoc.text("Ism", startX + col.rank, tableTop, { width: col.name });
-      pdfDoc.text("Ball", startX + col.rank + col.name, tableTop, { width: col.score, align: "center" });
-      pdfDoc.text("To'g'ri", startX + col.rank + col.name + col.score, tableTop, { width: col.correct, align: "center" });
-      pdfDoc.text("Foiz", startX + col.rank + col.name + col.score + col.correct, tableTop, { width: col.percent, align: "center" });
-
-      pdfDoc.moveTo(startX, tableTop + 15).lineTo(startX + col.rank + col.name + col.score + col.correct + col.percent, tableTop + 15).stroke();
-
-      let y = tableTop + 22;
-      pdfDoc.font("Helvetica").fontSize(9);
-      for (let i = 0; i < results.length; i++) {
-        if (y > 760) {
-          pdfDoc.addPage();
-          y = 40;
-        }
-        const r = results[i];
+      const dataRows = results.map((r: any, i: number) => {
         const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
         const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
+        const isBold = i < 3;
+        const cells = [
+          `${i + 1}`,
+          name,
+          `${r.totalScore}`,
+          `${r.correctAnswers}/${r.totalQuestions}`,
+          `${pct}%`,
+        ].map((text, ci) =>
+          new TableCell({
+            children: [makePara(text, isBold, 18)],
+            width: { size: ci === 1 ? 40 : 15, type: WidthType.PERCENTAGE },
+          })
+        );
+        return new TableRow({ children: cells });
+      });
 
-        if (i < 3) pdfDoc.font("Helvetica-Bold"); else pdfDoc.font("Helvetica");
+      const titleHasRtl = hasRtl(quiz.title);
+      const doc = new Document({
+        sections: [{
+          children: [
+            new Paragraph({ children: [makeRun(quiz.title, true, 36)], alignment: AlignmentType.CENTER, spacing: { after: 100 }, bidirectional: titleHasRtl }),
+            new Paragraph({ children: [makeRun(`Natijalar — ${new Date().toLocaleDateString("uz-UZ")}`, false, 22)], alignment: AlignmentType.CENTER, spacing: { after: 300 } }),
+            new Table({
+              rows: [new TableRow({ children: headerCells }), ...dataRows],
+              width: { size: 100, type: WidthType.PERCENTAGE },
+            }),
+          ],
+        }],
+      });
 
-        pdfDoc.text(`${i + 1}`, startX, y, { width: col.rank });
-        pdfDoc.text(name, startX + col.rank, y, { width: col.name });
-        pdfDoc.text(`${r.totalScore}`, startX + col.rank + col.name, y, { width: col.score, align: "center" });
-        pdfDoc.text(`${r.correctAnswers}/${r.totalQuestions}`, startX + col.rank + col.name + col.score, y, { width: col.correct, align: "center" });
-        pdfDoc.text(`${pct}%`, startX + col.rank + col.name + col.score + col.correct, y, { width: col.percent, align: "center" });
-        y += 16;
-      }
+      const docxBuffer = await Packer.toBuffer(doc);
 
-      pdfDoc.end();
-      const pdfBuffer = await pdfDone;
-
-      await bot.sendDocument(targetChat, pdfBuffer, {
+      await bot.sendDocument(targetChat, Buffer.from(docxBuffer), {
         caption: `${quiz.title} — barcha natijalar`,
       }, {
-        filename: `${quiz.title.replace(/[^a-zA-Z0-9\u0400-\u04FF]/g, "_")}_natijalar.pdf`,
-        contentType: "application/pdf",
+        filename: `${quiz.title.replace(/[^a-zA-Z0-9\u0400-\u04FF]/g, "_")}_natijalar.docx`,
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       });
 
       res.json({ success: true, totalResults: results.length });
