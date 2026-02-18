@@ -227,6 +227,9 @@ export default function QuizPlayPage() {
         setMyScore(res.myScore || 0);
         setLastAnswerResult(null);
         setStage("playing");
+      } else if (res.gameStatus === "waiting") {
+        if (res.players) setPlayers(res.players);
+        setStage("lobby");
       }
       setConnectionStatus("connected");
     });
@@ -284,6 +287,7 @@ export default function QuizPlayPage() {
             setRoomId(res.roomId);
             setPlayerId(res.playerId);
             setPlayers(res.players);
+            if (res.isHost) setIsHost(true);
             if (res.rejoinToken) {
               localStorage.setItem(`rejoin_${info.code}_${info.playerName.trim().toLowerCase()}`, res.rejoinToken);
             }

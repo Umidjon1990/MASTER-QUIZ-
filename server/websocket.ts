@@ -1523,7 +1523,15 @@ export function setupWebSocket(httpServer: HttpServer) {
         socket.join(`pubroom:${roomId}`);
         socket.data.publicRoomId = roomId;
         socket.data.publicPlayerId = playerId;
-        socket.data.isPublicHost = false;
+
+        const isHost = playerId === room.hostPlayerId;
+        if (isHost) {
+          socket.data.isPublicHost = true;
+          room.hostSocketId = socket.id;
+          console.log(`[HOST RESTORE] Player ${playerName} reclaimed host of room ${code}`);
+        } else {
+          socket.data.isPublicHost = false;
+        }
 
         const playerList = Array.from(room.players.values()).map(p => ({ playerId: p.playerId, name: p.name }));
 
@@ -1548,9 +1556,11 @@ export function setupWebSocket(httpServer: HttpServer) {
           players: playerList,
           isLateJoin: isLateJoin || isRejoin,
           isRejoin,
+          isHost,
           currentScore: existingPlayer ? existingPlayer.score : 0,
           currentCorrect: existingPlayer ? existingPlayer.correctAnswers : 0,
           alreadyAnsweredCurrent,
+          gameStatus: room.status,
         });
 
         if (!isRejoin && !isLateJoin) {
@@ -1775,6 +1785,7 @@ export function setupWebSocket(httpServer: HttpServer) {
           success: true,
           gameStatus: room.status,
           totalQuestions: room.questions.length,
+          players: Array.from(room.players.values()).map(p => ({ playerId: p.playerId, name: p.name })),
         });
       } catch (err) {
         console.error("Request state error:", err);
