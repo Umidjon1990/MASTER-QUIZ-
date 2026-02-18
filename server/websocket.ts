@@ -527,14 +527,20 @@ async function checkScheduledQuizzes() {
 
       scheduledQuizRoomCodes.set(quiz.id, roomCode);
 
-      io.to(`scheduled:${quiz.scheduledCode}`).emit("scheduled:game-starting", { roomCode });
+      await storage.updateQuiz(quiz.id, { scheduledStatus: "started", scheduledRoomCode: roomCode } as any);
+
+      console.log(`[Scheduler] Quiz "${quiz.title}" started, roomCode=${roomCode}, scheduledCode=${quiz.scheduledCode}`);
+
+      const scheduledRoom = `scheduled:${quiz.scheduledCode}`;
+      const socketsInRoom = await io.in(scheduledRoom).fetchSockets();
+      console.log(`[Scheduler] Sockets in room ${scheduledRoom}: ${socketsInRoom.length}`);
+
+      io.to(scheduledRoom).emit("scheduled:game-starting", { roomCode });
 
       const lobby = scheduledLobbies.get(quiz.scheduledCode || "");
       if (lobby) {
         scheduledLobbies.delete(quiz.scheduledCode || "");
       }
-
-      await storage.updateQuiz(quiz.id, { scheduledStatus: "started" } as any);
 
       setTimeout(() => {
         room.status = "playing";

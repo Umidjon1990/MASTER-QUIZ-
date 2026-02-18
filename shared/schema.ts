@@ -58,6 +58,7 @@ export const quizzes = pgTable("quizzes", {
   scheduledAt: timestamp("scheduled_at"),
   scheduledStatus: varchar("scheduled_status", { length: 20 }),
   scheduledCode: varchar("scheduled_code", { length: 10 }),
+  scheduledRoomCode: varchar("scheduled_room_code", { length: 10 }),
   scheduledRequireCode: boolean("scheduled_require_code").notNull().default(true),
   scheduledTelegramChatId: varchar("scheduled_telegram_chat_id", { length: 100 }),
   createdAt: timestamp("created_at").defaultNow(),
