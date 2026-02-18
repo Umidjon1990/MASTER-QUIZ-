@@ -336,7 +336,122 @@ function finishPublicGame(roomId: string) {
     quizTitle: room.quiz.title,
   });
 
+  if (room.hostSocketId === "scheduler" && room.quiz.scheduledTelegramChatId) {
+    autoSendResultsToTelegram(room.quiz, leaderboard, totalQuestions).catch((err) => {
+      console.error("Auto-send Telegram results error:", err?.message || err);
+    });
+  }
+
   setTimeout(() => cleanupRoom(roomId), 5 * 60 * 1000);
+}
+
+async function autoSendResultsToTelegram(
+  quiz: any,
+  leaderboard: Array<{ rank: number; name: string; score: number; correctAnswers: number; totalAnswered: number; playerId: string }>,
+  totalQuestions: number
+) {
+  const chatId = quiz.scheduledTelegramChatId;
+  if (!chatId) return;
+  if (leaderboard.length === 0) {
+    console.log("Auto-send: No participants, skipping Telegram results for", quiz.title);
+    return;
+  }
+
+  const profile = await storage.getUserProfile(quiz.creatorId);
+  if (!profile?.telegramBotToken) {
+    console.log("Auto-send: No Telegram bot token for quiz creator", quiz.creatorId);
+    return;
+  }
+
+  const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const TelegramBot = (await import("node-telegram-bot-api")).default;
+  const bot = new TelegramBot(profile.telegramBotToken);
+  const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
+
+  const medalMap: Record<number, string> = { 0: "[1]", 1: "[2]", 2: "[3]" };
+
+  let msg = `<b>${escHtml(quiz.title)}</b>\n`;
+  msg += `<i>Natijalar (avtomatik)</i>\n\n`;
+
+  const top3 = leaderboard.slice(0, 3);
+  for (let i = 0; i < top3.length; i++) {
+    const r = top3[i];
+    const medal = medalMap[i] || "";
+    msg += `${medal} <b>${i + 1}-o'rin:</b> ${escHtml(r.name)}\n`;
+    msg += `   Ball: <b>${r.score}</b> | To'g'ri: ${r.correctAnswers}/${totalQuestions}\n\n`;
+  }
+
+  if (leaderboard.length > 3) {
+    msg += `<b>Top 10 ro'yxat:</b>\n`;
+    const top10 = leaderboard.slice(3, 10);
+    for (let i = 0; i < top10.length; i++) {
+      const r = top10[i];
+      msg += `${i + 4}. ${escHtml(r.name)} — <b>${r.score}</b> ball (${r.correctAnswers}/${totalQuestions})\n`;
+    }
+  }
+
+  msg += `\nJami ishtirokchilar: <b>${leaderboard.length}</b>`;
+
+  await bot.sendMessage(targetChat, msg, { parse_mode: "HTML" });
+
+  const PDFDocument = (await import("pdfkit")).default;
+  const pdfDoc = new PDFDocument({ size: "A4", margin: 40 });
+  const chunks: Buffer[] = [];
+  pdfDoc.on("data", (c: Buffer) => chunks.push(c));
+
+  const pdfDone = new Promise<Buffer>((resolve) => {
+    pdfDoc.on("end", () => resolve(Buffer.concat(chunks)));
+  });
+
+  pdfDoc.fontSize(18).font("Helvetica-Bold").text(quiz.title, { align: "center" });
+  pdfDoc.moveDown(0.3);
+  pdfDoc.fontSize(11).font("Helvetica").text(`Natijalar — ${new Date().toLocaleDateString("uz-UZ")}`, { align: "center" });
+  pdfDoc.moveDown(1);
+
+  const tableTop = pdfDoc.y;
+  const col = { rank: 40, name: 180, score: 80, correct: 80, percent: 80 };
+  const startX = 50;
+
+  pdfDoc.fontSize(10).font("Helvetica-Bold");
+  pdfDoc.text("#", startX, tableTop, { width: col.rank });
+  pdfDoc.text("Ism", startX + col.rank, tableTop, { width: col.name });
+  pdfDoc.text("Ball", startX + col.rank + col.name, tableTop, { width: col.score, align: "center" });
+  pdfDoc.text("To'g'ri", startX + col.rank + col.name + col.score, tableTop, { width: col.correct, align: "center" });
+  pdfDoc.text("Foiz", startX + col.rank + col.name + col.score + col.correct, tableTop, { width: col.percent, align: "center" });
+
+  pdfDoc.moveTo(startX, tableTop + 15).lineTo(startX + col.rank + col.name + col.score + col.correct + col.percent, tableTop + 15).stroke();
+
+  let y = tableTop + 22;
+  pdfDoc.font("Helvetica").fontSize(9);
+  for (let i = 0; i < leaderboard.length; i++) {
+    if (y > 760) {
+      pdfDoc.addPage();
+      y = 40;
+    }
+    const r = leaderboard[i];
+    const pct = totalQuestions > 0 ? Math.round((r.correctAnswers / totalQuestions) * 100) : 0;
+
+    if (i < 3) pdfDoc.font("Helvetica-Bold"); else pdfDoc.font("Helvetica");
+
+    pdfDoc.text(`${i + 1}`, startX, y, { width: col.rank });
+    pdfDoc.text(r.name, startX + col.rank, y, { width: col.name });
+    pdfDoc.text(`${r.score}`, startX + col.rank + col.name, y, { width: col.score, align: "center" });
+    pdfDoc.text(`${r.correctAnswers}/${totalQuestions}`, startX + col.rank + col.name + col.score, y, { width: col.correct, align: "center" });
+    pdfDoc.text(`${pct}%`, startX + col.rank + col.name + col.score + col.correct, y, { width: col.percent, align: "center" });
+    y += 16;
+  }
+
+  pdfDoc.end();
+  const pdfBuffer = await pdfDone;
+
+  await bot.sendDocument(targetChat, pdfBuffer, {
+    caption: `${quiz.title} — barcha natijalar (avtomatik)`,
+  }, {
+    filename: `${quiz.title.replace(/[^a-zA-Z0-9\u0400-\u04FF]/g, "_")}_natijalar.pdf`,
+    contentType: "application/pdf",
+  });
+
+  console.log(`Auto-sent results to Telegram chat ${chatId} for quiz "${quiz.title}"`);
 }
 
 async function checkScheduledQuizzes() {

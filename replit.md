@@ -64,7 +64,7 @@ Preferred communication style: Simple, everyday language.
   - `users` — Authentication credentials (id, email, password, name, profile image)
   - `sessions` — Express session store (sid, sess JSON, expire)
   - `user_profiles` — Role, plan, quiz limits, subscription info (linked to users via userId)
-  - `quizzes` — Quiz metadata (title, description, category, visibility, creator, shuffleQuestions, shuffleOptions, totalLikes)
+  - `quizzes` — Quiz metadata (title, description, category, visibility, creator, shuffleQuestions, shuffleOptions, totalLikes, scheduledTelegramChatId for auto-sending results)
   - `questions` — Quiz questions (multiple types: multiple_choice, true_false, open_ended, poll, multiple_select; with media support, points, time limits, JSONB options)
   - `live_sessions` — Active live quiz game sessions
   - `session_participants` — Players in a live session
@@ -131,6 +131,7 @@ Preferred communication style: Simple, everyday language.
 - Sends quiz title message first, then each question as Telegram quiz poll (type: "quiz", is_anonymous: true)
 - Ownership check: only quiz creator or admin can send
 - **Results to Telegram**: POST /api/telegram/send-results sends formatted results (top 3 + top 10 list) + PDF with all participants to selected chat
+- **Auto-send on scheduled quiz finish**: When scheduling a quiz, teacher can enable "Natijalarni Telegramga yuborish" toggle and select a chat. The `scheduledTelegramChatId` is stored on the quiz. When `finishPublicGame()` runs for a scheduled quiz (hostSocketId === "scheduler"), `autoSendResultsToTelegram()` sends results + PDF automatically using the quiz creator's bot token.
 - GET /api/sessions/:id/quiz-results — authenticated endpoint returning results by quizId (teacher/admin only, ownership-checked)
 - PDF generated server-side via `pdfkit` with A4 table layout (rank, name, score, correct answers, percentage)
 

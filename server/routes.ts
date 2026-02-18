@@ -314,7 +314,7 @@ export async function registerRoutes(
 
   app.post("/api/quizzes/:id/schedule", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
-      const { scheduledAt, requireCode } = req.body;
+      const { scheduledAt, requireCode, telegramChatId } = req.body;
       if (!scheduledAt) return res.status(400).json({ message: "Vaqt kerak" });
 
       const quiz = await storage.getQuiz(req.params.id);
@@ -335,6 +335,7 @@ export async function registerRoutes(
         scheduledStatus: "pending",
         scheduledCode: code,
         scheduledRequireCode: needCode,
+        scheduledTelegramChatId: telegramChatId || null,
         isPublic: true,
         status: "published",
       } as any);
@@ -357,6 +358,7 @@ export async function registerRoutes(
         scheduledStatus: null,
         scheduledCode: null,
         scheduledRequireCode: true,
+        scheduledTelegramChatId: null,
       } as any);
 
       res.json(updated);

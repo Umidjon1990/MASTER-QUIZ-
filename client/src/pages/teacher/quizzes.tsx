@@ -25,6 +25,8 @@ export default function TeacherQuizzes() {
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
   const [scheduleRequireCode, setScheduleRequireCode] = useState(true);
+  const [scheduleTelegramEnabled, setScheduleTelegramEnabled] = useState(false);
+  const [scheduleTelegramChatId, setScheduleTelegramChatId] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
 
   const { data: quizzes, isLoading } = useQuery<Quiz[]>({
@@ -67,8 +69,8 @@ export default function TeacherQuizzes() {
   });
 
   const scheduleMutation = useMutation({
-    mutationFn: async ({ quizId, scheduledAt, requireCode }: { quizId: string; scheduledAt: string; requireCode: boolean }) => {
-      const res = await apiRequest("POST", `/api/quizzes/${quizId}/schedule`, { scheduledAt, requireCode });
+    mutationFn: async ({ quizId, scheduledAt, requireCode, telegramChatId }: { quizId: string; scheduledAt: string; requireCode: boolean; telegramChatId?: string }) => {
+      const res = await apiRequest("POST", `/api/quizzes/${quizId}/schedule`, { scheduledAt, requireCode, telegramChatId });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.message || "Xatolik");
@@ -80,6 +82,8 @@ export default function TeacherQuizzes() {
       setScheduleQuiz(null);
       setScheduleDate("");
       setScheduleTime("");
+      setScheduleTelegramEnabled(false);
+      setScheduleTelegramChatId("");
       toast({ title: "Quiz rejalashtirildi!" });
     },
     onError: (error: any) => {
@@ -116,8 +120,13 @@ export default function TeacherQuizzes() {
       toast({ title: "Sana va vaqtni kiriting", variant: "destructive" });
       return;
     }
+    if (scheduleTelegramEnabled && !scheduleTelegramChatId) {
+      toast({ title: "Telegram chatni tanlang yoki Telegram yuborishni o'chiring", variant: "destructive" });
+      return;
+    }
     const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}:00+05:00`).toISOString();
-    scheduleMutation.mutate({ quizId: scheduleQuiz.id, scheduledAt, requireCode: scheduleRequireCode });
+    const telegramChatId = scheduleTelegramEnabled && scheduleTelegramChatId ? scheduleTelegramChatId : undefined;
+    scheduleMutation.mutate({ quizId: scheduleQuiz.id, scheduledAt, requireCode: scheduleRequireCode, telegramChatId });
   };
 
   const [now, setNow] = useState(Date.now());
@@ -386,7 +395,7 @@ export default function TeacherQuizzes() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!scheduleQuiz} onOpenChange={(open) => { if (!open) { setScheduleQuiz(null); setScheduleDate(""); setScheduleTime(""); setScheduleRequireCode(true); } }}>
+      <Dialog open={!!scheduleQuiz} onOpenChange={(open) => { if (!open) { setScheduleQuiz(null); setScheduleDate(""); setScheduleTime(""); setScheduleRequireCode(true); setScheduleTelegramEnabled(false); setScheduleTelegramChatId(""); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
@@ -436,6 +445,43 @@ export default function TeacherQuizzes() {
                   data-testid="switch-require-code"
                 />
               </div>
+              {hasTelegramBot && telegramChats.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-muted">
+                    <div className="flex items-center gap-2">
+                      <Bot className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm font-medium">Natijalarni Telegramga yuborish</p>
+                        <p className="text-xs text-muted-foreground">
+                          Quiz tugagach natijalar avtomatik yuboriladi
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={scheduleTelegramEnabled}
+                      onCheckedChange={(checked) => {
+                        setScheduleTelegramEnabled(checked);
+                        if (!checked) setScheduleTelegramChatId("");
+                      }}
+                      data-testid="switch-telegram-auto-send"
+                    />
+                  </div>
+                  {scheduleTelegramEnabled && (
+                    <Select value={scheduleTelegramChatId} onValueChange={setScheduleTelegramChatId}>
+                      <SelectTrigger data-testid="select-telegram-chat">
+                        <SelectValue placeholder="Chat tanlang..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {telegramChats.map((chat) => (
+                          <SelectItem key={chat.chatId} value={chat.chatId} data-testid={`select-chat-${chat.chatId}`}>
+                            {chat.title || chat.chatId}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              )}
               {scheduleDate && scheduleTime && (
                 <div className="p-3 rounded-md bg-muted text-sm text-center">
                   <Clock className="w-4 h-4 inline mr-1.5" />
