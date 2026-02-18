@@ -32,7 +32,53 @@ import {
   UserPlus,
   Play,
   Link2,
+  Zap,
+  Star,
+  Target,
 } from "lucide-react";
+
+const KAHOOT_COLORS = [
+  { bg: "from-red-500 to-rose-600", border: "border-red-400", text: "text-white", icon: Target },
+  { bg: "from-blue-500 to-indigo-600", border: "border-blue-400", text: "text-white", icon: Star },
+  { bg: "from-amber-400 to-yellow-500", border: "border-amber-300", text: "text-white", icon: Zap },
+  { bg: "from-emerald-500 to-green-600", border: "border-emerald-400", text: "text-white", icon: CheckCircle2 },
+  { bg: "from-purple-500 to-violet-600", border: "border-purple-400", text: "text-white", icon: Crown },
+  { bg: "from-pink-500 to-fuchsia-600", border: "border-pink-400", text: "text-white", icon: Medal },
+  { bg: "from-cyan-500 to-teal-600", border: "border-cyan-400", text: "text-white", icon: Star },
+  { bg: "from-orange-500 to-red-500", border: "border-orange-400", text: "text-white", icon: Zap },
+];
+
+function CircularTimer({ timeLeft, totalTime }: { timeLeft: number; totalTime: number }) {
+  const radius = 28;
+  const circumference = 2 * Math.PI * radius;
+  const progress = totalTime > 0 ? timeLeft / totalTime : 0;
+  const strokeDashoffset = circumference * (1 - progress);
+  const isUrgent = timeLeft <= 5;
+
+  return (
+    <div className="relative w-16 h-16 flex items-center justify-center">
+      <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
+        <circle cx="32" cy="32" r={radius} fill="none" stroke="currentColor" strokeWidth="3" className="text-muted/20" />
+        <motion.circle
+          cx="32" cy="32" r={radius} fill="none"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          className={isUrgent ? "text-red-500" : "text-violet-400"}
+          strokeDasharray={circumference}
+          animate={{ strokeDashoffset }}
+          transition={{ duration: 0.5, ease: "linear" }}
+        />
+      </svg>
+      <motion.span
+        className={`absolute text-lg font-bold font-mono ${isUrgent ? "text-red-500" : ""}`}
+        animate={isUrgent ? { scale: [1, 1.2, 1] } : {}}
+        transition={isUrgent ? { duration: 0.5, repeat: Infinity } : {}}
+      >
+        {timeLeft}
+      </motion.span>
+    </div>
+  );
+}
 
 interface QuizQuestion {
   id: string;
@@ -677,52 +723,72 @@ export default function QuizPlayPage() {
 
   if (stage === "leaderboard") {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted/30">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-indigo-950 via-violet-950 to-slate-950">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-lg">
-          <Card className="p-6 space-y-5">
-            <div className="text-center space-y-1">
-              <h2 className="text-lg font-bold">Reyting jadvali</h2>
-              <p className="text-sm text-muted-foreground">{questionIndex + 1}/{totalQuestions} savoldan keyin</p>
-            </div>
+          <div className="text-center mb-6">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", stiffness: 200 }}
+            >
+              <Trophy className="w-10 h-10 mx-auto text-yellow-400 drop-shadow-lg" />
+            </motion.div>
+            <h2 className="text-xl font-bold text-white mt-2">Reyting jadvali</h2>
+            <p className="text-sm text-violet-200/60">{questionIndex + 1}/{totalQuestions} savoldan keyin</p>
+          </div>
 
-            <div className="space-y-2">
-              {leaderboard.map((entry) => {
-                const isMe = entry.playerId === playerId;
-                return (
-                  <motion.div
-                    key={entry.playerId}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: entry.rank * 0.05 }}
-                    className={`flex items-center gap-3 p-3 rounded-md ${isMe ? "bg-primary/10 border border-primary/30" : "bg-muted/50"}`}
-                    data-testid={`leaderboard-entry-${entry.playerId}`}
+          <div className="space-y-2">
+            {leaderboard.map((entry) => {
+              const isMe = entry.playerId === playerId;
+              const rankColor = entry.rank === 1 ? "from-yellow-400 to-amber-500" : entry.rank === 2 ? "from-gray-300 to-gray-400" : entry.rank === 3 ? "from-amber-600 to-amber-700" : "";
+              return (
+                <motion.div
+                  key={entry.playerId}
+                  initial={{ opacity: 0, x: -30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: entry.rank * 0.08, type: "spring", stiffness: 200 }}
+                  className={`flex items-center gap-3 p-3 rounded-xl ${
+                    isMe ? "bg-primary/20 border border-primary/40 shadow-lg shadow-primary/10" : "bg-white/5 border border-white/10"
+                  }`}
+                  data-testid={`leaderboard-entry-${entry.playerId}`}
+                >
+                  <div className="w-9 h-9 shrink-0 flex items-center justify-center">
+                    {entry.rank <= 3 ? (
+                      <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${rankColor} flex items-center justify-center shadow`}>
+                        <span className="text-white font-bold text-sm">{entry.rank}</span>
+                      </div>
+                    ) : (
+                      <span className="text-sm font-bold text-white/50">{entry.rank}</span>
+                    )}
+                  </div>
+                  <span className="text-sm font-medium flex-1 truncate text-white">{entry.name} {isMe && "(Siz)"}</span>
+                  <motion.span
+                    className="text-sm font-bold text-amber-300"
+                    key={entry.score}
+                    initial={{ scale: 1.3 }}
+                    animate={{ scale: 1 }}
                   >
-                    <div className="w-8 text-center shrink-0">
-                      {entry.rank === 1 ? <Trophy className="w-5 h-5 text-yellow-500 mx-auto" /> :
-                       entry.rank === 2 ? <Medal className="w-5 h-5 text-gray-400 mx-auto" /> :
-                       entry.rank === 3 ? <Medal className="w-5 h-5 text-amber-600 mx-auto" /> :
-                       <span className="text-sm font-bold text-muted-foreground">{entry.rank}</span>}
-                    </div>
-                    <span className="text-sm font-medium flex-1 truncate">{entry.name} {isMe && "(Siz)"}</span>
-                    <span className="text-sm font-bold">{entry.score}</span>
-                  </motion.div>
-                );
-              })}
-            </div>
+                    {entry.score}
+                  </motion.span>
+                </motion.div>
+              );
+            })}
+          </div>
 
+          <div className="mt-6">
             {isHost && (
-              <Button className="w-full" onClick={isLastQuestion ? () => socketRef.current?.emit("public:next-question", {}) : handleNextQuestion} data-testid="button-next-question">
+              <Button className="w-full gradient-purple border-0 text-white" onClick={isLastQuestion ? () => socketRef.current?.emit("public:next-question", {}) : handleNextQuestion} data-testid="button-next-question">
                 {isLastQuestion ? "Natijalarni ko'rsatish" : "Keyingi savol"}
                 <ChevronRight className="w-4 h-4 ml-2" />
               </Button>
             )}
             {!isHost && (
               <div className="text-center">
-                <Loader2 className="w-5 h-5 mx-auto animate-spin text-muted-foreground" />
-                <p className="text-xs text-muted-foreground mt-1">Keyingi savol kutilmoqda...</p>
+                <Loader2 className="w-5 h-5 mx-auto animate-spin text-violet-300/50" />
+                <p className="text-xs text-violet-200/40 mt-1">Keyingi savol kutilmoqda...</p>
               </div>
             )}
-          </Card>
+          </div>
         </motion.div>
       </div>
     );
@@ -989,39 +1055,57 @@ export default function QuizPlayPage() {
     const progressPercent = ((questionIndex + 1) / totalQuestions) * 100;
 
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-background to-muted/30">
-        <div className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b p-3">
+      <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-950 via-violet-950 to-slate-950 overflow-hidden">
+        <div className="sticky top-0 z-50 bg-black/30 backdrop-blur-xl border-b border-white/10 p-3">
           <div className="max-w-2xl mx-auto flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 min-w-0">
-              <Badge variant="outline" className="shrink-0">{questionIndex + 1}/{totalQuestions}</Badge>
-              <span className="text-sm font-medium truncate">{data.quiz.title}</span>
+              <motion.div
+                key={questionIndex}
+                initial={{ scale: 0, rotate: -90 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <Badge variant="secondary" className="shrink-0 bg-primary/20 text-primary-foreground border-primary/30">
+                  {questionIndex + 1}/{totalQuestions}
+                </Badge>
+              </motion.div>
+              <span className="text-sm font-medium truncate text-white/80">{data.quiz.title}</span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-muted-foreground">{answeredCount}/{totalPlayers}</span>
-              <div className="flex items-center gap-1">
-                <Clock className="w-4 h-4 text-muted-foreground" />
-                <span className={`text-sm font-mono font-bold ${timeLeft <= 5 ? "text-red-500" : ""}`}>{timeLeft}s</span>
-              </div>
-              <Badge variant="secondary" className="text-xs">{myScore} ball</Badge>
+              <Badge variant="outline" className="text-xs border-white/20 text-white/70">{answeredCount}/{totalPlayers}</Badge>
+              <CircularTimer timeLeft={timeLeft} totalTime={currentQuestion.timeLimit || 30} />
+              <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30">{myScore} ball</Badge>
             </div>
           </div>
           <div className="max-w-2xl mx-auto mt-2">
-            <Progress value={progressPercent} className="h-1.5" />
+            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-primary to-violet-400"
+                animate={{ width: `${progressPercent}%` }}
+                transition={{ duration: 0.5 }}
+              />
+            </div>
           </div>
         </div>
 
-        <div className="flex-1 flex items-center justify-center p-4">
+        <div className="flex-1 flex flex-col items-center justify-start p-4 overflow-y-auto">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentQuestion.id}
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
+              initial={{ opacity: 0, y: 40, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -40, scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 200, damping: 25 }}
               className="w-full max-w-2xl"
             >
-              <Card className="p-6 space-y-5">
+              <motion.div
+                className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/10 p-6 mb-6 shadow-2xl"
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+              >
                 {currentQuestion.mediaUrl && (
-                  <div className="rounded-md overflow-hidden">
+                  <div className="rounded-lg overflow-hidden mb-4">
                     {currentQuestion.mediaType === "image" ? (
                       <img src={currentQuestion.mediaUrl} alt="" className="w-full max-h-64 object-contain" />
                     ) : currentQuestion.mediaType === "video" ? (
@@ -1030,110 +1114,218 @@ export default function QuizPlayPage() {
                   </div>
                 )}
 
-                <div>
-                  <p className="text-lg font-semibold" dir="auto" data-testid="text-question">{currentQuestion.questionText}</p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Badge variant="secondary" className="text-xs">{currentQuestion.points} ball</Badge>
-                    {currentQuestion.type === "multiple_select" && <Badge variant="outline" className="text-xs">Bir nechta tanlang</Badge>}
-                  </div>
+                <motion.p
+                  className="text-xl sm:text-2xl font-bold text-white text-center leading-relaxed"
+                  dir="auto"
+                  data-testid="text-question"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  {currentQuestion.questionText}
+                </motion.p>
+                <div className="flex items-center justify-center gap-2 mt-3">
+                  <Badge className="bg-white/10 text-white/80 border-white/20">{currentQuestion.points} ball</Badge>
+                  {currentQuestion.type === "multiple_select" && <Badge className="bg-violet-500/20 text-violet-200 border-violet-500/30">Bir nechta tanlang</Badge>}
                 </div>
+              </motion.div>
 
-                {hasAnswered && lastAnswerResult ? (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className={`p-4 rounded-md text-center ${lastAnswerResult.isCorrect ? "bg-green-50 dark:bg-green-950/30 border border-green-500/30" : "bg-red-50 dark:bg-red-950/30 border border-red-500/30"}`}
-                  >
-                    {lastAnswerResult.isCorrect ? (
-                      <div className="space-y-1">
-                        <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto" />
-                        <p className="font-semibold text-green-700 dark:text-green-400">To'g'ri! +{lastAnswerResult.points} ball</p>
-                        {lastAnswerResult.answerOrder && (
-                          <p className="text-xs text-muted-foreground" data-testid="text-answer-order">Siz {lastAnswerResult.answerOrder}-bo'lib javob berdingiz</p>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        <XCircle className="w-8 h-8 text-red-600 mx-auto" />
-                        <p className="font-semibold text-red-700 dark:text-red-400">Noto'g'ri</p>
-                        {lastAnswerResult.showCorrectAnswers !== false && lastAnswerResult.correctAnswer && <p className="text-xs text-muted-foreground" dir="auto">To'g'ri javob: {lastAnswerResult.correctAnswer}</p>}
-                        {lastAnswerResult.answerOrder && (
-                          <p className="text-xs text-muted-foreground" data-testid="text-answer-order">Siz {lastAnswerResult.answerOrder}-bo'lib javob berdingiz</p>
-                        )}
-                      </div>
+              {hasAnswered && lastAnswerResult ? (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  className="relative"
+                >
+                  {lastAnswerResult.isCorrect && (
+                    <div className="absolute inset-0 pointer-events-none overflow-visible">
+                      {Array.from({ length: 30 }).map((_, i) => (
+                        <motion.div
+                          key={i}
+                          className="absolute w-2 h-2 rounded-full"
+                          style={{
+                            left: "50%",
+                            top: "50%",
+                            backgroundColor: ["#10B981", "#34D399", "#6EE7B7", "#A7F3D0", "#FFD700", "#FDE68A"][i % 6],
+                          }}
+                          initial={{ x: 0, y: 0, opacity: 1 }}
+                          animate={{
+                            x: (Math.random() - 0.5) * 400,
+                            y: (Math.random() - 0.5) * 300,
+                            opacity: 0,
+                            scale: [1, 1.5, 0],
+                          }}
+                          transition={{ duration: 1 + Math.random(), delay: Math.random() * 0.3 }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <div className={`rounded-xl p-8 text-center ${
+                    lastAnswerResult.isCorrect
+                      ? "bg-gradient-to-br from-emerald-500/30 to-green-600/30 border-2 border-emerald-400/50"
+                      : "bg-gradient-to-br from-red-500/30 to-rose-600/30 border-2 border-red-400/50"
+                  }`}>
+                    <motion.div
+                      initial={{ scale: 0, rotate: -180 }}
+                      animate={{ scale: 1, rotate: 0 }}
+                      transition={{ type: "spring", stiffness: 200 }}
+                    >
+                      {lastAnswerResult.isCorrect ? (
+                        <CheckCircle2 className="w-16 h-16 text-emerald-400 mx-auto" />
+                      ) : (
+                        <XCircle className="w-16 h-16 text-red-400 mx-auto" />
+                      )}
+                    </motion.div>
+                    <motion.p
+                      className={`text-2xl font-bold mt-3 ${lastAnswerResult.isCorrect ? "text-emerald-300" : "text-red-300"}`}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.3 }}
+                    >
+                      {lastAnswerResult.isCorrect ? `To'g'ri! +${lastAnswerResult.points}` : "Noto'g'ri"}
+                    </motion.p>
+                    {lastAnswerResult.answerOrder && (
+                      <motion.p
+                        className="text-sm text-white/60 mt-1"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.5 }}
+                        data-testid="text-answer-order"
+                      >
+                        Siz {lastAnswerResult.answerOrder}-bo'lib javob berdingiz
+                      </motion.p>
                     )}
-                  </motion.div>
-                ) : (
-                  <div className="space-y-2">
-                    {currentQuestion.type === "true_false" ? (
-                      <div className="grid grid-cols-2 gap-3">
-                        {["true", "false"].map(opt => (
-                          <Button
+                    {!lastAnswerResult.isCorrect && lastAnswerResult.showCorrectAnswers !== false && lastAnswerResult.correctAnswer && (
+                      <motion.p
+                        className="text-sm text-white/50 mt-2"
+                        dir="auto"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.5 }}
+                      >
+                        To'g'ri javob: {lastAnswerResult.correctAnswer}
+                      </motion.p>
+                    )}
+                  </div>
+                </motion.div>
+              ) : (
+                <div>
+                  {currentQuestion.type === "true_false" ? (
+                    <div className="grid grid-cols-2 gap-4">
+                      {["true", "false"].map((opt, i) => {
+                        const color = i === 0 ? KAHOOT_COLORS[3] : KAHOOT_COLORS[0];
+                        const isSelected = multiCurrentAnswer === opt;
+                        return (
+                          <motion.button
                             key={opt}
-                            variant={multiCurrentAnswer === opt ? "default" : "outline"}
-                            className="h-14 text-base"
+                            initial={{ opacity: 0, y: 30 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.3 + i * 0.1, type: "spring", stiffness: 200 }}
+                            whileTap={{ scale: 0.95 }}
                             onClick={() => handleMultiAnswer(currentQuestion.id, opt)}
                             disabled={hasAnswered}
+                            className={`relative rounded-xl p-6 bg-gradient-to-br ${color.bg} ${color.text} font-bold text-lg shadow-lg transition-all ${
+                              isSelected ? "ring-4 ring-white shadow-2xl scale-[1.02]" : "ring-0"
+                            } disabled:opacity-50`}
                             data-testid={`button-answer-${opt}`}
                           >
                             {opt === "true" ? "To'g'ri" : "Noto'g'ri"}
-                          </Button>
-                        ))}
-                      </div>
-                    ) : currentQuestion.type === "open_ended" ? (
-                      <div className="space-y-2">
-                        <Input
-                          placeholder="Javobingizni yozing..."
-                          value={(multiCurrentAnswer as string) || ""}
-                          onChange={(e) => setAnswers(prev => ({ ...prev, [currentQuestion.id]: e.target.value }))}
-                          disabled={hasAnswered}
-                          data-testid="input-open-answer"
-                        />
-                        <Button
-                          onClick={() => {
-                            if (!multiCurrentAnswer) return;
-                            setHasAnswered(true);
-                            socketRef.current?.emit("public:answer", { questionId: currentQuestion.id, answer: multiCurrentAnswer });
-                          }}
-                          disabled={!multiCurrentAnswer || hasAnswered}
-                          className="w-full"
-                          data-testid="button-submit-open"
+                          </motion.button>
+                        );
+                      })}
+                    </div>
+                  ) : currentQuestion.type === "open_ended" ? (
+                    <motion.div
+                      className="space-y-3"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.3 }}
+                    >
+                      <Input
+                        placeholder="Javobingizni yozing..."
+                        value={(multiCurrentAnswer as string) || ""}
+                        onChange={(e) => setAnswers(prev => ({ ...prev, [currentQuestion.id]: e.target.value }))}
+                        disabled={hasAnswered}
+                        className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-lg"
+                        data-testid="input-open-answer"
+                      />
+                      <Button
+                        onClick={() => {
+                          if (!multiCurrentAnswer) return;
+                          setHasAnswered(true);
+                          socketRef.current?.emit("public:answer", { questionId: currentQuestion.id, answer: multiCurrentAnswer });
+                        }}
+                        disabled={!multiCurrentAnswer || hasAnswered}
+                        className="w-full gradient-purple border-0 text-white"
+                        data-testid="button-submit-open"
+                      >
+                        <Send className="w-5 h-5 mr-2" />
+                        Yuborish
+                      </Button>
+                    </motion.div>
+                  ) : currentQuestion.options ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {currentQuestion.options.map((opt, optIdx) => {
+                        const color = KAHOOT_COLORS[optIdx % KAHOOT_COLORS.length];
+                        const IconComp = color.icon;
+                        const isSelected = currentQuestion.type === "multiple_select"
+                          ? Array.isArray(multiCurrentAnswer) && multiCurrentAnswer.includes(opt)
+                          : multiCurrentAnswer === opt;
+                        return (
+                          <motion.button
+                            key={optIdx}
+                            initial={{ opacity: 0, y: 40, scale: 0.8 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{ delay: 0.3 + optIdx * 0.1, type: "spring", stiffness: 200, damping: 20 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => handleMultiAnswer(currentQuestion.id, opt)}
+                            disabled={hasAnswered && currentQuestion.type !== "multiple_select"}
+                            className={`relative rounded-xl p-4 sm:p-5 bg-gradient-to-br ${color.bg} ${color.text} text-left shadow-lg transition-all ${
+                              isSelected ? "ring-4 ring-white shadow-2xl scale-[1.02]" : "ring-0"
+                            } disabled:opacity-50`}
+                            data-testid={`button-option-${optIdx}`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                                <IconComp className="w-4 h-4" />
+                              </div>
+                              <span className="font-semibold text-sm sm:text-base break-words" dir="auto">{opt}</span>
+                            </div>
+                            {isSelected && (
+                              <motion.div
+                                className="absolute top-2 right-2"
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: "spring" }}
+                              >
+                                <Check className="w-5 h-5 text-white drop-shadow" />
+                              </motion.div>
+                            )}
+                          </motion.button>
+                        );
+                      })}
+                      {currentQuestion.type === "multiple_select" && !hasAnswered && (
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: 0.6 }}
+                          className="sm:col-span-2"
                         >
-                          <Send className="w-4 h-4 mr-2" />
-                          Yuborish
-                        </Button>
-                      </div>
-                    ) : currentQuestion.options ? (
-                      <div className="space-y-2">
-                        {currentQuestion.options.map((opt, optIdx) => {
-                          const isSelected = currentQuestion.type === "multiple_select"
-                            ? Array.isArray(multiCurrentAnswer) && multiCurrentAnswer.includes(opt)
-                            : multiCurrentAnswer === opt;
-                          return (
-                            <Button
-                              key={optIdx}
-                              variant={isSelected ? "default" : "outline"}
-                              className="w-full justify-start text-left h-auto min-h-[2.75rem] py-3 px-4"
-                              onClick={() => handleMultiAnswer(currentQuestion.id, opt)}
-                              disabled={hasAnswered && currentQuestion.type !== "multiple_select"}
-                              data-testid={`button-option-${optIdx}`}
-                            >
-                              <span className="mr-3 font-semibold shrink-0">{String.fromCharCode(65 + optIdx)}</span>
-                              <span className="break-words" dir="auto">{opt}</span>
-                            </Button>
-                          );
-                        })}
-                        {currentQuestion.type === "multiple_select" && !hasAnswered && (
-                          <Button onClick={handleSubmitMultiSelect} disabled={!multiCurrentAnswer || (Array.isArray(multiCurrentAnswer) && multiCurrentAnswer.length === 0)} className="w-full mt-2" data-testid="button-submit-multi">
-                            <Send className="w-4 h-4 mr-2" />
+                          <Button
+                            onClick={handleSubmitMultiSelect}
+                            disabled={!multiCurrentAnswer || (Array.isArray(multiCurrentAnswer) && multiCurrentAnswer.length === 0)}
+                            className="w-full gradient-purple border-0 text-white"
+                            data-testid="button-submit-multi"
+                          >
+                            <Send className="w-5 h-5 mr-2" />
                             Tasdiqlash
                           </Button>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-              </Card>
+                        </motion.div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -1147,35 +1339,53 @@ export default function QuizPlayPage() {
     const progressPercent = ((currentIndex + 1) / data.questions.length) * 100;
 
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-background to-muted/30">
-        <div className="sticky top-0 z-50 bg-background/95 backdrop-blur border-b p-3">
+      <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-950 via-violet-950 to-slate-950 overflow-hidden">
+        <div className="sticky top-0 z-50 bg-black/30 backdrop-blur-xl border-b border-white/10 p-3">
           <div className="max-w-2xl mx-auto flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 min-w-0">
-              <Badge variant="outline" className="shrink-0">{currentIndex + 1}/{data.questions.length}</Badge>
-              <span className="text-sm font-medium truncate">{data.quiz.title}</span>
+              <motion.div
+                key={currentIndex}
+                initial={{ scale: 0, rotate: -90 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <Badge variant="secondary" className="shrink-0 bg-primary/20 text-primary-foreground border-primary/30">
+                  {currentIndex + 1}/{data.questions.length}
+                </Badge>
+              </motion.div>
+              <span className="text-sm font-medium truncate text-white/80">{data.quiz.title}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-muted-foreground" />
-              <span className={`text-sm font-mono font-bold ${timeLeft <= 5 ? "text-red-500" : ""}`}>{timeLeft}s</span>
-            </div>
+            <CircularTimer timeLeft={timeLeft} totalTime={soloCurrentQuestion.timeLimit || 30} />
           </div>
           <div className="max-w-2xl mx-auto mt-2">
-            <Progress value={progressPercent} className="h-1.5" />
+            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-primary to-violet-400"
+                animate={{ width: `${progressPercent}%` }}
+                transition={{ duration: 0.5 }}
+              />
+            </div>
           </div>
         </div>
 
-        <div className="flex-1 flex items-center justify-center p-4">
+        <div className="flex-1 flex flex-col items-center justify-start p-4 overflow-y-auto">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentIndex}
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
+              initial={{ opacity: 0, y: 40, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -40, scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 200, damping: 25 }}
               className="w-full max-w-2xl"
             >
-              <Card className="p-6 space-y-5">
+              <motion.div
+                className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/10 p-6 mb-6 shadow-2xl"
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+              >
                 {soloCurrentQuestion.mediaUrl && (
-                  <div className="rounded-md overflow-hidden">
+                  <div className="rounded-lg overflow-hidden mb-4">
                     {soloCurrentQuestion.mediaType === "image" ? (
                       <img src={soloCurrentQuestion.mediaUrl} alt="" className="w-full max-h-64 object-contain" />
                     ) : soloCurrentQuestion.mediaType === "video" ? (
@@ -1184,71 +1394,115 @@ export default function QuizPlayPage() {
                   </div>
                 )}
 
-                <div>
-                  <p className="text-lg font-semibold" dir="auto" data-testid="text-question">{soloCurrentQuestion.questionText}</p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Badge variant="secondary" className="text-xs">{soloCurrentQuestion.points} ball</Badge>
-                    {soloCurrentQuestion.type === "multiple_select" && <Badge variant="outline" className="text-xs">Bir nechta tanlang</Badge>}
-                  </div>
+                <motion.p
+                  className="text-xl sm:text-2xl font-bold text-white text-center leading-relaxed"
+                  dir="auto"
+                  data-testid="text-question"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  {soloCurrentQuestion.questionText}
+                </motion.p>
+                <div className="flex items-center justify-center gap-2 mt-3">
+                  <Badge className="bg-white/10 text-white/80 border-white/20">{soloCurrentQuestion.points} ball</Badge>
+                  {soloCurrentQuestion.type === "multiple_select" && <Badge className="bg-violet-500/20 text-violet-200 border-violet-500/30">Bir nechta tanlang</Badge>}
                 </div>
+              </motion.div>
 
-                <div className="space-y-2">
-                  {soloCurrentQuestion.type === "true_false" ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      {["true", "false"].map(opt => (
-                        <Button
+              <div>
+                {soloCurrentQuestion.type === "true_false" ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    {["true", "false"].map((opt, i) => {
+                      const color = i === 0 ? KAHOOT_COLORS[3] : KAHOOT_COLORS[0];
+                      const isSelected = soloAnswer === opt;
+                      return (
+                        <motion.button
                           key={opt}
-                          variant={soloAnswer === opt ? "default" : "outline"}
-                          className="h-14 text-base"
+                          initial={{ opacity: 0, y: 30 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.3 + i * 0.1, type: "spring", stiffness: 200 }}
+                          whileTap={{ scale: 0.95 }}
                           onClick={() => handleSoloAnswer(soloCurrentQuestion.id, opt)}
+                          className={`relative rounded-xl p-6 bg-gradient-to-br ${color.bg} ${color.text} font-bold text-lg shadow-lg transition-all ${
+                            isSelected ? "ring-4 ring-white shadow-2xl scale-[1.02]" : "ring-0"
+                          }`}
                           data-testid={`button-answer-${opt}`}
                         >
                           {opt === "true" ? "To'g'ri" : "Noto'g'ri"}
-                        </Button>
-                      ))}
-                    </div>
-                  ) : soloCurrentQuestion.type === "open_ended" ? (
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                ) : soloCurrentQuestion.type === "open_ended" ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                  >
                     <Input
                       placeholder="Javobingizni yozing..."
                       value={(soloAnswer as string) || ""}
                       onChange={(e) => handleSoloAnswer(soloCurrentQuestion.id, e.target.value)}
+                      className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-lg"
                       data-testid="input-open-answer"
                     />
-                  ) : soloCurrentQuestion.options ? (
-                    <div className="space-y-2">
-                      {soloCurrentQuestion.options.map((opt, optIdx) => {
-                        const isSelected = soloCurrentQuestion.type === "multiple_select"
-                          ? Array.isArray(soloAnswer) && soloAnswer.includes(opt)
-                          : soloAnswer === opt;
-                        return (
-                          <Button
-                            key={optIdx}
-                            variant={isSelected ? "default" : "outline"}
-                            className="w-full justify-start text-left h-auto min-h-[2.75rem] py-3 px-4"
-                            onClick={() => handleSoloAnswer(soloCurrentQuestion.id, opt)}
-                            data-testid={`button-option-${optIdx}`}
-                          >
-                            <span className="mr-3 font-semibold shrink-0">{String.fromCharCode(65 + optIdx)}</span>
-                            <span className="break-words" dir="auto">{opt}</span>
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
-              </Card>
+                  </motion.div>
+                ) : soloCurrentQuestion.options ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {soloCurrentQuestion.options.map((opt, optIdx) => {
+                      const color = KAHOOT_COLORS[optIdx % KAHOOT_COLORS.length];
+                      const IconComp = color.icon;
+                      const isSelected = soloCurrentQuestion.type === "multiple_select"
+                        ? Array.isArray(soloAnswer) && soloAnswer.includes(opt)
+                        : soloAnswer === opt;
+                      return (
+                        <motion.button
+                          key={optIdx}
+                          initial={{ opacity: 0, y: 40, scale: 0.8 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          transition={{ delay: 0.3 + optIdx * 0.1, type: "spring", stiffness: 200, damping: 20 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => handleSoloAnswer(soloCurrentQuestion.id, opt)}
+                          className={`relative rounded-xl p-4 sm:p-5 bg-gradient-to-br ${color.bg} ${color.text} text-left shadow-lg transition-all ${
+                            isSelected ? "ring-4 ring-white shadow-2xl scale-[1.02]" : "ring-0"
+                          }`}
+                          data-testid={`button-option-${optIdx}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                              <IconComp className="w-4 h-4" />
+                            </div>
+                            <span className="font-semibold text-sm sm:text-base break-words" dir="auto">{opt}</span>
+                          </div>
+                          {isSelected && (
+                            <motion.div
+                              className="absolute top-2 right-2"
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: "spring" }}
+                            >
+                              <Check className="w-5 h-5 text-white drop-shadow" />
+                            </motion.div>
+                          )}
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             </motion.div>
           </AnimatePresence>
         </div>
 
-        <div className="sticky bottom-0 bg-background/95 backdrop-blur border-t p-3">
+        <div className="sticky bottom-0 z-50 bg-black/30 backdrop-blur-xl border-t border-white/10 p-3">
           <div className="max-w-2xl mx-auto flex justify-between gap-3">
             <Button variant="outline" onClick={() => setCurrentIndex(i => i - 1)} disabled={currentIndex === 0} data-testid="button-prev">
               <ChevronLeft className="w-4 h-4 mr-1" />
               Oldingi
             </Button>
             {soloIsLast ? (
-              <Button onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending} data-testid="button-submit">
+              <Button onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending} className="gradient-purple border-0 text-white" data-testid="button-submit">
                 <Send className="w-4 h-4 mr-2" />
                 {submitMutation.isPending ? "Yuborilmoqda..." : "Yakunlash"}
               </Button>
