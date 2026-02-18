@@ -35,6 +35,7 @@ import {
   Zap,
   Star,
   Target,
+  Clock,
 } from "lucide-react";
 
 const KAHOOT_COLORS = [
@@ -1138,10 +1139,10 @@ export default function QuizPlayPage() {
           <AnimatePresence mode="wait">
             <motion.div
               key={currentQuestion.id}
-              initial={{ opacity: 0, x: 60 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -60 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
               className="w-full max-w-2xl"
             >
               <div
@@ -1216,7 +1217,7 @@ export default function QuizPlayPage() {
                       {lastAnswerResult.isCorrect ? `To'g'ri! +${lastAnswerResult.points}` : "Noto'g'ri"}
                     </p>
                     {lastAnswerResult.answerOrder && (
-                      <p className="text-sm text-white/60 mt-1" data-testid="text-answer-order">
+                      <p className="text-base font-semibold text-amber-300 mt-2" data-testid="text-answer-order">
                         Siz {lastAnswerResult.answerOrder}-bo'lib javob berdingiz
                       </p>
                     )}
@@ -1225,6 +1226,12 @@ export default function QuizPlayPage() {
                         To'g'ri javob: {lastAnswerResult.correctAnswer}
                       </p>
                     )}
+                    <div className="mt-4 pt-3 border-t border-white/10">
+                      <p className="text-sm text-violet-300/70 flex items-center justify-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        Keyingi savolga o'tish uchun vaqt tugashini kuting
+                      </p>
+                    </div>
                   </div>
                 </motion.div>
               ) : (
@@ -1388,10 +1395,10 @@ export default function QuizPlayPage() {
           <AnimatePresence mode="wait">
             <motion.div
               key={currentIndex}
-              initial={{ opacity: 0, x: 60 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -60 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
               className="w-full max-w-2xl"
             >
               <div
