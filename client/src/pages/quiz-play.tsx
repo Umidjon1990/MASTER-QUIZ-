@@ -1273,7 +1273,7 @@ export default function QuizPlayPage() {
           <div className="sticky top-0 z-[60] bg-red-500 text-white text-center py-1.5 px-3 text-sm font-medium flex items-center justify-center gap-2" data-testid="banner-disconnected">
             <XCircle className="w-4 h-4" />
             Aloqa uzildi
-            <Button size="sm" variant="outline" className="ml-2 h-6 text-xs border-white/40 text-white" onClick={() => {
+            <Button size="sm" variant="outline" className="ml-2 text-xs border-white/40 text-white" onClick={() => {
               socketRef.current?.connect();
             }} data-testid="button-retry-connection">
               Qayta ulanish

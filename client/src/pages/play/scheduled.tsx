@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { io, Socket } from "socket.io-client";
-import { Clock, Users, BookOpen, Play, Loader2, CheckCircle, Zap } from "lucide-react";
+import { Clock, Users, BookOpen, Play, Loader2, CheckCircle, Zap, WifiOff } from "lucide-react";
 
 let socket: Socket | null = null;
 
@@ -43,6 +43,8 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
   const [roomCode, setRoomCode] = useState("");
   const [alreadyStartedRoomCode, setAlreadyStartedRoomCode] = useState("");
   const [alreadyStartedQuizId, setAlreadyStartedQuizId] = useState("");
+  const [connectionStatus, setConnectionStatus] = useState<"connected" | "reconnecting" | "disconnected">("connected");
+  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     const fetchUrl = mode === "code" && code
@@ -123,18 +125,39 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
     const s = io({
       transports: ["websocket", "polling"],
       reconnection: true,
-      reconnectionAttempts: 15,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 500,
-      reconnectionDelayMax: 3000,
+      reconnectionDelayMax: 5000,
       timeout: 10000,
     });
 
+    const joinLobby = () => {
+      s.emit("scheduled:join-lobby", { code: lobbyCode, playerName }, (res: any) => {
+        if (res?.success) {
+          setConnectionStatus("connected");
+          if (res.players) setJoinedPlayers(res.players);
+        }
+      });
+    };
+
     s.on("connect", () => {
-      s.emit("scheduled:join-lobby", { code: lobbyCode, playerName });
+      setConnectionStatus("connected");
+      joinLobby();
+    });
+
+    let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    s.on("disconnect", () => {
+      setConnectionStatus("reconnecting");
+      disconnectTimer = setTimeout(() => {
+        setConnectionStatus("disconnected");
+      }, 30000);
     });
 
     s.on("reconnect", () => {
-      s.emit("scheduled:join-lobby", { code: lobbyCode, playerName });
+      if (disconnectTimer) { clearTimeout(disconnectTimer); disconnectTimer = null; }
+      setConnectionStatus("connected");
+      joinLobby();
     });
 
     s.on("scheduled:lobby-update", (data: { players: string[] }) => {
@@ -150,10 +173,13 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
     });
 
     socket = s;
+    socketRef.current = s;
 
     return () => {
+      if (disconnectTimer) clearTimeout(disconnectTimer);
       s.disconnect();
       socket = null;
+      socketRef.current = null;
     };
   }, [isJoined, lobbyCode, playerName, navigate]);
 
@@ -394,6 +420,21 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
         ) : (
           <Card className="p-6">
             <div className="space-y-4">
+              {connectionStatus === "reconnecting" && (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400" data-testid="banner-lobby-reconnecting">
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                  <span className="text-sm font-medium">Qayta ulanmoqda...</span>
+                </div>
+              )}
+              {connectionStatus === "disconnected" && (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400" data-testid="banner-lobby-disconnected">
+                  <WifiOff className="w-4 h-4 shrink-0" />
+                  <span className="text-sm font-medium flex-1">Aloqa uzildi</span>
+                  <Button size="sm" variant="outline" onClick={() => socketRef.current?.connect()} data-testid="button-lobby-retry">
+                    Qayta ulanish
+                  </Button>
+                </div>
+              )}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <CheckCircle className="w-5 h-5 text-green-500" />

@@ -44,6 +44,7 @@ const scheduledLobbies = new Map<string, { players: Map<string, { socketId: stri
 const scheduledQuizRoomCodes = new Map<string, string>();
 
 const disconnectedPlayers = new Map<string, { roomId: string; playerId: string; timeout: ReturnType<typeof setTimeout> }>();
+const disconnectedScheduledPlayers = new Map<string, { code: string; name: string; timeout: ReturnType<typeof setTimeout> }>();
 const RECONNECT_GRACE_MS = 120_000;
 
 export function getScheduledQuizRoomCode(quizId: string): string | undefined {
@@ -562,6 +563,12 @@ async function checkScheduledQuizzes() {
       const lobby = scheduledLobbies.get(quiz.scheduledCode || "");
       if (lobby) {
         scheduledLobbies.delete(quiz.scheduledCode || "");
+      }
+      for (const [key, entry] of disconnectedScheduledPlayers.entries()) {
+        if (entry.code === quiz.scheduledCode) {
+          clearTimeout(entry.timeout);
+          disconnectedScheduledPlayers.delete(key);
+        }
       }
 
       setTimeout(() => {
@@ -1495,22 +1502,37 @@ export function setupWebSocket(httpServer: HttpServer) {
       }
     });
 
-    socket.on("scheduled:join-lobby", (data) => {
+    socket.on("scheduled:join-lobby", (data, callback) => {
       const { code, playerName } = data;
-      if (!code || !playerName) return;
+      if (!code || !playerName) return callback?.({ success: false, error: "Missing code or name" });
 
       socket.join(`scheduled:${code}`);
       socket.data.scheduledCode = code;
+      socket.data.scheduledPlayerName = playerName;
 
       let lobby = scheduledLobbies.get(code);
       if (!lobby) {
         lobby = { players: new Map() };
         scheduledLobbies.set(code, lobby);
       }
+
+      const dcKey = `scheduled:${code}:${playerName.toLowerCase()}`;
+      const dcEntry = disconnectedScheduledPlayers.get(dcKey);
+      if (dcEntry) {
+        clearTimeout(dcEntry.timeout);
+        disconnectedScheduledPlayers.delete(dcKey);
+        for (const [sid, p] of lobby.players.entries()) {
+          if (p.name.toLowerCase() === playerName.toLowerCase() && sid !== socket.id) {
+            lobby.players.delete(sid);
+          }
+        }
+      }
+
       lobby.players.set(socket.id, { socketId: socket.id, name: playerName });
 
       const playerNames = Array.from(lobby.players.values()).map(p => p.name);
       io.to(`scheduled:${code}`).emit("scheduled:lobby-update", { players: playerNames });
+      callback?.({ success: true, isRejoin: !!dcEntry, players: playerNames });
     });
 
     socket.on("lesson:chat-send", (data) => {
@@ -1559,13 +1581,63 @@ export function setupWebSocket(httpServer: HttpServer) {
         }
       }
       if (socket.data.scheduledCode) {
-        const lobby = scheduledLobbies.get(socket.data.scheduledCode);
-        if (lobby) {
-          lobby.players.delete(socket.id);
-          const playerNames = Array.from(lobby.players.values()).map(p => p.name);
-          io.to(`scheduled:${socket.data.scheduledCode}`).emit("scheduled:lobby-update", { players: playerNames });
-          if (lobby.players.size === 0) {
-            scheduledLobbies.delete(socket.data.scheduledCode);
+        const schCode = socket.data.scheduledCode;
+        const schName = socket.data.scheduledPlayerName;
+        const lobby = scheduledLobbies.get(schCode);
+        if (lobby && schName) {
+          const dcKey = `scheduled:${schCode}:${schName.toLowerCase()}`;
+          const existingDc = disconnectedScheduledPlayers.get(dcKey);
+          if (existingDc?.timeout) clearTimeout(existingDc.timeout);
+
+          const timeout = setTimeout(() => {
+            disconnectedScheduledPlayers.delete(dcKey);
+            const stillLobby = scheduledLobbies.get(schCode);
+            if (stillLobby) {
+              for (const [sid, p] of stillLobby.players.entries()) {
+                if (p.name.toLowerCase() === schName.toLowerCase()) {
+                  stillLobby.players.delete(sid);
+                }
+              }
+              const playerNames = Array.from(stillLobby.players.values()).map(p => p.name);
+              io.to(`scheduled:${schCode}`).emit("scheduled:lobby-update", { players: playerNames });
+              if (stillLobby.players.size === 0) {
+                scheduledLobbies.delete(schCode);
+              }
+            }
+          }, RECONNECT_GRACE_MS);
+          disconnectedScheduledPlayers.set(dcKey, { code: schCode, name: schName, timeout });
+          console.log(`Scheduled lobby player ${schName} disconnected, grace period ${RECONNECT_GRACE_MS / 1000}s`);
+        } else if (lobby) {
+          const playerEntry = lobby.players.get(socket.id);
+          const fallbackName = playerEntry?.name;
+          if (fallbackName) {
+            const dcKey = `scheduled:${schCode}:${fallbackName.toLowerCase()}`;
+            const existingDcFb = disconnectedScheduledPlayers.get(dcKey);
+            if (existingDcFb?.timeout) clearTimeout(existingDcFb.timeout);
+            const timeout = setTimeout(() => {
+              disconnectedScheduledPlayers.delete(dcKey);
+              const stillLobby = scheduledLobbies.get(schCode);
+              if (stillLobby) {
+                for (const [sid, p] of stillLobby.players.entries()) {
+                  if (p.name.toLowerCase() === fallbackName.toLowerCase()) {
+                    stillLobby.players.delete(sid);
+                  }
+                }
+                const playerNames = Array.from(stillLobby.players.values()).map(p => p.name);
+                io.to(`scheduled:${schCode}`).emit("scheduled:lobby-update", { players: playerNames });
+                if (stillLobby.players.size === 0) {
+                  scheduledLobbies.delete(schCode);
+                }
+              }
+            }, RECONNECT_GRACE_MS);
+            disconnectedScheduledPlayers.set(dcKey, { code: schCode, name: fallbackName, timeout });
+          } else {
+            lobby.players.delete(socket.id);
+            const playerNames = Array.from(lobby.players.values()).map(p => p.name);
+            io.to(`scheduled:${schCode}`).emit("scheduled:lobby-update", { players: playerNames });
+            if (lobby.players.size === 0) {
+              scheduledLobbies.delete(schCode);
+            }
           }
         }
       }
