@@ -558,7 +558,7 @@ export function setupWebSocket(httpServer: HttpServer) {
     path: "/socket.io",
   });
 
-  setInterval(checkScheduledQuizzes, 15000);
+  setInterval(checkScheduledQuizzes, 3000);
 
   io.on("connection", (socket) => {
     console.log("Client connected:", socket.id);

@@ -113,7 +113,7 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
         if (quizInfo) {
           navigate(`/quiz/play/${quizInfo.id}?joinCode=${data.roomCode}&autoName=${encodeURIComponent(playerName)}`);
         }
-      }, 2000);
+      }, 500);
     });
 
     socket = s;
