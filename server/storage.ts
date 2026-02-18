@@ -63,6 +63,7 @@ export interface IStorage {
   saveQuizResult(result: InsertQuizResult): Promise<QuizResult>;
   getResultsBySession(sessionId: string): Promise<QuizResult[]>;
   getResultsByUser(userId: string): Promise<QuizResult[]>;
+  getResultsByQuiz(quizId: string): Promise<QuizResult[]>;
 
   getDashboardStats(): Promise<{ totalUsers: number; totalQuizzes: number; totalSessions: number; totalPlays: number }>;
 
@@ -278,6 +279,10 @@ export class DatabaseStorage implements IStorage {
 
   async getResultsByUser(userId: string): Promise<QuizResult[]> {
     return db.select().from(quizResults).where(eq(quizResults.userId, userId)).orderBy(desc(quizResults.completedAt));
+  }
+
+  async getResultsByQuiz(quizId: string): Promise<QuizResult[]> {
+    return db.select().from(quizResults).where(eq(quizResults.quizId, quizId)).orderBy(quizResults.rank);
   }
 
   async getDashboardStats() {
