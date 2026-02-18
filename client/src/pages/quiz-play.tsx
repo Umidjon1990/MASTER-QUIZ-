@@ -204,7 +204,15 @@ export default function QuizPlayPage() {
 
   const connectSocket = useCallback(() => {
     if (socketRef.current?.connected) return socketRef.current;
-    const s = socketIO({ path: "/socket.io", transports: ["websocket", "polling"] });
+    const s = socketIO({
+      path: "/socket.io",
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 3000,
+      timeout: 10000,
+    });
     socketRef.current = s;
 
     s.on("public:player-joined", (data) => {
@@ -310,19 +318,34 @@ export default function QuizPlayPage() {
       setGameMode("multi");
       setConnecting(true);
       const s = connectSocket();
-      s.emit("public:join-room", { code: autoJoinCode, playerName: autoName }, (res: any) => {
-        setConnecting(false);
-        if (res.success) {
-          setRoomCode(autoJoinCode);
-          setRoomId(res.roomId);
-          setPlayerId(res.playerId);
-          setIsHost(false);
-          setPlayers(res.players);
-          setTotalQuestions(res.totalQuestions);
-          setStage("lobby");
-        } else {
-          toast({ title: res.error || "Qo'shilishda xatolik", variant: "destructive" });
-          setStage("mode-select");
+
+      const doJoin = () => {
+        s.emit("public:join-room", { code: autoJoinCode, playerName: autoName }, (res: any) => {
+          setConnecting(false);
+          if (res.success) {
+            setRoomCode(autoJoinCode);
+            setRoomId(res.roomId);
+            setPlayerId(res.playerId);
+            setIsHost(false);
+            setPlayers(res.players);
+            setTotalQuestions(res.totalQuestions);
+            setStage("lobby");
+          } else {
+            toast({ title: res.error || "Qo'shilishda xatolik", variant: "destructive" });
+            setStage("mode-select");
+          }
+        });
+      };
+
+      if (s.connected) {
+        doJoin();
+      } else {
+        s.once("connect", doJoin);
+      }
+
+      s.on("reconnect", () => {
+        if (roomId) {
+          s.emit("public:join-room", { code: autoJoinCode, playerName: autoName }, () => {});
         }
       });
     }
@@ -654,6 +677,35 @@ export default function QuizPlayPage() {
   }
 
   if (stage === "lobby") {
+    const isScheduledAutoJoin = !!(autoJoinCode && autoName);
+
+    if (isScheduledAutoJoin) {
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-indigo-950 via-violet-950 to-slate-950">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className="text-center space-y-5"
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+              className="w-16 h-16 mx-auto rounded-full border-4 border-violet-500/30 border-t-violet-400 flex items-center justify-center"
+            />
+            <h1 className="text-2xl font-bold text-white" data-testid="text-lobby-starting">{data.quiz.title}</h1>
+            <p className="text-violet-300 text-sm">Test boshlanmoqda...</p>
+            <div className="flex items-center justify-center gap-2">
+              <Badge variant="secondary" className="text-xs">
+                <Users className="w-3 h-3 mr-1" />
+                {players.length} ishtirokchi
+              </Badge>
+            </div>
+          </motion.div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted/30">
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
@@ -746,7 +798,7 @@ export default function QuizPlayPage() {
                   key={entry.playerId}
                   initial={{ opacity: 0, x: -30 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: entry.rank * 0.08, type: "spring", stiffness: 200 }}
+                  transition={{ delay: entry.rank * 0.04, type: "spring", stiffness: 250 }}
                   className={`flex items-center gap-3 p-3 rounded-xl ${
                     isMe ? "bg-primary/20 border border-primary/40 shadow-lg shadow-primary/10" : "bg-white/5 border border-white/10"
                   }`}
@@ -844,7 +896,7 @@ export default function QuizPlayPage() {
           <motion.div
             initial={{ scale: 0, rotate: -180 }}
             animate={{ scale: 1, rotate: 0 }}
-            transition={{ type: "spring", stiffness: 200, delay: 0.3 }}
+            transition={{ type: "spring", stiffness: 200, delay: 0.1 }}
           >
             <Trophy className="w-16 h-16 mx-auto text-yellow-400 drop-shadow-lg" />
           </motion.div>
@@ -863,7 +915,7 @@ export default function QuizPlayPage() {
                   key={entry.playerId}
                   initial={{ opacity: 0, y: 60 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 + i * 0.2, type: "spring", stiffness: 120 }}
+                  transition={{ delay: 0.2 + i * 0.1, type: "spring", stiffness: 150 }}
                   className={`flex-1 flex flex-col items-center ${i === 1 ? "order-first sm:order-none" : ""}`}
                   data-testid={`podium-entry-${entry.playerId}`}
                 >
@@ -875,7 +927,7 @@ export default function QuizPlayPage() {
                       <motion.div
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
-                        transition={{ delay: 1.2, type: "spring" }}
+                        transition={{ delay: 0.5, type: "spring" }}
                         className="absolute -top-3 -right-1"
                       >
                         <Crown className="w-6 h-6 text-yellow-400 drop-shadow" />
@@ -923,7 +975,7 @@ export default function QuizPlayPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1.2 }}
+            transition={{ delay: 0.5 }}
             className="w-full max-w-md mb-6"
           >
             <Card className="overflow-hidden">
@@ -942,7 +994,7 @@ export default function QuizPlayPage() {
                       key={entry.playerId}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 1.4 + i * 0.05 }}
+                      transition={{ delay: 0.6 + i * 0.03 }}
                       className={`flex items-center gap-3 p-3 ${isMe ? "bg-primary/5" : ""}`}
                       data-testid={`result-entry-${entry.playerId}`}
                     >
@@ -965,7 +1017,7 @@ export default function QuizPlayPage() {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1.5 }}
+          transition={{ delay: 0.7 }}
           className="flex gap-3 flex-wrap justify-center mb-8"
         >
           <Button variant="outline" onClick={handlePlayAgain} data-testid="button-play-again">
@@ -1102,7 +1154,7 @@ export default function QuizPlayPage() {
                 className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/10 p-6 mb-6 shadow-2xl"
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
+                transition={{ delay: 0.05 }}
               >
                 {currentQuestion.mediaUrl && (
                   <div className="rounded-lg overflow-hidden mb-4">
@@ -1120,7 +1172,7 @@ export default function QuizPlayPage() {
                   data-testid="text-question"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
+                  transition={{ delay: 0.1 }}
                 >
                   {currentQuestion.questionText}
                 </motion.p>
@@ -1180,7 +1232,7 @@ export default function QuizPlayPage() {
                       className={`text-2xl font-bold mt-3 ${lastAnswerResult.isCorrect ? "text-emerald-300" : "text-red-300"}`}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.3 }}
+                      transition={{ delay: 0.15 }}
                     >
                       {lastAnswerResult.isCorrect ? `To'g'ri! +${lastAnswerResult.points}` : "Noto'g'ri"}
                     </motion.p>
@@ -1189,7 +1241,7 @@ export default function QuizPlayPage() {
                         className="text-sm text-white/60 mt-1"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        transition={{ delay: 0.5 }}
+                        transition={{ delay: 0.2 }}
                         data-testid="text-answer-order"
                       >
                         Siz {lastAnswerResult.answerOrder}-bo'lib javob berdingiz
@@ -1201,7 +1253,7 @@ export default function QuizPlayPage() {
                         dir="auto"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        transition={{ delay: 0.5 }}
+                        transition={{ delay: 0.2 }}
                       >
                         To'g'ri javob: {lastAnswerResult.correctAnswer}
                       </motion.p>
@@ -1220,7 +1272,7 @@ export default function QuizPlayPage() {
                             key={opt}
                             initial={{ opacity: 0, y: 30 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.3 + i * 0.1, type: "spring", stiffness: 200 }}
+                            transition={{ delay: 0.1 + i * 0.05, type: "spring", stiffness: 300 }}
                             whileTap={{ scale: 0.95 }}
                             onClick={() => handleMultiAnswer(currentQuestion.id, opt)}
                             disabled={hasAnswered}
@@ -1239,7 +1291,7 @@ export default function QuizPlayPage() {
                       className="space-y-3"
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.3 }}
+                      transition={{ delay: 0.15 }}
                     >
                       <Input
                         placeholder="Javobingizni yozing..."
@@ -1276,7 +1328,7 @@ export default function QuizPlayPage() {
                             key={optIdx}
                             initial={{ opacity: 0, y: 40, scale: 0.8 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
-                            transition={{ delay: 0.3 + optIdx * 0.1, type: "spring", stiffness: 200, damping: 20 }}
+                            transition={{ delay: 0.1 + optIdx * 0.05, type: "spring", stiffness: 300, damping: 20 }}
                             whileTap={{ scale: 0.95 }}
                             onClick={() => handleMultiAnswer(currentQuestion.id, opt)}
                             disabled={hasAnswered && currentQuestion.type !== "multiple_select"}
@@ -1308,7 +1360,7 @@ export default function QuizPlayPage() {
                         <motion.div
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          transition={{ delay: 0.6 }}
+                          transition={{ delay: 0.25 }}
                           className="sm:col-span-2"
                         >
                           <Button
@@ -1382,7 +1434,7 @@ export default function QuizPlayPage() {
                 className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/10 p-6 mb-6 shadow-2xl"
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
+                transition={{ delay: 0.05 }}
               >
                 {soloCurrentQuestion.mediaUrl && (
                   <div className="rounded-lg overflow-hidden mb-4">
@@ -1400,7 +1452,7 @@ export default function QuizPlayPage() {
                   data-testid="text-question"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
+                  transition={{ delay: 0.1 }}
                 >
                   {soloCurrentQuestion.questionText}
                 </motion.p>
@@ -1421,7 +1473,7 @@ export default function QuizPlayPage() {
                           key={opt}
                           initial={{ opacity: 0, y: 30 }}
                           animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.3 + i * 0.1, type: "spring", stiffness: 200 }}
+                          transition={{ delay: 0.1 + i * 0.05, type: "spring", stiffness: 300 }}
                           whileTap={{ scale: 0.95 }}
                           onClick={() => handleSoloAnswer(soloCurrentQuestion.id, opt)}
                           className={`relative rounded-xl p-6 bg-gradient-to-br ${color.bg} ${color.text} font-bold text-lg shadow-lg transition-all ${
@@ -1438,7 +1490,7 @@ export default function QuizPlayPage() {
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
+                    transition={{ delay: 0.1 }}
                   >
                     <Input
                       placeholder="Javobingizni yozing..."
@@ -1461,7 +1513,7 @@ export default function QuizPlayPage() {
                           key={optIdx}
                           initial={{ opacity: 0, y: 40, scale: 0.8 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
-                          transition={{ delay: 0.3 + optIdx * 0.1, type: "spring", stiffness: 200, damping: 20 }}
+                          transition={{ delay: 0.1 + optIdx * 0.05, type: "spring", stiffness: 300, damping: 20 }}
                           whileTap={{ scale: 0.95 }}
                           onClick={() => handleSoloAnswer(soloCurrentQuestion.id, opt)}
                           className={`relative rounded-xl p-4 sm:p-5 bg-gradient-to-br ${color.bg} ${color.text} text-left shadow-lg transition-all ${

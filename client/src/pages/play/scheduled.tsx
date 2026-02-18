@@ -96,9 +96,18 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
 
     const s = io({
       transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: 15,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 3000,
+      timeout: 10000,
     });
 
     s.on("connect", () => {
+      s.emit("scheduled:join-lobby", { code: lobbyCode, playerName });
+    });
+
+    s.on("reconnect", () => {
       s.emit("scheduled:join-lobby", { code: lobbyCode, playerName });
     });
 

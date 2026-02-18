@@ -545,7 +545,7 @@ async function checkScheduledQuizzes() {
         });
 
         sendPublicQuestion(roomId);
-      }, 15000);
+      }, 3000);
     }
   } catch (err) {
     console.error("Scheduler error:", err);
