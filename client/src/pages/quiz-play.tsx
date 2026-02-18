@@ -302,7 +302,17 @@ export default function QuizPlayPage() {
         setIsHost(false);
         setPlayers(res.players);
         setTotalQuestions(res.totalQuestions);
-        setStage("lobby");
+        if (res.isRejoin) {
+          setMyScore(res.currentScore || 0);
+        }
+        if (res.alreadyAnsweredCurrent) {
+          setHasAnswered(true);
+        }
+        if (res.isLateJoin) {
+          setStage("playing");
+        } else {
+          setStage("lobby");
+        }
       } else {
         toast({ title: res.error || "Qo'shilishda xatolik", variant: "destructive" });
       }
@@ -326,6 +336,12 @@ export default function QuizPlayPage() {
             setIsHost(false);
             setPlayers(res.players);
             setTotalQuestions(res.totalQuestions);
+            if (res.isRejoin) {
+              setMyScore(res.currentScore || 0);
+            }
+            if (res.alreadyAnsweredCurrent) {
+              setHasAnswered(true);
+            }
             if (res.isLateJoin) {
               setStage("playing");
             } else {

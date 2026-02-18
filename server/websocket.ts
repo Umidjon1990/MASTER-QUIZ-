@@ -1156,16 +1156,28 @@ export function setupWebSocket(httpServer: HttpServer) {
         const isLateJoin = room.status === "playing";
         if (room.status !== "waiting" && !isLateJoin) return callback?.({ success: false, error: "O'yin allaqachon tugagan" });
 
-        const playerId = `p_${socket.id}_${Date.now()}`;
+        let playerId: string;
+        let isRejoin = false;
 
-        room.players.set(playerId, {
-          socketId: socket.id,
-          name: playerName,
-          score: 0,
-          correctAnswers: 0,
-          totalAnswered: 0,
-          playerId,
-        });
+        const existingPlayer = Array.from(room.players.values()).find(
+          p => p.name.toLowerCase().trim() === playerName.toLowerCase().trim()
+        );
+
+        if (existingPlayer) {
+          playerId = existingPlayer.playerId;
+          existingPlayer.socketId = socket.id;
+          isRejoin = true;
+        } else {
+          playerId = `p_${socket.id}_${Date.now()}`;
+          room.players.set(playerId, {
+            socketId: socket.id,
+            name: playerName,
+            score: 0,
+            correctAnswers: 0,
+            totalAnswered: 0,
+            playerId,
+          });
+        }
 
         socket.join(`pubroom:${roomId}`);
         socket.data.publicRoomId = roomId;
@@ -1174,12 +1186,16 @@ export function setupWebSocket(httpServer: HttpServer) {
 
         const playerList = Array.from(room.players.values()).map(p => ({ playerId: p.playerId, name: p.name }));
 
-        io.to(`pubroom:${roomId}`).emit("public:player-joined", {
-          playerId,
-          name: playerName,
-          players: playerList,
-          count: room.players.size,
-        });
+        if (!isRejoin) {
+          io.to(`pubroom:${roomId}`).emit("public:player-joined", {
+            playerId,
+            name: playerName,
+            players: playerList,
+            count: room.players.size,
+          });
+        }
+
+        const alreadyAnsweredCurrent = room.answeredThisQuestion.has(playerId);
 
         callback?.({
           success: true,
@@ -1188,10 +1204,14 @@ export function setupWebSocket(httpServer: HttpServer) {
           quizTitle: room.quiz.title,
           totalQuestions: room.questions.length,
           players: playerList,
-          isLateJoin,
+          isLateJoin: isLateJoin || isRejoin,
+          isRejoin,
+          currentScore: existingPlayer ? existingPlayer.score : 0,
+          currentCorrect: existingPlayer ? existingPlayer.correctAnswers : 0,
+          alreadyAnsweredCurrent,
         });
 
-        if (isLateJoin && room.currentQuestionIndex >= 0) {
+        if ((isLateJoin || isRejoin) && room.currentQuestionIndex >= 0) {
           const q = room.questions[room.currentQuestionIndex];
           if (q) {
             const timeLimit = q.timeLimit || 30;
