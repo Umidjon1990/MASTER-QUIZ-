@@ -1,0 +1,107 @@
+ernalPosition: undefined,
+}
+    at /app/dist/index.cjs:58:13356
+  internalQuery: undefined,
+  where: undefined,
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+  schema: undefined,
+    at async /app/dist/index.cjs:58:28733
+  table: undefined,
+    at async Timeout.ioe [as _onTimeout] (/app/dist/index.cjs:218:2555) {
+  column: undefined,
+  length: 107,
+  dataType: undefined,
+  severity: 'ERROR',
+  constraint: undefined,
+  code: '42P01',
+  file: 'parse_relation.c',
+  detail: undefined,
+  hint: undefined,
+  position: '418',
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '1449',
+  routine: 'parserOpenTable'
+Scheduler error: error: relation "quizzes" does not exist
+}
+    at /app/dist/index.cjs:58:13356
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async /app/dist/index.cjs:58:28733
+    at async Timeout.ioe [as _onTimeout] (/app/dist/index.cjs:218:2555) {
+  length: 107,
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '418',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  column: undefined,
+  dataType: undefined,
+Scheduler error: error: relation "quizzes" does not exist
+  constraint: undefined,
+    at /app/dist/index.cjs:58:13356
+  file: 'parse_relation.c',
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+  line: '1449',
+    at async /app/dist/index.cjs:58:28733
+  routine: 'parserOpenTable'
+    at async Timeout.ioe [as _onTimeout] (/app/dist/index.cjs:218:2555) {
+  length: 107,
+}
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+  position: '418',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+Scheduler error: error: relation "quizzes" does not exist
+    at /app/dist/index.cjs:58:13356
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async /app/dist/index.cjs:58:28733
+    at async Timeout.ioe [as _onTimeout] (/app/dist/index.cjs:218:2555) {
+  column: undefined,
+  dataType: undefined,
+  length: 107,
+  constraint: undefined,
+  file: 'parse_relation.c',
+  line: '1449',
+  routine: 'parserOpenTable'
+  severity: 'ERROR',
+  code: '42P01',
+  detail: undefined,
+  hint: undefined,
+}
+  position: '418',
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+}
+Scheduler error: error: relation "quizzes" does not exist
+    at /app/dist/index.cjs:58:13356
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+  column: undefined,
+    at async /app/dist/index.cjs:58:28733
+    at async Timeout.ioe [as _onTimeout] (/app/dist/index.cjs:218:2555) {
+  dataType: undefined,
+  length: 107,
+  severity: 'ERROR',
+  constraint: undefined,
+  code: '42P01',
+  file: 'parse_relation.c',
+  detail: undefined,
+  hint: undefined,
+  line: '1449',
+  position: '418',
+  routine: 'parserOpenTable'
