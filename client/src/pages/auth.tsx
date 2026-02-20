@@ -53,15 +53,24 @@ export default function AuthPage() {
       }
 
       await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      const profileRes = await fetch("/api/profile", { credentials: "include" });
-      const profileData = await profileRes.json();
+      await queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
       toast({ title: mode === "login" ? "Muvaffaqiyatli kirdingiz!" : "Ro'yxatdan o'tdingiz!" });
-      if (profileData?.role === "admin") {
-        navigate("/admin");
-      } else if (profileData?.role === "teacher") {
-        navigate("/teacher");
-      } else {
-        navigate("/student");
+      try {
+        const profileRes = await fetch("/api/profile", { credentials: "include" });
+        if (profileRes.ok) {
+          const profileData = await profileRes.json();
+          if (profileData?.role === "admin") {
+            navigate("/admin");
+          } else if (profileData?.role === "teacher") {
+            navigate("/teacher");
+          } else {
+            navigate("/student");
+          }
+        } else {
+          navigate("/dashboard");
+        }
+      } catch {
+        navigate("/dashboard");
       }
     } catch {
       toast({ title: "Xatolik yuz berdi", variant: "destructive" });
