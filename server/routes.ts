@@ -24,6 +24,29 @@ export async function registerRoutes(
   registerAuthRoutes(app);
   registerObjectStorageRoutes(app);
 
+  app.post("/api/setup-admin", async (req: any, res) => {
+    try {
+      const { email } = req.body;
+      const allProfiles = await storage.getAllUserProfiles();
+      const hasAdmin = allProfiles.some((p: any) => p.role === "admin");
+      if (hasAdmin) {
+        return res.status(403).json({ message: "Admin already exists" });
+      }
+      const user = await authStorage.getUserByEmail(email);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const existing = await storage.getUserProfile(user.id);
+      if (existing) {
+        await storage.updateUserProfile(user.id, { role: "admin", plan: "premium", quizLimit: 999 });
+      } else {
+        await storage.createUserProfile({ userId: user.id, role: "admin", displayName: email, plan: "premium", quizLimit: 999 });
+      }
+      res.json({ success: true, message: "Admin created" });
+    } catch (error) {
+      console.error("Setup admin error:", error);
+      res.status(500).json({ message: "Error" });
+    }
+  });
+
   const requireAuth = isAuthenticated;
 
   const requireRole = (roles: string[]) => {
