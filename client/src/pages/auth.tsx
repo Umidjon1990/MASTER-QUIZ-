@@ -18,6 +18,7 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [role, setRole] = useState<"student" | "teacher">("teacher");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const [, navigate] = useLocation();
@@ -37,6 +38,7 @@ export default function AuthPage() {
       if (mode === "register") {
         body.firstName = firstName;
         body.lastName = lastName;
+        body.role = role;
       }
 
       const res = await fetch(endpoint, {
@@ -121,30 +123,53 @@ export default function AuthPage() {
               className="space-y-4"
             >
               {mode === "register" && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Ism</Label>
-                    <div className="relative">
-                      <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Ism</Label>
+                      <div className="relative">
+                        <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={firstName}
+                          onChange={(e) => setFirstName(e.target.value)}
+                          placeholder="Ism"
+                          className="pl-9"
+                          data-testid="input-first-name"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Familiya</Label>
                       <Input
-                        value={firstName}
-                        onChange={(e) => setFirstName(e.target.value)}
-                        placeholder="Ism"
-                        className="pl-9"
-                        data-testid="input-first-name"
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                        placeholder="Familiya"
+                        data-testid="input-last-name"
                       />
                     </div>
                   </div>
                   <div>
-                    <Label>Familiya</Label>
-                    <Input
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      placeholder="Familiya"
-                      data-testid="input-last-name"
-                    />
+                    <Label>Rol</Label>
+                    <div className="flex rounded-md bg-muted p-1 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => setRole("teacher")}
+                        className={`flex-1 py-2 text-sm font-medium rounded-sm transition-colors ${role === "teacher" ? "bg-background shadow-sm" : "text-muted-foreground"}`}
+                        data-testid="role-teacher"
+                      >
+                        O'qituvchi
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRole("student")}
+                        className={`flex-1 py-2 text-sm font-medium rounded-sm transition-colors ${role === "student" ? "bg-background shadow-sm" : "text-muted-foreground"}`}
+                        data-testid="role-student"
+                      >
+                        O'quvchi
+                      </button>
+                    </div>
                   </div>
-                </div>
+                </>
               )}
 
               <div>

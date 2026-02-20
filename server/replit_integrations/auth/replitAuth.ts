@@ -23,7 +23,8 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" as const : "lax" as const,
       maxAge: sessionTtl,
     },
   });
@@ -35,7 +36,7 @@ export async function setupAuth(app: Express) {
 
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, firstName, lastName } = req.body;
+      const { email, password, firstName, lastName, role } = req.body;
       if (!email || !password) {
         return res.status(400).json({ message: "Email va parol kerak" });
       }
@@ -51,6 +52,22 @@ export async function setupAuth(app: Express) {
         password: hashedPassword,
         firstName: firstName || null,
         lastName: lastName || null,
+      });
+
+      const validRoles = ["student", "teacher"];
+      const selectedRole = validRoles.includes(role) ? role : "student";
+
+      const { sql } = await import("drizzle-orm");
+      const [existingUsersCount] = await db.select({ count: sql<number>`count(*)` }).from(userProfiles);
+      const isFirstUser = Number(existingUsersCount.count) === 0;
+      const finalRole = isFirstUser ? "admin" : selectedRole;
+
+      await db.insert(userProfiles).values({
+        userId: user.id,
+        role: finalRole,
+        displayName: `${firstName || ""} ${lastName || ""}`.trim() || email,
+        plan: finalRole === "admin" ? "premium" : "free",
+        quizLimit: finalRole === "admin" ? 999 : finalRole === "teacher" ? 20 : 5,
       });
 
       (req.session as any).userId = user.id;
