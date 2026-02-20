@@ -281,6 +281,9 @@ export default function ClassroomQuizPage() {
   const [playerStatuses, setPlayerStatuses] = useState<Record<string, "correct" | "wrong" | "answered" | "idle">>({});
   const reconnectInfoRef = useRef<{ code: string; playerName: string; playerId: string } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const disconnectedSinceRef = useRef<number | null>(null);
+  const [showConnectionWarning, setShowConnectionWarning] = useState(false);
+  const connectionWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data, isLoading } = useQuery<QuizData>({
     queryKey: ["/api/quizzes", id, "play"],
@@ -313,15 +316,47 @@ export default function ClassroomQuizPage() {
     if (socketRef.current?.connected) return socketRef.current;
 
     const s = socketIO({
+      path: "/socket.io",
       transports: ["websocket", "polling"],
       reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 10,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 5000,
+      timeout: 15000,
+      forceNew: true,
     });
 
     socketRef.current = s;
 
+    s.on("connect", () => {
+      disconnectedSinceRef.current = null;
+      setShowConnectionWarning(false);
+      if (connectionWarningTimerRef.current) {
+        clearTimeout(connectionWarningTimerRef.current);
+        connectionWarningTimerRef.current = null;
+      }
+    });
+
+    s.on("disconnect", (reason) => {
+      if (reason !== "io client disconnect") {
+        disconnectedSinceRef.current = Date.now();
+        connectionWarningTimerRef.current = setTimeout(() => {
+          if (disconnectedSinceRef.current) {
+            setShowConnectionWarning(true);
+          }
+        }, 60000);
+      }
+    });
+
+    s.on("reconnect_attempt", () => {});
+
     s.on("reconnect", () => {
+      disconnectedSinceRef.current = null;
+      setShowConnectionWarning(false);
+      if (connectionWarningTimerRef.current) {
+        clearTimeout(connectionWarningTimerRef.current);
+        connectionWarningTimerRef.current = null;
+      }
       const info = reconnectInfoRef.current;
       if (info) {
         const storedToken = localStorage.getItem(`rejoin_${info.code}_${info.playerName.trim().toLowerCase()}`);
@@ -438,6 +473,9 @@ export default function ClassroomQuizPage() {
 
   useEffect(() => {
     return () => {
+      if (connectionWarningTimerRef.current) {
+        clearTimeout(connectionWarningTimerRef.current);
+      }
       socketRef.current?.disconnect();
     };
   }, []);
@@ -597,6 +635,12 @@ export default function ClassroomQuizPage() {
           backgroundImage: "repeating-linear-gradient(90deg, transparent, transparent 80px, rgba(255,255,255,0.03) 80px, rgba(255,255,255,0.03) 81px), repeating-linear-gradient(0deg, transparent, transparent 80px, rgba(255,255,255,0.03) 80px, rgba(255,255,255,0.03) 81px)",
         }}
       />
+
+      {showConnectionWarning && (
+        <div className="fixed top-0 left-0 right-0 z-[60] bg-amber-500/90 text-white text-center py-1 px-3 text-xs font-medium" data-testid="banner-connection-warning">
+          Internet aloqasini tekshiring
+        </div>
+      )}
 
       <AnimatePresence mode="wait">
         {stage === "name" && (

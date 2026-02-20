@@ -240,7 +240,7 @@ const scheduledQuizRoomCodes = new Map<string, string>();
 
 const disconnectedPlayers = new Map<string, { roomId: string; playerId: string; timeout: ReturnType<typeof setTimeout> }>();
 const disconnectedScheduledPlayers = new Map<string, { code: string; name: string; timeout: ReturnType<typeof setTimeout> }>();
-const RECONNECT_GRACE_MS = 120_000;
+const RECONNECT_GRACE_MS = 180_000;
 
 export function getScheduledQuizRoomCode(quizId: string): string | undefined {
   return scheduledQuizRoomCodes.get(quizId);

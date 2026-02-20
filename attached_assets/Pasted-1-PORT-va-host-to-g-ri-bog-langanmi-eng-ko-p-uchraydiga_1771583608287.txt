@@ -1,0 +1,80 @@
+1) PORT va host to‘g‘ri bog‘langanmi? (eng ko‘p uchraydigan sabab)
+
+Replit web serveringiz 0.0.0.0 ga va PORT env ga bog‘lanishi kerak.
+
+Node.js / Express bo‘lsa:
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => console.log('Listening on', PORT));
+Python Flask bo‘lsa:
+app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 3000)))
+
+✅ Agar siz kodda localhost yoki 127.0.0.1 qilib qo‘ygan bo‘lsangiz, tashqaridan ulanish uzilib qoladi.
+
+2) Replit “sleep” bo‘lyaptimi? (jonli quizda ko‘p bo‘ladi)
+
+Replit free rejimda repl bir muddat ishlamasa “uxlab” qoladi — natijada client “server uzildi” deydi.
+
+Yechimlar:
+
+Replitda Deployments (Autoscale/Reserved VM) orqali deploy qiling (barqarorroq).
+
+Yoki “Always On”/uptime yechimlari (hisobingizga bog‘liq).
+
+O‘zingiz “keep-alive ping” qo‘shing: front-end har 30–60 soniyada /health endpointga so‘rov yuborsin.
+
+Misol:
+
+Backend: GET /health -> 200 OK
+
+Frontend: setInterval(() => fetch('/health'), 45000)
+
+3) WebSocket / Socket.io ulanishi uzilyaptimi? (jonli quiz real-time bo‘lgani uchun)
+
+Agar siz Socket.io ishlatayotgan bo‘lsangiz:
+
+ping timeout juda qisqa bo‘lsa uziladi
+
+Network o‘zgarishi (wifi/telefon) ulanishni uzadi
+
+Replit proxy ba’zan WebSocketni “idle” deb o‘chiradi
+
+Socket.io server tomonda tavsiya:
+const io = new Server(httpServer, {
+  cors: { origin: "*" },
+  pingInterval: 25000,
+  pingTimeout: 60000,
+});
+Client tomonda reconnect:
+const socket = io({
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  transports: ["websocket", "polling"],
+});
+
+✅ “reconnect” bo‘lmasa, 1 marta uzilganda hammasi to‘xtab qoladi.
+
+4) “Secrets / env” yo‘qolgan yoki DB ulanishi uzilgan bo‘lishi mumkin
+
+Agar quiz DB (Firebase/Mongo/Postgres) ga ulangan bo‘lsa:
+
+DB parol/URL “Secrets”da turishi kerak
+
+Ulanish xatosi bo‘lsa server crash qiladi → “server uzildi”
+
+Replit Console/Logs da error chiqadi (masalan ECONNRESET, MongoNetworkError, FATAL, UnhandledPromiseRejection).
+
+5) Server crash bo‘layaptimi? (xatodan keyin process o‘chadi)
+
+Eng tez tekshiruv:
+
+Replit → Console → xatolik logini ko‘ring
+
+“Run” bosilganda server ishga tushyaptimi?
+
+Crash bo‘lsa: try/catch, global error handler qo‘shing
+
+Node uchun:
+
+process.on("unhandledRejection", (err) => console.error("unhandledRejection", err));
+process.on("uncaughtException", (err) => console.error("uncaughtException", err));

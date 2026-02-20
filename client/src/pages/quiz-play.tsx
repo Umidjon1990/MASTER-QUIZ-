@@ -157,9 +157,11 @@ export default function QuizPlayPage() {
   const [isLastQuestion, setIsLastQuestion] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [autoJoined, setAutoJoined] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<"connected" | "reconnecting" | "disconnected">("connected");
   const reconnectInfoRef = useRef<{ code: string; playerName: string; playerId: string } | null>(null);
   const stateRecoveryRef = useRef(false);
+  const disconnectedSinceRef = useRef<number | null>(null);
+  const [showConnectionWarning, setShowConnectionWarning] = useState(false);
+  const connectionWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data, isLoading, error } = useQuery<QuizData>({
     queryKey: ["/api/quizzes", id, "play"],
@@ -195,6 +197,9 @@ export default function QuizPlayPage() {
 
   useEffect(() => {
     return () => {
+      if (connectionWarningTimerRef.current) {
+        clearTimeout(connectionWarningTimerRef.current);
+      }
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
@@ -231,7 +236,6 @@ export default function QuizPlayPage() {
         if (res.players) setPlayers(res.players);
         setStage("lobby");
       }
-      setConnectionStatus("connected");
     });
   }, []);
 
@@ -256,25 +260,34 @@ export default function QuizPlayPage() {
     socketRef.current = s;
 
     s.on("connect", () => {
-      console.log("[Socket] Connected:", s.id);
-      setConnectionStatus("connected");
-    });
-
-    s.on("disconnect", (reason) => {
-      console.log("[Socket] Disconnected:", reason);
-      if (reason !== "io client disconnect") {
-        setConnectionStatus("reconnecting");
+      disconnectedSinceRef.current = null;
+      setShowConnectionWarning(false);
+      if (connectionWarningTimerRef.current) {
+        clearTimeout(connectionWarningTimerRef.current);
+        connectionWarningTimerRef.current = null;
       }
     });
 
-    s.on("reconnect_attempt", (attempt) => {
-      console.log("[Socket] Reconnect attempt:", attempt);
-      setConnectionStatus("reconnecting");
+    s.on("disconnect", (reason) => {
+      if (reason !== "io client disconnect") {
+        disconnectedSinceRef.current = Date.now();
+        connectionWarningTimerRef.current = setTimeout(() => {
+          if (disconnectedSinceRef.current) {
+            setShowConnectionWarning(true);
+          }
+        }, 60000);
+      }
     });
 
+    s.on("reconnect_attempt", () => {});
+
     s.on("reconnect", () => {
-      console.log("[Socket] Reconnected, recovering state...");
-      setConnectionStatus("reconnecting");
+      disconnectedSinceRef.current = null;
+      setShowConnectionWarning(false);
+      if (connectionWarningTimerRef.current) {
+        clearTimeout(connectionWarningTimerRef.current);
+        connectionWarningTimerRef.current = null;
+      }
       const info = reconnectInfoRef.current;
       if (info) {
         const storedToken = localStorage.getItem(`rejoin_${info.code}_${info.playerName.trim().toLowerCase()}`);
@@ -293,9 +306,6 @@ export default function QuizPlayPage() {
             }
             setMyScore(res.currentScore || 0);
             setTimeout(() => recoverGameState(s), 300);
-          } else {
-            console.log("[Socket] Rejoin failed:", res?.error);
-            setConnectionStatus("disconnected");
           }
         });
       }
@@ -323,7 +333,6 @@ export default function QuizPlayPage() {
       setLastAnswerResult(null);
       setAnsweredCount(0);
       setStage("playing");
-      setConnectionStatus("connected");
     });
 
     s.on("public:answer-result", (data) => {
@@ -666,7 +675,8 @@ export default function QuizPlayPage() {
     setJoinCode("");
     setHasAnswered(false);
     setCurrentQuestion(null);
-    setConnectionStatus("connected");
+    setShowConnectionWarning(false);
+    disconnectedSinceRef.current = null;
     reconnectInfoRef.current = null;
     if (socketRef.current) {
       socketRef.current.disconnect();
@@ -897,6 +907,12 @@ export default function QuizPlayPage() {
     );
   }
 
+  const connectionWarningBanner = showConnectionWarning ? (
+    <div className="sticky top-0 z-[60] bg-amber-500/90 text-white text-center py-1 px-3 text-xs font-medium flex items-center justify-center gap-2" data-testid="banner-connection-warning">
+      Internet aloqasini tekshiring
+    </div>
+  ) : null;
+
   if (stage === "lobby") {
     const isScheduledAutoJoin = !!(autoJoinCode && autoName);
 
@@ -929,6 +945,7 @@ export default function QuizPlayPage() {
 
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted/30">
+        {connectionWarningBanner}
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
           <Card className="p-8 space-y-6">
             <div className="text-center space-y-3">
@@ -997,12 +1014,7 @@ export default function QuizPlayPage() {
   if (stage === "leaderboard") {
     return (
       <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-950 via-violet-950 to-slate-950">
-        {connectionStatus === "reconnecting" && (
-          <div className="sticky top-0 z-[60] bg-amber-500 text-white text-center py-1.5 px-3 text-sm font-medium flex items-center justify-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Qayta ulanmoqda...
-          </div>
-        )}
+        {connectionWarningBanner}
         <div className="flex-1 flex items-center justify-center p-4">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-lg">
           <div className="text-center mb-6">
@@ -1088,6 +1100,7 @@ export default function QuizPlayPage() {
 
     return (
       <div className="min-h-screen flex flex-col items-center justify-start p-4 bg-gradient-to-b from-violet-950 via-indigo-950 to-background overflow-y-auto">
+        {connectionWarningBanner}
         {myRank <= 3 && myRank > 0 && (
           <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
             {Array.from({ length: 50 }).map((_, i) => (
@@ -1337,23 +1350,7 @@ export default function QuizPlayPage() {
 
     return (
       <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-950 via-violet-950 to-slate-950 overflow-hidden">
-        {connectionStatus === "reconnecting" && (
-          <div className="sticky top-0 z-[60] bg-amber-500 text-white text-center py-1.5 px-3 text-sm font-medium flex items-center justify-center gap-2" data-testid="banner-reconnecting">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Qayta ulanmoqda...
-          </div>
-        )}
-        {connectionStatus === "disconnected" && (
-          <div className="sticky top-0 z-[60] bg-red-500 text-white text-center py-1.5 px-3 text-sm font-medium flex items-center justify-center gap-2" data-testid="banner-disconnected">
-            <XCircle className="w-4 h-4" />
-            Aloqa uzildi
-            <Button size="sm" variant="outline" className="ml-2 text-xs border-white/40 text-white" onClick={() => {
-              socketRef.current?.connect();
-            }} data-testid="button-retry-connection">
-              Qayta ulanish
-            </Button>
-          </div>
-        )}
+        {connectionWarningBanner}
         <div className="sticky top-0 z-50 bg-black/30 backdrop-blur-xl border-b border-white/10 p-3">
           <div className="max-w-2xl mx-auto flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 min-w-0">
