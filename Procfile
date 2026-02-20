@@ -1,1 +1,1 @@
-web: npm run start
+web: npx drizzle-kit push && npm run start
