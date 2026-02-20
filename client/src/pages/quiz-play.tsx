@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
@@ -48,7 +48,7 @@ const KAHOOT_COLORS = [
   { bg: "from-orange-500 to-red-500", border: "border-orange-400", text: "text-white", icon: Zap },
 ];
 
-function CircularTimer({ timeLeft, totalTime }: { timeLeft: number; totalTime: number }) {
+const CircularTimer = memo(function CircularTimer({ timeLeft, totalTime }: { timeLeft: number; totalTime: number }) {
   const radius = 28;
   const circumference = 2 * Math.PI * radius;
   const progress = totalTime > 0 ? timeLeft / totalTime : 0;
@@ -75,7 +75,7 @@ function CircularTimer({ timeLeft, totalTime }: { timeLeft: number; totalTime: n
       </span>
     </div>
   );
-}
+});
 
 interface QuizQuestion {
   id: string;
@@ -134,6 +134,8 @@ export default function QuizPlayPage() {
   const [playerName, setPlayerName] = useState(autoName);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
+  const answersRef = useRef(answers);
+  answersRef.current = answers;
   const [timeLeft, setTimeLeft] = useState(0);
   const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -535,17 +537,21 @@ export default function QuizPlayPage() {
     socketRef.current?.emit("public:next-question", {});
   };
 
+  const timerActiveRef = useRef(false);
   useEffect(() => {
-    if (stage !== "playing" || !currentQuestion || gameMode !== "multi") return;
-    if (timeLeft <= 0) return;
+    if (stage !== "playing" || !currentQuestion || gameMode !== "multi") {
+      timerActiveRef.current = false;
+      return;
+    }
+    timerActiveRef.current = true;
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
-        if (prev <= 1) { clearInterval(timer); return 0; }
+        if (prev <= 1) { clearInterval(timer); timerActiveRef.current = false; return 0; }
         return prev - 1;
       });
     }, 1000);
-    return () => clearInterval(timer);
-  }, [stage, timeLeft > 0, currentQuestion, gameMode]);
+    return () => { clearInterval(timer); timerActiveRef.current = false; };
+  }, [stage, currentQuestion?.id, gameMode]);
 
   useEffect(() => {
     if (gameMode !== "multi" || !socketRef.current || !reconnectInfoRef.current) return;
@@ -560,8 +566,8 @@ export default function QuizPlayPage() {
         if (!res?.success) {
           if (isRejoiningRef.current) return;
           roomLostCountRef.current++;
-          if (roomLostCountRef.current >= 8) {
-            console.warn("Room lost after 8 failed state syncs");
+          if (roomLostCountRef.current >= 4) {
+            console.warn("Room lost after 4 failed state syncs");
             toast({
               title: "Sessiya tugadi",
               description: "Server bilan aloqa uzildi. Natijalaringiz saqlanmoqda...",
@@ -569,7 +575,7 @@ export default function QuizPlayPage() {
             });
             const info = reconnectInfoRef.current;
             if (info && id) {
-              const savedAnswers = { ...answers };
+              const savedAnswers = { ...answersRef.current };
               fetch(`/api/quizzes/${id}/submit-public`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -630,10 +636,10 @@ export default function QuizPlayPage() {
           }
         }
       });
-    }, 5000);
+    }, 15000);
 
     return () => clearInterval(syncInterval);
-  }, [gameMode, stage, questionIndex, id, totalQuestions, myScore, answers, data]);
+  }, [gameMode, stage, id]);
 
   const soloCurrentQuestion = data?.questions?.[currentIndex];
 
@@ -643,7 +649,7 @@ export default function QuizPlayPage() {
   }, [currentIndex, stage, soloCurrentQuestion, gameMode]);
 
   useEffect(() => {
-    if (stage !== "playing" || gameMode !== "solo" || timeLeft <= 0) return;
+    if (stage !== "playing" || gameMode !== "solo") return;
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) { clearInterval(timer); return 0; }
@@ -651,7 +657,7 @@ export default function QuizPlayPage() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [stage, timeLeft > 0, gameMode]);
+  }, [stage, currentIndex, gameMode]);
 
   const handleSoloAnswer = useCallback(
     (questionId: string, answer: string) => {
@@ -1126,25 +1132,24 @@ export default function QuizPlayPage() {
         {connectionWarningBanner}
         {myRank <= 3 && myRank > 0 && (
           <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
-            {Array.from({ length: 50 }).map((_, i) => (
+            {Array.from({ length: 12 }).map((_, i) => (
               <motion.div
                 key={i}
                 className="absolute w-2 h-2 rounded-full"
                 style={{
                   left: `${Math.random() * 100}%`,
-                  backgroundColor: ["#FFD700", "#C0C0C0", "#CD7F32", "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7"][i % 8],
+                  backgroundColor: ["#FFD700", "#C0C0C0", "#CD7F32", "#FF6B6B", "#4ECDC4", "#45B7D1"][i % 6],
                 }}
-                initial={{ y: -20, opacity: 1, rotate: 0 }}
+                initial={{ y: -20, opacity: 1 }}
                 animate={{
                   y: window.innerHeight + 20,
                   opacity: [1, 1, 0],
-                  rotate: Math.random() * 720 - 360,
-                  x: Math.random() * 200 - 100,
+                  x: Math.random() * 150 - 75,
                 }}
                 transition={{
-                  duration: 2 + Math.random() * 3,
-                  delay: Math.random() * 2,
-                  repeat: 2,
+                  duration: 2 + Math.random() * 2,
+                  delay: Math.random() * 1.5,
+                  repeat: 1,
                   ease: "easeOut",
                 }}
               />
@@ -1374,7 +1379,7 @@ export default function QuizPlayPage() {
     return (
       <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-950 via-violet-950 to-slate-950 overflow-hidden">
         {connectionWarningBanner}
-        <div className="sticky top-0 z-50 bg-black/30 backdrop-blur-xl border-b border-white/10 p-3">
+        <div className="sticky top-0 z-50 bg-black/50 border-b border-white/10 p-3">
           <div className="max-w-2xl mx-auto flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 min-w-0">
               <Badge variant="secondary" className="shrink-0 bg-primary/20 text-primary-foreground border-primary/30">
@@ -1390,10 +1395,9 @@ export default function QuizPlayPage() {
           </div>
           <div className="max-w-2xl mx-auto mt-2">
             <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-              <motion.div
-                className="h-full rounded-full bg-gradient-to-r from-primary to-violet-400"
-                animate={{ width: `${progressPercent}%` }}
-                transition={{ duration: 0.5 }}
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-primary to-violet-400 transition-[width] duration-500"
+                style={{ width: `${progressPercent}%` }}
               />
             </div>
           </div>
@@ -1403,14 +1407,14 @@ export default function QuizPlayPage() {
           <AnimatePresence mode="wait">
             <motion.div
               key={currentQuestion.id}
-              initial={{ opacity: 0, y: 30 }}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
               className="w-full max-w-2xl"
             >
               <div
-                className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/10 p-6 mb-6 shadow-2xl"
+                className="rounded-xl bg-white/10 border border-white/10 p-6 mb-6 shadow-lg"
               >
                 {currentQuestion.mediaUrl && (
                   <div className="rounded-lg overflow-hidden mb-4">
@@ -1444,23 +1448,22 @@ export default function QuizPlayPage() {
                 >
                   {lastAnswerResult.isCorrect && (
                     <div className="absolute inset-0 pointer-events-none overflow-visible">
-                      {Array.from({ length: 30 }).map((_, i) => (
+                      {Array.from({ length: 8 }).map((_, i) => (
                         <motion.div
                           key={i}
                           className="absolute w-2 h-2 rounded-full"
                           style={{
                             left: "50%",
                             top: "50%",
-                            backgroundColor: ["#10B981", "#34D399", "#6EE7B7", "#A7F3D0", "#FFD700", "#FDE68A"][i % 6],
+                            backgroundColor: ["#10B981", "#34D399", "#FFD700", "#FDE68A"][i % 4],
                           }}
                           initial={{ x: 0, y: 0, opacity: 1 }}
                           animate={{
-                            x: (Math.random() - 0.5) * 400,
-                            y: (Math.random() - 0.5) * 300,
+                            x: (Math.random() - 0.5) * 200,
+                            y: (Math.random() - 0.5) * 150,
                             opacity: 0,
-                            scale: [1, 1.5, 0],
                           }}
-                          transition={{ duration: 1 + Math.random(), delay: Math.random() * 0.3 }}
+                          transition={{ duration: 0.8 + Math.random() * 0.5, delay: i * 0.05 }}
                         />
                       ))}
                     </div>
@@ -1627,29 +1630,21 @@ export default function QuizPlayPage() {
 
     return (
       <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-950 via-violet-950 to-slate-950 overflow-hidden">
-        <div className="sticky top-0 z-50 bg-black/30 backdrop-blur-xl border-b border-white/10 p-3">
+        <div className="sticky top-0 z-50 bg-black/50 border-b border-white/10 p-3">
           <div className="max-w-2xl mx-auto flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 min-w-0">
-              <motion.div
-                key={currentIndex}
-                initial={{ scale: 0, rotate: -90 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: "spring", stiffness: 300 }}
-              >
-                <Badge variant="secondary" className="shrink-0 bg-primary/20 text-primary-foreground border-primary/30">
-                  {currentIndex + 1}/{data.questions.length}
-                </Badge>
-              </motion.div>
+              <Badge variant="secondary" className="shrink-0 bg-primary/20 text-primary-foreground border-primary/30">
+                {currentIndex + 1}/{data.questions.length}
+              </Badge>
               <span className="text-sm font-medium truncate text-white/80">{data.quiz.title}</span>
             </div>
             <CircularTimer timeLeft={timeLeft} totalTime={soloCurrentQuestion.timeLimit || 30} />
           </div>
           <div className="max-w-2xl mx-auto mt-2">
             <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-              <motion.div
-                className="h-full rounded-full bg-gradient-to-r from-primary to-violet-400"
-                animate={{ width: `${progressPercent}%` }}
-                transition={{ duration: 0.5 }}
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-primary to-violet-400 transition-[width] duration-500"
+                style={{ width: `${progressPercent}%` }}
               />
             </div>
           </div>
@@ -1659,14 +1654,14 @@ export default function QuizPlayPage() {
           <AnimatePresence mode="wait">
             <motion.div
               key={currentIndex}
-              initial={{ opacity: 0, y: 30 }}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
               className="w-full max-w-2xl"
             >
               <div
-                className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/10 p-6 mb-6 shadow-2xl"
+                className="rounded-xl bg-white/10 border border-white/10 p-6 mb-6 shadow-lg"
               >
                 {soloCurrentQuestion.mediaUrl && (
                   <div className="rounded-lg overflow-hidden mb-4">
@@ -1771,7 +1766,7 @@ export default function QuizPlayPage() {
           </AnimatePresence>
         </div>
 
-        <div className="sticky bottom-0 z-50 bg-black/30 backdrop-blur-xl border-t border-white/10 p-3">
+        <div className="sticky bottom-0 z-50 bg-black/50 border-t border-white/10 p-3">
           <div className="max-w-2xl mx-auto flex justify-between gap-3">
             <Button variant="outline" onClick={() => setCurrentIndex(i => i - 1)} disabled={currentIndex === 0} data-testid="button-prev">
               <ChevronLeft className="w-4 h-4 mr-1" />
