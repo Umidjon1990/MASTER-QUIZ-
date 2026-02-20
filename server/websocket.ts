@@ -1460,6 +1460,8 @@ export function setupWebSocket(httpServer: HttpServer) {
       }
     });
 
+    socket.on("ping-keepalive", () => {});
+
     socket.on("public:join-room", async (data, callback) => {
       try {
         const { code, playerName, rejoinToken } = data;

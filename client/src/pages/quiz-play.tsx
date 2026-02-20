@@ -162,6 +162,9 @@ export default function QuizPlayPage() {
   const disconnectedSinceRef = useRef<number | null>(null);
   const [showConnectionWarning, setShowConnectionWarning] = useState(false);
   const connectionWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isRejoiningRef = useRef(false);
+  const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const roomLostCountRef = useRef(0);
 
   const { data, isLoading, error } = useQuery<QuizData>({
     queryKey: ["/api/quizzes", id, "play"],
@@ -199,6 +202,10 @@ export default function QuizPlayPage() {
     return () => {
       if (connectionWarningTimerRef.current) {
         clearTimeout(connectionWarningTimerRef.current);
+      }
+      if (keepAliveRef.current) {
+        clearInterval(keepAliveRef.current);
+        keepAliveRef.current = null;
       }
       if (socketRef.current) {
         socketRef.current.disconnect();
@@ -266,10 +273,19 @@ export default function QuizPlayPage() {
         clearTimeout(connectionWarningTimerRef.current);
         connectionWarningTimerRef.current = null;
       }
+      if (keepAliveRef.current) clearInterval(keepAliveRef.current);
+      keepAliveRef.current = setInterval(() => {
+        if (s.connected) s.emit("ping-keepalive");
+      }, 25000);
     });
 
     s.on("disconnect", (reason) => {
+      if (keepAliveRef.current) {
+        clearInterval(keepAliveRef.current);
+        keepAliveRef.current = null;
+      }
       if (reason !== "io client disconnect") {
+        isRejoiningRef.current = true;
         disconnectedSinceRef.current = Date.now();
         connectionWarningTimerRef.current = setTimeout(() => {
           if (disconnectedSinceRef.current) {
@@ -288,6 +304,8 @@ export default function QuizPlayPage() {
         clearTimeout(connectionWarningTimerRef.current);
         connectionWarningTimerRef.current = null;
       }
+      isRejoiningRef.current = true;
+      roomLostCountRef.current = 0;
       const info = reconnectInfoRef.current;
       if (info) {
         const storedToken = localStorage.getItem(`rejoin_${info.code}_${info.playerName.trim().toLowerCase()}`);
@@ -305,9 +323,15 @@ export default function QuizPlayPage() {
               localStorage.setItem(`rejoin_${info.code}_${info.playerName.trim().toLowerCase()}`, res.rejoinToken);
             }
             setMyScore(res.currentScore || 0);
+            isRejoiningRef.current = false;
+            roomLostCountRef.current = 0;
             setTimeout(() => recoverGameState(s), 300);
+          } else {
+            isRejoiningRef.current = false;
           }
         });
+      } else {
+        isRejoiningRef.current = false;
       }
     });
 
@@ -523,8 +547,6 @@ export default function QuizPlayPage() {
     return () => clearInterval(timer);
   }, [stage, timeLeft > 0, currentQuestion, gameMode]);
 
-  const roomLostCountRef = useRef(0);
-
   useEffect(() => {
     if (gameMode !== "multi" || !socketRef.current || !reconnectInfoRef.current) return;
     if (stage !== "playing" && stage !== "leaderboard") return;
@@ -533,12 +555,13 @@ export default function QuizPlayPage() {
 
     const syncInterval = setInterval(() => {
       const s = socketRef.current;
-      if (!s?.connected) return;
+      if (!s?.connected || isRejoiningRef.current) return;
       s.emit("public:request-state", {}, (res: any) => {
         if (!res?.success) {
+          if (isRejoiningRef.current) return;
           roomLostCountRef.current++;
-          if (roomLostCountRef.current >= 3) {
-            console.warn("Room lost after 3 failed state syncs");
+          if (roomLostCountRef.current >= 8) {
+            console.warn("Room lost after 8 failed state syncs");
             toast({
               title: "Sessiya tugadi",
               description: "Server bilan aloqa uzildi. Natijalaringiz saqlanmoqda...",
@@ -607,7 +630,7 @@ export default function QuizPlayPage() {
           }
         }
       });
-    }, 3000);
+    }, 5000);
 
     return () => clearInterval(syncInterval);
   }, [gameMode, stage, questionIndex, id, totalQuestions, myScore, answers, data]);

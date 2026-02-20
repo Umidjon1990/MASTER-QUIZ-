@@ -284,6 +284,7 @@ export default function ClassroomQuizPage() {
   const disconnectedSinceRef = useRef<number | null>(null);
   const [showConnectionWarning, setShowConnectionWarning] = useState(false);
   const connectionWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data, isLoading } = useQuery<QuizData>({
     queryKey: ["/api/quizzes", id, "play"],
@@ -335,9 +336,17 @@ export default function ClassroomQuizPage() {
         clearTimeout(connectionWarningTimerRef.current);
         connectionWarningTimerRef.current = null;
       }
+      if (keepAliveRef.current) clearInterval(keepAliveRef.current);
+      keepAliveRef.current = setInterval(() => {
+        if (s.connected) s.emit("ping-keepalive");
+      }, 25000);
     });
 
     s.on("disconnect", (reason) => {
+      if (keepAliveRef.current) {
+        clearInterval(keepAliveRef.current);
+        keepAliveRef.current = null;
+      }
       if (reason !== "io client disconnect") {
         disconnectedSinceRef.current = Date.now();
         connectionWarningTimerRef.current = setTimeout(() => {
