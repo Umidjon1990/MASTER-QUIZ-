@@ -59,6 +59,18 @@ app.use((req, res, next) => {
   next();
 });
 
+app.get("/health", (_req, res) => {
+  res.status(200).json({ status: "ok", uptime: process.uptime() });
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[CRITICAL] Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[CRITICAL] Uncaught Exception:", err);
+});
+
 (async () => {
   await registerRoutes(httpServer, app);
 

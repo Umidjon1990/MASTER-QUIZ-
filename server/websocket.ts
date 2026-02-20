@@ -860,6 +860,8 @@ export function setupWebSocket(httpServer: HttpServer) {
   io = new SocketServer(httpServer, {
     cors: { origin: "*" },
     path: "/socket.io",
+    pingInterval: 25000,
+    pingTimeout: 60000,
   });
 
   restoreGamesFromDB().then(() => {
