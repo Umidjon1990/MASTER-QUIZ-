@@ -18,7 +18,6 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [role, setRole] = useState<"student" | "teacher">("teacher");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const [, navigate] = useLocation();
@@ -38,7 +37,6 @@ export default function AuthPage() {
       if (mode === "register") {
         body.firstName = firstName;
         body.lastName = lastName;
-        body.role = role;
       }
 
       const res = await fetch(endpoint, {
@@ -146,27 +144,6 @@ export default function AuthPage() {
                         placeholder="Familiya"
                         data-testid="input-last-name"
                       />
-                    </div>
-                  </div>
-                  <div>
-                    <Label>Rol</Label>
-                    <div className="flex rounded-md bg-muted p-1 mt-1">
-                      <button
-                        type="button"
-                        onClick={() => setRole("teacher")}
-                        className={`flex-1 py-2 text-sm font-medium rounded-sm transition-colors ${role === "teacher" ? "bg-background shadow-sm" : "text-muted-foreground"}`}
-                        data-testid="role-teacher"
-                      >
-                        O'qituvchi
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setRole("student")}
-                        className={`flex-1 py-2 text-sm font-medium rounded-sm transition-colors ${role === "student" ? "bg-background shadow-sm" : "text-muted-foreground"}`}
-                        data-testid="role-student"
-                      >
-                        O'quvchi
-                      </button>
                     </div>
                   </div>
                 </>
