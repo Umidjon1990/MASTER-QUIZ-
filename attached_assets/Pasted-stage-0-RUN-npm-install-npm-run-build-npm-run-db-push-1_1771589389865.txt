@@ -1,0 +1,55 @@
+stage-0
+RUN npm install && npm run build && npm run db:push
+13s
+npm warn config production Use `--omit=dev` instead.
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'pdfjs-dist@5.4.624',
+npm warn EBADENGINE   required: { node: '>=20.16.0 || >=22.3.0' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'vite@7.3.0',
+npm warn EBADENGINE   required: { node: '^20.19.0 || >=22.12.0' },
+npm warn EBADENGINE   current: { node: 'v18.20.5', npm: '10.8.2' }
+npm warn EBADENGINE }
+up to date, audited 843 packages in 2s
+166 packages are looking for funding
+  run `npm fund` for details
+16 vulnerabilities (6 moderate, 8 high, 2 critical)
+To address issues that do not require attention, run:
+  npm audit fix
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+Some issues need review, and may require choosing
+a different dependency.
+Run `npm audit` for details.
+npm warn config production Use `--omit=dev` instead.
+> rest-express@1.0.0 build
+> tsx script/build.ts
+building client...
+vite v7.3.0 building client environment for production...
+transforming...
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+✓ 2757 modules transformed.
+rendering chunks...
+computing gzip size...
+../dist/public/index.html                                                                        2.01 kB │ gzip:   0.76 kB
+../dist/public/assets/photo_2024-09-08_23-13-48-removebg-preview_1771243223962-ZB14hhER.png    313.14 kB
+../dist/public/assets/pdf.worker.min-wgc6bjNh.mjs                                            1,078.61 kB
+../dist/public/assets/index-BWZlmLJG.css                                                       107.37 kB │ gzip:  17.42 kB
+../dist/public/assets/index-CB4JsR1G.js                                                      1,722.51 kB │ gzip: 487.54 kB
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 8.29s
+building server...
+  dist/index.cjs  2.5mb ⚠️
+⚡ Done in 254ms
+npm warn config production Use `--omit=dev` instead.
+> rest-express@1.0.0 db:push
+> drizzle-kit push
+No config path provided, using default 'drizzle.config.ts'
+Reading config file '/app/drizzle.config.ts'
+DATABASE_URL, ensure the database is provisioned
+Build Failed: build daemon returned an error < failed to solve: process "/bin/bash -ol pipefail -c npm install && npm run build && npm run db:push" did not complete successfully: exit code: 1 >
