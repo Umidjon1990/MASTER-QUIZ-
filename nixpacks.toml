@@ -5,7 +5,7 @@ nixPkgs = ["nodejs-20_x"]
 cmds = ["npm install --include=dev"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["npx drizzle-kit generate || true", "npm run build"]
 
 [start]
-cmd = "npx drizzle-kit push && npm run start"
+cmd = "npm run start"

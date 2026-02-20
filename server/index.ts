@@ -72,6 +72,9 @@ process.on("uncaughtException", (err) => {
 });
 
 (async () => {
+  const { runMigrations } = await import("./db");
+  await runMigrations();
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
