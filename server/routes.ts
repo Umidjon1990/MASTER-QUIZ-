@@ -976,12 +976,33 @@ export async function registerRoutes(
       const bot = new TelegramBot(profile.telegramBotToken);
       const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
 
+      let quizChannelLink: string | undefined;
+      if (quiz.scheduledTelegramQuizChatId) {
+        try {
+          const quizChatId = quiz.scheduledTelegramQuizChatId;
+          if (quizChatId.startsWith("@")) {
+            quizChannelLink = `https://t.me/${quizChatId.slice(1)}`;
+          } else {
+            const quizChat = quizChatId.startsWith("-") || !isNaN(Number(quizChatId))
+              ? await bot.getChat(Number(quizChatId) || quizChatId)
+              : await bot.getChat(`@${quizChatId}`);
+            if (quizChat?.username) {
+              quizChannelLink = `https://t.me/${quizChat.username}`;
+            } else if (quizChat?.invite_link) {
+              quizChannelLink = quizChat.invite_link;
+            }
+          }
+        } catch (e: any) {
+          console.log("Could not get quiz channel link:", e?.message);
+        }
+      }
+
       const msg = formatTelegramResults(quiz.title, results.map(r => ({
         name: r.guestName || `O'yinchi #${r.participantId.slice(-4)}`,
         score: r.totalScore || 0,
         correctAnswers: r.correctAnswers,
         totalQuestions: r.totalQuestions,
-      })), escHtml);
+      })), escHtml, false, quizChannelLink);
 
       await bot.sendMessage(targetChat, msg, { parse_mode: "HTML" });
 
@@ -1042,7 +1063,8 @@ export async function registerRoutes(
     title: string,
     players: Array<{ name: string; score: number; correctAnswers: number; totalQuestions: number }>,
     escFn: (s: string) => string,
-    isAuto = false
+    isAuto = false,
+    quizChannelLink?: string
   ): string {
     const medalLabels = ["[1-O'RIN]", "[2-O'RIN]", "[3-O'RIN]"];
     const barFull = "\u{2588}";
@@ -1085,6 +1107,10 @@ export async function registerRoutes(
       msg += `Jami qo'shilganlar: <b>${players.length}</b>\n`;
     }
     msg += `${new Date().toLocaleDateString("uz-UZ", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tashkent" })}`;
+
+    if (quizChannelLink) {
+      msg += `\n\n\u{1F4DD} <a href="${quizChannelLink}">Testni Telegramda ishlash</a>`;
+    }
 
     return msg;
   }

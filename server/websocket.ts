@@ -604,7 +604,8 @@ function formatTelegramResultsWs(
   title: string,
   players: Array<{ name: string; score: number; correctAnswers: number; totalQuestions: number }>,
   escFn: (s: string) => string,
-  isAuto = false
+  isAuto = false,
+  quizChannelLink?: string
 ): string {
   const medalLabels = ["[1-O'RIN]", "[2-O'RIN]", "[3-O'RIN]"];
   const barFull = "\u{2588}";
@@ -648,6 +649,10 @@ function formatTelegramResultsWs(
   }
   msg += `${new Date().toLocaleDateString("uz-UZ", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tashkent" })}`;
 
+  if (quizChannelLink) {
+    msg += `\n\n\u{1F4DD} <a href="${quizChannelLink}">Testni Telegramda ishlash</a>`;
+  }
+
   return msg;
 }
 
@@ -674,12 +679,33 @@ async function autoSendResultsToTelegram(
   const bot = new TelegramBot(profile.telegramBotToken);
   const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
 
+  let quizChannelLink: string | undefined;
+  if (quiz.scheduledTelegramQuizChatId) {
+    try {
+      const quizChatId = quiz.scheduledTelegramQuizChatId;
+      if (quizChatId.startsWith("@")) {
+        quizChannelLink = `https://t.me/${quizChatId.slice(1)}`;
+      } else {
+        const quizChat = quizChatId.startsWith("-") || !isNaN(Number(quizChatId))
+          ? await bot.getChat(Number(quizChatId) || quizChatId)
+          : await bot.getChat(`@${quizChatId}`);
+        if (quizChat?.username) {
+          quizChannelLink = `https://t.me/${quizChat.username}`;
+        } else if (quizChat?.invite_link) {
+          quizChannelLink = quizChat.invite_link;
+        }
+      }
+    } catch (e: any) {
+      console.log("Could not get quiz channel link:", e?.message);
+    }
+  }
+
   const msg = formatTelegramResultsWs(quiz.title, leaderboard.map(r => ({
     name: r.name,
     score: r.score,
     correctAnswers: r.correctAnswers,
     totalQuestions,
-  })), escHtml, true);
+  })), escHtml, true, quizChannelLink);
 
   await bot.sendMessage(targetChat, msg, { parse_mode: "HTML" });
 
