@@ -17,6 +17,27 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FolderOpen } from "lucide-react";
 
+function getUzbekistanDefaults() {
+  const fmt = (n: number) => String(n).padStart(2, "0");
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tashkent", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now);
+  const get = (t: string) => parts.find(p => p.type === t)?.value || "";
+  const minDate = `${get("year")}-${get("month")}-${get("day")}`;
+  let year = parseInt(get("year"), 10);
+  let month = parseInt(get("month"), 10);
+  let day = parseInt(get("day"), 10);
+  let hour = parseInt(get("hour"), 10) + 1;
+  const minute = parseInt(get("minute"), 10);
+  if (hour >= 24) {
+    hour = 0;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    day += 1;
+    if (day > daysInMonth) { day = 1; month += 1; }
+    if (month > 12) { month = 1; year += 1; }
+  }
+  return { date: `${year}-${fmt(month)}-${fmt(day)}`, time: `${fmt(hour)}:${fmt(minute)}`, minDate };
+}
+
 export default function TeacherQuizzes() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -326,7 +347,7 @@ export default function TeacherQuizzes() {
                     </Button>
                   )}
                   {quiz.status === "published" && quiz.scheduledStatus !== "pending" && (
-                    <Button variant="outline" size="sm" onClick={() => setScheduleQuiz(quiz)} data-testid={`button-schedule-${quiz.id}`}>
+                    <Button variant="outline" size="sm" onClick={() => { const defs = getUzbekistanDefaults(); setScheduleDate(defs.date); setScheduleTime(defs.time); setScheduleQuiz(quiz); }} data-testid={`button-schedule-${quiz.id}`}>
                       <CalendarClock className="w-3 h-3 mr-1" /> Rejalashtirish
                     </Button>
                   )}
@@ -409,7 +430,7 @@ export default function TeacherQuizzes() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!scheduleQuiz} onOpenChange={(open) => { if (!open) { setScheduleQuiz(null); setScheduleDate(""); setScheduleTime(""); setScheduleRequireCode(true); setScheduleTelegramEnabled(false); setScheduleTelegramChatId(""); setScheduleTelegramQuizEnabled(false); setScheduleTelegramQuizChatId(""); } }}>
+      <Dialog open={!!scheduleQuiz} onOpenChange={(open) => { if (!open) { setScheduleQuiz(null); setScheduleDate(""); setScheduleTime(""); setScheduleRequireCode(true); setScheduleTelegramEnabled(false); setScheduleTelegramChatId(""); setScheduleTelegramQuizEnabled(false); setScheduleTelegramQuizChatId(""); } else if (!scheduleDate) { const defs = getUzbekistanDefaults(); setScheduleDate(defs.date); setScheduleTime(defs.time); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
@@ -429,7 +450,7 @@ export default function TeacherQuizzes() {
                     type="date"
                     value={scheduleDate}
                     onChange={(e) => setScheduleDate(e.target.value)}
-                    min={new Date().toISOString().split("T")[0]}
+                    min={getUzbekistanDefaults().minDate}
                     data-testid="input-schedule-date"
                   />
                 </div>
