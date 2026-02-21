@@ -985,42 +985,27 @@ export async function registerRoutes(
 
       await bot.sendMessage(targetChat, msg, { parse_mode: "HTML" });
 
-      const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType, AlignmentType, TableLayoutType } = await import("docx");
+      const { Document, Packer, Paragraph, TextRun, AlignmentType } = await import("docx");
 
       const hasRtl = (s: string) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
       const makeRun = (text: string, bold: boolean, sz: number) => new TextRun({ text, bold, size: sz, font: "Arial", rightToLeft: hasRtl(text) });
-      const makePara = (text: string, bold: boolean, sz: number, align?: (typeof AlignmentType)[keyof typeof AlignmentType]) =>
-        new Paragraph({ children: [makeRun(text, bold, sz)], alignment: align, bidirectional: hasRtl(text) });
-
-      const colWidths = [900, 4200, 1600, 1800, 1600];
-
-      const headerCells = ["#", "Ism", "Ball", "To'g'ri", "Foiz"].map((text, ci) =>
-        new TableCell({
-          children: [makePara(text, true, 20)],
-          width: { size: colWidths[ci], type: WidthType.DXA },
-        })
-      );
-
-      const dataRows = results.map((r: any, i: number) => {
-        const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
-        const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
-        const isBold = i < 3;
-        const cells = [
-          `${i + 1}`,
-          name,
-          `${r.totalScore}`,
-          `${r.correctAnswers}/${r.totalQuestions}`,
-          `${pct}%`,
-        ].map((text, ci) =>
-          new TableCell({
-            children: [makePara(text, isBold, 18)],
-            width: { size: colWidths[ci], type: WidthType.DXA },
-          })
-        );
-        return new TableRow({ children: cells });
-      });
 
       const titleHasRtl = hasRtl(quiz.title);
+      const resultRows: InstanceType<typeof Paragraph>[] = [];
+
+      resultRows.push(new Paragraph({ children: [makeRun(quiz.title, true, 36)], alignment: AlignmentType.CENTER, spacing: { after: 100 }, bidirectional: titleHasRtl }));
+      resultRows.push(new Paragraph({ children: [makeRun(`Natijalar — ${new Date().toLocaleDateString("uz-UZ")}`, false, 22)], alignment: AlignmentType.CENTER, spacing: { after: 200 } }));
+      resultRows.push(new Paragraph({ children: [makeRun("————————————————————————", false, 20)], spacing: { after: 100 } }));
+
+      results.forEach((r: any, i: number) => {
+        const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
+        const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
+        const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "";
+        const line = `${medal} ${i + 1}. ${name} — ${r.totalScore} ball — ${r.correctAnswers}/${r.totalQuestions} to'g'ri (${pct}%)`;
+        const isBold = i < 3;
+        resultRows.push(new Paragraph({ children: [makeRun(line, isBold, 22)], spacing: { after: 80 }, bidirectional: hasRtl(name) }));
+      });
+
       const doc = new Document({
         sections: [{
           properties: {
@@ -1029,15 +1014,7 @@ export async function registerRoutes(
               margin: { top: 720, right: 720, bottom: 720, left: 720 },
             },
           },
-          children: [
-            new Paragraph({ children: [makeRun(quiz.title, true, 36)], alignment: AlignmentType.CENTER, spacing: { after: 100 }, bidirectional: titleHasRtl }),
-            new Paragraph({ children: [makeRun(`Natijalar — ${new Date().toLocaleDateString("uz-UZ")}`, false, 22)], alignment: AlignmentType.CENTER, spacing: { after: 300 } }),
-            new Table({
-              rows: [new TableRow({ children: headerCells }), ...dataRows],
-              width: { size: 10100, type: WidthType.DXA },
-              layout: TableLayoutType.FIXED,
-            }),
-          ],
+          children: resultRows,
         }],
       });
 
