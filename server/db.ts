@@ -16,6 +16,27 @@ if (!process.env.DATABASE_URL) {
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle(pool, { schema });
 
+async function runManualMigrations() {
+  const client = await pool.connect();
+  try {
+    const alterQueries = [
+      `ALTER TABLE "quizzes" ADD COLUMN IF NOT EXISTS "scheduled_telegram_quiz_chat_id" varchar(100)`,
+    ];
+    for (const q of alterQueries) {
+      try {
+        await client.query(q);
+      } catch (e: any) {
+        if (!e.message?.includes("already exists")) {
+          console.error("[DB] Manual migration error:", e.message);
+        }
+      }
+    }
+    console.log("[DB] Manual migrations checked");
+  } finally {
+    client.release();
+  }
+}
+
 export async function runMigrations() {
   console.log("[DB] Running migrations...");
   try {
@@ -34,4 +55,5 @@ export async function runMigrations() {
       throw error;
     }
   }
+  await runManualMigrations();
 }

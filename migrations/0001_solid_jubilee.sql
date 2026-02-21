@@ -1,0 +1,1 @@
+ALTER TABLE "quizzes" ADD COLUMN "scheduled_telegram_quiz_chat_id" varchar(100);
