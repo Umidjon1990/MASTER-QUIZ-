@@ -360,7 +360,7 @@ export async function registerRoutes(
 
   app.post("/api/quizzes/:id/schedule", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
-      const { scheduledAt, requireCode, telegramChatId } = req.body;
+      const { scheduledAt, requireCode, telegramChatId, telegramQuizChatId } = req.body;
       if (!scheduledAt) return res.status(400).json({ message: "Vaqt kerak" });
 
       const quiz = await storage.getQuiz(req.params.id);
@@ -383,6 +383,7 @@ export async function registerRoutes(
         scheduledRoomCode: null,
         scheduledRequireCode: needCode,
         scheduledTelegramChatId: telegramChatId || null,
+        scheduledTelegramQuizChatId: telegramQuizChatId || null,
         isPublic: true,
         status: "published",
       } as any);
@@ -407,6 +408,7 @@ export async function registerRoutes(
         scheduledRoomCode: null,
         scheduledRequireCode: true,
         scheduledTelegramChatId: null,
+        scheduledTelegramQuizChatId: null,
       } as any);
 
       res.json(updated);

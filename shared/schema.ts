@@ -61,6 +61,7 @@ export const quizzes = pgTable("quizzes", {
   scheduledRoomCode: varchar("scheduled_room_code", { length: 10 }),
   scheduledRequireCode: boolean("scheduled_require_code").notNull().default(true),
   scheduledTelegramChatId: varchar("scheduled_telegram_chat_id", { length: 100 }),
+  scheduledTelegramQuizChatId: varchar("scheduled_telegram_quiz_chat_id", { length: 100 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

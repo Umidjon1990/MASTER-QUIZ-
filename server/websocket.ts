@@ -589,6 +589,12 @@ function finishPublicGame(roomId: string) {
     });
   }
 
+  if (room.hostSocketId === "scheduler" && room.quiz.scheduledTelegramQuizChatId) {
+    autoSendQuizToTelegram(room.quiz).catch((err) => {
+      console.error("Auto-send Telegram quiz error:", err?.message || err);
+    });
+  }
+
   deleteGameState(roomId);
 
   setTimeout(() => cleanupRoom(roomId), 5 * 60 * 1000);
@@ -742,6 +748,79 @@ async function autoSendResultsToTelegram(
   });
 
   console.log(`Auto-sent results to Telegram chat ${chatId} for quiz "${quiz.title}"`);
+}
+
+async function autoSendQuizToTelegram(quiz: any) {
+  const chatId = quiz.scheduledTelegramQuizChatId;
+  if (!chatId) return;
+
+  const profile = await storage.getUserProfile(quiz.creatorId);
+  if (!profile?.telegramBotToken) {
+    console.log("Auto-send quiz: No Telegram bot token for quiz creator", quiz.creatorId);
+    return;
+  }
+
+  const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const TelegramBot = (await import("node-telegram-bot-api")).default;
+  const bot = new TelegramBot(profile.telegramBotToken);
+  const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
+
+  const questionsList = await storage.getQuestionsByQuiz(quiz.id);
+  if (questionsList.length === 0) {
+    console.log("Auto-send quiz: No questions, skipping for", quiz.title);
+    return;
+  }
+
+  const hasRtl = (s: string) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
+  const titleDir = hasRtl(quiz.title) ? "\u200F" : "";
+  const categoryText = quiz.category ? `\n📁 ${quiz.category}` : "";
+  const header = `📝 ${titleDir}*${quiz.title}*${categoryText}\n📊 ${questionsList.length} ta savol\n\n_Test yakunlangandan so'ng savollar avtomatik yuborildi_`;
+
+  await bot.sendMessage(targetChat, header, { parse_mode: "Markdown" });
+
+  let sent = 0;
+  for (let i = 0; i < questionsList.length; i++) {
+    const q = questionsList[i];
+    if (q.type === "open_ended") {
+      await bot.sendMessage(targetChat, `<b>${i + 1}. ${escHtml(q.questionText)}</b>\n\n<i>Yozma javob talab qilinadi</i>\nTo'g'ri javob: <tg-spoiler>${escHtml(q.correctAnswer || "")}</tg-spoiler>`, { parse_mode: "HTML" });
+      sent++;
+    } else if (q.type === "true_false") {
+      const tfOptions = ["To'g'ri", "Noto'g'ri"];
+      const correctIndex = q.correctAnswer === "true" ? 0 : 1;
+      await bot.sendPoll(targetChat, q.questionText, tfOptions, {
+        type: "quiz",
+        correct_option_id: correctIndex,
+        is_anonymous: true,
+      } as any);
+      sent++;
+    } else if (q.type === "poll" && q.options && q.options.length >= 2) {
+      await bot.sendPoll(targetChat, q.questionText, q.options, {
+        type: "regular",
+        is_anonymous: true,
+      } as any);
+      sent++;
+    } else if (q.type === "multiple_select" && q.options && q.options.length >= 2) {
+      await bot.sendPoll(targetChat, q.questionText, q.options, {
+        type: "regular",
+        allows_multiple_answers: true,
+        is_anonymous: true,
+      } as any);
+      sent++;
+    } else if (q.options && q.options.length >= 2) {
+      const correctIndex = q.options.indexOf(q.correctAnswer);
+      await bot.sendPoll(targetChat, q.questionText, q.options, {
+        type: "quiz",
+        correct_option_id: correctIndex >= 0 ? correctIndex : 0,
+        is_anonymous: true,
+      } as any);
+      sent++;
+    }
+    if (i < questionsList.length - 1) {
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+
+  console.log(`Auto-sent ${sent} quiz questions to Telegram chat ${chatId} for quiz "${quiz.title}"`);
 }
 
 async function checkScheduledQuizzes() {

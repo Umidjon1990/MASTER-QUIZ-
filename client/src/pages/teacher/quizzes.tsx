@@ -27,6 +27,8 @@ export default function TeacherQuizzes() {
   const [scheduleRequireCode, setScheduleRequireCode] = useState(true);
   const [scheduleTelegramEnabled, setScheduleTelegramEnabled] = useState(false);
   const [scheduleTelegramChatId, setScheduleTelegramChatId] = useState("");
+  const [scheduleTelegramQuizEnabled, setScheduleTelegramQuizEnabled] = useState(false);
+  const [scheduleTelegramQuizChatId, setScheduleTelegramQuizChatId] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
 
   const { data: quizzes, isLoading } = useQuery<Quiz[]>({
@@ -69,8 +71,8 @@ export default function TeacherQuizzes() {
   });
 
   const scheduleMutation = useMutation({
-    mutationFn: async ({ quizId, scheduledAt, requireCode, telegramChatId }: { quizId: string; scheduledAt: string; requireCode: boolean; telegramChatId?: string }) => {
-      const res = await apiRequest("POST", `/api/quizzes/${quizId}/schedule`, { scheduledAt, requireCode, telegramChatId });
+    mutationFn: async ({ quizId, scheduledAt, requireCode, telegramChatId, telegramQuizChatId }: { quizId: string; scheduledAt: string; requireCode: boolean; telegramChatId?: string; telegramQuizChatId?: string }) => {
+      const res = await apiRequest("POST", `/api/quizzes/${quizId}/schedule`, { scheduledAt, requireCode, telegramChatId, telegramQuizChatId });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.message || "Xatolik");
@@ -84,6 +86,8 @@ export default function TeacherQuizzes() {
       setScheduleTime("");
       setScheduleTelegramEnabled(false);
       setScheduleTelegramChatId("");
+      setScheduleTelegramQuizEnabled(false);
+      setScheduleTelegramQuizChatId("");
       toast({ title: "Quiz rejalashtirildi!" });
     },
     onError: (error: any) => {
@@ -121,12 +125,17 @@ export default function TeacherQuizzes() {
       return;
     }
     if (scheduleTelegramEnabled && !scheduleTelegramChatId) {
-      toast({ title: "Telegram chatni tanlang yoki Telegram yuborishni o'chiring", variant: "destructive" });
+      toast({ title: "Natija uchun Telegram chatni tanlang yoki o'chiring", variant: "destructive" });
+      return;
+    }
+    if (scheduleTelegramQuizEnabled && !scheduleTelegramQuizChatId) {
+      toast({ title: "Quiz uchun Telegram chatni tanlang yoki o'chiring", variant: "destructive" });
       return;
     }
     const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}:00+05:00`).toISOString();
     const telegramChatId = scheduleTelegramEnabled && scheduleTelegramChatId ? scheduleTelegramChatId : undefined;
-    scheduleMutation.mutate({ quizId: scheduleQuiz.id, scheduledAt, requireCode: scheduleRequireCode, telegramChatId });
+    const telegramQuizChatId = scheduleTelegramQuizEnabled && scheduleTelegramQuizChatId ? scheduleTelegramQuizChatId : undefined;
+    scheduleMutation.mutate({ quizId: scheduleQuiz.id, scheduledAt, requireCode: scheduleRequireCode, telegramChatId, telegramQuizChatId });
   };
 
   const [now, setNow] = useState(Date.now());
@@ -400,7 +409,7 @@ export default function TeacherQuizzes() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!scheduleQuiz} onOpenChange={(open) => { if (!open) { setScheduleQuiz(null); setScheduleDate(""); setScheduleTime(""); setScheduleRequireCode(true); setScheduleTelegramEnabled(false); setScheduleTelegramChatId(""); } }}>
+      <Dialog open={!!scheduleQuiz} onOpenChange={(open) => { if (!open) { setScheduleQuiz(null); setScheduleDate(""); setScheduleTime(""); setScheduleRequireCode(true); setScheduleTelegramEnabled(false); setScheduleTelegramChatId(""); setScheduleTelegramQuizEnabled(false); setScheduleTelegramQuizChatId(""); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
@@ -479,6 +488,43 @@ export default function TeacherQuizzes() {
                       <SelectContent>
                         {telegramChats.map((chat) => (
                           <SelectItem key={chat.chatId} value={chat.chatId} data-testid={`select-chat-${chat.chatId}`}>
+                            {chat.title || chat.chatId}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              )}
+              {hasTelegramBot && telegramChats.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-muted">
+                    <div className="flex items-center gap-2">
+                      <Send className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm font-medium">Quizni Telegramga yuborish</p>
+                        <p className="text-xs text-muted-foreground">
+                          Test tugagach quiz savollar boshqa kanalga yuboriladi
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={scheduleTelegramQuizEnabled}
+                      onCheckedChange={(checked) => {
+                        setScheduleTelegramQuizEnabled(checked);
+                        if (!checked) setScheduleTelegramQuizChatId("");
+                      }}
+                      data-testid="switch-telegram-quiz-send"
+                    />
+                  </div>
+                  {scheduleTelegramQuizEnabled && (
+                    <Select value={scheduleTelegramQuizChatId} onValueChange={setScheduleTelegramQuizChatId}>
+                      <SelectTrigger data-testid="select-telegram-quiz-chat">
+                        <SelectValue placeholder="Quiz yuborish uchun chat tanlang..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {telegramChats.map((chat) => (
+                          <SelectItem key={chat.chatId} value={chat.chatId} data-testid={`select-quiz-chat-${chat.chatId}`}>
                             {chat.title || chat.chatId}
                           </SelectItem>
                         ))}
