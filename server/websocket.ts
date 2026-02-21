@@ -1474,7 +1474,8 @@ export function setupWebSocket(httpServer: HttpServer) {
         if (!room) return callback?.({ success: false, error: "Xona topilmadi" });
 
         const isLateJoin = room.status === "playing";
-        if (room.status !== "waiting" && !isLateJoin) return callback?.({ success: false, error: "O'yin allaqachon tugagan" });
+        if (room.status === "finished") return callback?.({ success: false, error: "O'yin allaqachon tugagan", finished: true });
+        if (room.status !== "waiting" && !isLateJoin) return callback?.({ success: false, error: "O'yin allaqachon tugagan", finished: true });
 
         let playerId: string;
         let isRejoin = false;

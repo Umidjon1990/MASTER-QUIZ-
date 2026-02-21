@@ -117,7 +117,7 @@ interface LeaderboardEntry {
   totalAnswered?: number;
 }
 
-type GameStage = "mode-select" | "name" | "create-or-join" | "lobby" | "playing" | "leaderboard" | "result" | "multi-result";
+type GameStage = "mode-select" | "name" | "create-or-join" | "lobby" | "playing" | "leaderboard" | "result" | "multi-result" | "game-finished-blocked";
 
 export default function QuizPlayPage() {
   const { id } = useParams<{ id: string }>();
@@ -445,7 +445,11 @@ export default function QuizPlayPage() {
           setStage("lobby");
         }
       } else {
-        toast({ title: res.error || "Qo'shilishda xatolik", variant: "destructive" });
+        if (res.finished) {
+          setStage("game-finished-blocked");
+        } else {
+          toast({ title: res.error || "Qo'shilishda xatolik", variant: "destructive" });
+        }
       }
     });
   };
@@ -485,8 +489,12 @@ export default function QuizPlayPage() {
               setStage("lobby");
             }
           } else {
-            toast({ title: res.error || "Qo'shilishda xatolik", variant: "destructive" });
-            setStage("mode-select");
+            if (res.finished) {
+              setStage("game-finished-blocked");
+            } else {
+              toast({ title: res.error || "Qo'shilishda xatolik", variant: "destructive" });
+              setStage("mode-select");
+            }
           }
         });
       };
@@ -737,6 +745,33 @@ export default function QuizPlayPage() {
             Discoverga qaytish
           </Button>
         </Card>
+      </div>
+    );
+  }
+
+  if (stage === "game-finished-blocked") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted/30">
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
+          <Card className="p-8 text-center space-y-6">
+            <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-10 h-10 text-muted-foreground" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-bold" data-testid="text-test-finished">Test yakunlangan</h2>
+              <p className="text-muted-foreground">Bu test allaqachon tugagan. Endi uni yechib bo'lmaydi.</p>
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button onClick={() => navigate("/")} className="w-full" data-testid="button-go-home-finished">
+                <Home className="w-4 h-4 mr-2" />
+                Bosh sahifaga qaytish
+              </Button>
+              <Button variant="outline" onClick={() => navigate("/discover")} className="w-full" data-testid="button-discover-finished">
+                Boshqa quizlarni ko'rish
+              </Button>
+            </div>
+          </Card>
+        </motion.div>
       </div>
     );
   }
