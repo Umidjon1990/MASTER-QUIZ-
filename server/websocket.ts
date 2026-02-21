@@ -681,23 +681,35 @@ async function autoSendResultsToTelegram(
 
   let quizChannelLink: string | undefined;
   if (quiz.scheduledTelegramQuizChatId) {
+    const quizChatId = quiz.scheduledTelegramQuizChatId;
+    console.log("Auto-send results: resolving quiz channel link for chatId:", quizChatId);
     try {
-      const quizChatId = quiz.scheduledTelegramQuizChatId;
       if (quizChatId.startsWith("@")) {
         quizChannelLink = `https://t.me/${quizChatId.slice(1)}`;
       } else {
-        const quizChat = quizChatId.startsWith("-") || !isNaN(Number(quizChatId))
-          ? await bot.getChat(Number(quizChatId) || quizChatId)
-          : await bot.getChat(`@${quizChatId}`);
+        const numericId = quizChatId.startsWith("-") || !isNaN(Number(quizChatId))
+          ? quizChatId
+          : `@${quizChatId}`;
+        const quizChat = await bot.getChat(numericId);
         if (quizChat?.username) {
           quizChannelLink = `https://t.me/${quizChat.username}`;
         } else if (quizChat?.invite_link) {
           quizChannelLink = quizChat.invite_link;
+        } else {
+          const rawId = String(quizChat?.id || quizChatId);
+          if (rawId.startsWith("-100")) {
+            quizChannelLink = `https://t.me/c/${rawId.slice(4)}`;
+          }
         }
       }
     } catch (e: any) {
-      console.log("Could not get quiz channel link:", e?.message);
+      console.log("Could not get quiz channel link via getChat:", e?.message);
+      const raw = String(quizChatId);
+      if (raw.startsWith("-100")) {
+        quizChannelLink = `https://t.me/c/${raw.slice(4)}`;
+      }
     }
+    console.log("Resolved quiz channel link:", quizChannelLink || "none");
   }
 
   const msg = formatTelegramResultsWs(quiz.title, leaderboard.map(r => ({
