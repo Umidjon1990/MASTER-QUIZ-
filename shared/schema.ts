@@ -64,6 +64,7 @@ export const quizzes = pgTable("quizzes", {
   scheduledTelegramQuizChatId: varchar("scheduled_telegram_quiz_chat_id", { length: 100 }),
   allowReplay: boolean("allow_replay").notNull().default(false),
   folderId: varchar("folder_id"),
+  orderInFolder: integer("order_in_folder").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -72,6 +73,7 @@ export const quizFolders = pgTable("quiz_folders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name", { length: 255 }).notNull(),
   creatorId: varchar("creator_id").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

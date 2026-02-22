@@ -114,6 +114,8 @@ export interface IStorage {
   createQuizFolder(data: InsertQuizFolder): Promise<QuizFolder>;
   getQuizFoldersByCreator(creatorId: string): Promise<QuizFolder[]>;
   deleteQuizFolder(id: string): Promise<void>;
+  updateQuizFolderOrder(id: string, sortOrder: number): Promise<void>;
+  updateQuizOrderInFolder(quizId: string, orderInFolder: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -484,17 +486,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createQuizFolder(data: InsertQuizFolder): Promise<QuizFolder> {
-    const [folder] = await db.insert(quizFolders).values(data).returning();
+    const existing = await db.select().from(quizFolders).where(eq(quizFolders.creatorId, data.creatorId));
+    const maxOrder = existing.reduce((max, f) => Math.max(max, f.sortOrder || 0), 0);
+    const [folder] = await db.insert(quizFolders).values({ ...data, sortOrder: maxOrder + 1 }).returning();
     return folder;
   }
 
   async getQuizFoldersByCreator(creatorId: string): Promise<QuizFolder[]> {
-    return db.select().from(quizFolders).where(eq(quizFolders.creatorId, creatorId)).orderBy(quizFolders.name);
+    return db.select().from(quizFolders).where(eq(quizFolders.creatorId, creatorId)).orderBy(quizFolders.sortOrder);
   }
 
   async deleteQuizFolder(id: string): Promise<void> {
-    await db.update(quizzes).set({ folderId: null } as any).where(eq(quizzes.folderId, id));
+    await db.update(quizzes).set({ folderId: null, orderInFolder: 0 } as any).where(eq(quizzes.folderId, id));
     await db.delete(quizFolders).where(eq(quizFolders.id, id));
+  }
+
+  async updateQuizFolderOrder(id: string, sortOrder: number): Promise<void> {
+    await db.update(quizFolders).set({ sortOrder }).where(eq(quizFolders.id, id));
+  }
+
+  async updateQuizOrderInFolder(quizId: string, orderInFolder: number): Promise<void> {
+    await db.update(quizzes).set({ orderInFolder } as any).where(eq(quizzes.id, quizId));
   }
 }
 

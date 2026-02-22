@@ -431,8 +431,40 @@ export async function registerRoutes(
       if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
       if (quiz.creatorId !== req.userId) return res.status(403).json({ message: "Ruxsat yo'q" });
       const { folderId } = req.body;
-      const updated = await storage.updateQuiz(req.params.id, { folderId: folderId || null } as any);
+      let orderInFolder = 0;
+      if (folderId) {
+        const allQuizzes = await storage.getQuizzesByCreator(req.userId);
+        const inFolder = allQuizzes.filter(q => q.folderId === folderId);
+        orderInFolder = inFolder.reduce((max, q) => Math.max(max, (q as any).orderInFolder || 0), 0) + 1;
+      }
+      const updated = await storage.updateQuiz(req.params.id, { folderId: folderId || null, orderInFolder } as any);
       res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/quiz-folders/reorder", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { folderIds } = req.body;
+      if (!Array.isArray(folderIds)) return res.status(400).json({ message: "folderIds kerak" });
+      for (let i = 0; i < folderIds.length; i++) {
+        await storage.updateQuizFolderOrder(folderIds[i], i + 1);
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/quiz-folders/:folderId/reorder-quizzes", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { quizIds } = req.body;
+      if (!Array.isArray(quizIds)) return res.status(400).json({ message: "quizIds kerak" });
+      for (let i = 0; i < quizIds.length; i++) {
+        await storage.updateQuizOrderInFolder(quizIds[i], i + 1);
+      }
+      res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: "Server error" });
     }

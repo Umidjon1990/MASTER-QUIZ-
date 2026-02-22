@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock, School, Repeat, FolderPlus, FolderInput } from "lucide-react";
+import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock, School, Repeat, FolderPlus, FolderInput, ChevronUp, ChevronDown, GripVertical, BookOpen } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import type { Quiz, UserProfile, TelegramChat, QuizCategory, QuizFolder } from "@shared/schema";
@@ -81,6 +81,11 @@ export default function TeacherQuizzes() {
       if (folderFilter !== "__unfiled" && q.folderId !== folderFilter) return false;
     }
     return true;
+  })?.sort((a, b) => {
+    if (folderFilter !== "all" && folderFilter !== "__unfiled") {
+      return ((a as any).orderInFolder || 0) - ((b as any).orderInFolder || 0);
+    }
+    return 0;
   });
 
   const { data: profile } = useQuery<UserProfile>({
@@ -116,7 +121,7 @@ export default function TeacherQuizzes() {
       queryClient.invalidateQueries({ queryKey: ["/api/quiz-folders"] });
       setNewFolderName("");
       setShowNewFolderInput(false);
-      toast({ title: "Papka yaratildi" });
+      toast({ title: "Dars yaratildi" });
     },
   });
 
@@ -129,7 +134,7 @@ export default function TeacherQuizzes() {
       queryClient.invalidateQueries({ queryKey: ["/api/quiz-folders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
       if (folderFilter !== "all") setFolderFilter("all");
-      toast({ title: "Papka o'chirildi" });
+      toast({ title: "Dars o'chirildi" });
     },
   });
 
@@ -141,9 +146,65 @@ export default function TeacherQuizzes() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
       setMoveQuiz(null);
-      toast({ title: "Quiz ko'chirildi" });
+      toast({ title: "Darsga ko'chirildi" });
     },
   });
+
+  const reorderFoldersMutation = useMutation({
+    mutationFn: async (folderIds: string[]) => {
+      const res = await apiRequest("POST", "/api/quiz-folders/reorder", { folderIds });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quiz-folders"] });
+    },
+  });
+
+  const reorderQuizzesMutation = useMutation({
+    mutationFn: async ({ folderId, quizIds }: { folderId: string; quizIds: string[] }) => {
+      const res = await apiRequest("POST", `/api/quiz-folders/${folderId}/reorder-quizzes`, { quizIds });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
+    },
+  });
+
+  const moveFolderUp = (folderId: string) => {
+    if (!folders) return;
+    const idx = folders.findIndex(f => f.id === folderId);
+    if (idx <= 0) return;
+    const newOrder = folders.map(f => f.id);
+    [newOrder[idx - 1], newOrder[idx]] = [newOrder[idx], newOrder[idx - 1]];
+    reorderFoldersMutation.mutate(newOrder);
+  };
+
+  const moveFolderDown = (folderId: string) => {
+    if (!folders) return;
+    const idx = folders.findIndex(f => f.id === folderId);
+    if (idx < 0 || idx >= folders.length - 1) return;
+    const newOrder = folders.map(f => f.id);
+    [newOrder[idx], newOrder[idx + 1]] = [newOrder[idx + 1], newOrder[idx]];
+    reorderFoldersMutation.mutate(newOrder);
+  };
+
+  const moveQuizUp = (quizId: string) => {
+    if (!filteredQuizzes || folderFilter === "all" || folderFilter === "__unfiled") return;
+    const idx = filteredQuizzes.findIndex(q => q.id === quizId);
+    if (idx <= 0) return;
+    const newOrder = filteredQuizzes.map(q => q.id);
+    [newOrder[idx - 1], newOrder[idx]] = [newOrder[idx], newOrder[idx - 1]];
+    reorderQuizzesMutation.mutate({ folderId: folderFilter, quizIds: newOrder });
+  };
+
+  const moveQuizDown = (quizId: string) => {
+    if (!filteredQuizzes || folderFilter === "all" || folderFilter === "__unfiled") return;
+    const idx = filteredQuizzes.findIndex(q => q.id === quizId);
+    if (idx < 0 || idx >= filteredQuizzes.length - 1) return;
+    const newOrder = filteredQuizzes.map(q => q.id);
+    [newOrder[idx], newOrder[idx + 1]] = [newOrder[idx + 1], newOrder[idx]];
+    reorderQuizzesMutation.mutate({ folderId: folderFilter, quizIds: newOrder });
+  };
 
   const scheduleMutation = useMutation({
     mutationFn: async ({ quizId, scheduledAt, requireCode, telegramChatId, telegramQuizChatId, allowReplay }: { quizId: string; scheduledAt: string; requireCode: boolean; telegramChatId?: string; telegramQuizChatId?: string; allowReplay?: boolean }) => {
@@ -286,64 +347,77 @@ export default function TeacherQuizzes() {
         </div>
       )}
 
-      <div className="flex items-center gap-2 flex-wrap">
-        <FolderInput className="w-4 h-4 text-muted-foreground" />
-        <div className="flex gap-1.5 flex-wrap items-center">
-          <Button
-            variant={folderFilter === "all" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFolderFilter("all")}
-            data-testid="filter-folder-all"
-          >
-            Barchasi
-          </Button>
-          {folders && folders.map(f => (
-            <div key={f.id} className="flex items-center gap-0.5">
-              <Button
-                variant={folderFilter === f.id ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFolderFilter(f.id)}
-                data-testid={`filter-folder-${f.id}`}
-              >
-                {f.name}
-              </Button>
-              {folderFilter === f.id && (
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { if (confirm(`"${f.name}" papkasini o'chirmoqchimisiz?`)) deleteFolderMutation.mutate(f.id); }} data-testid={`button-delete-folder-${f.id}`}>
-                  <Trash2 className="w-3 h-3" />
-                </Button>
-              )}
-            </div>
-          ))}
-          <Button
-            variant={folderFilter === "__unfiled" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFolderFilter("__unfiled")}
-            data-testid="filter-folder-unfiled"
-          >
-            Papkasiz
-          </Button>
-          {showNewFolderInput ? (
-            <div className="flex items-center gap-1">
-              <Input
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                placeholder="Papka nomi..."
-                className="h-8 w-36"
-                onKeyDown={(e) => { if (e.key === "Enter" && newFolderName.trim()) createFolderMutation.mutate(newFolderName.trim()); }}
-                data-testid="input-new-folder"
-              />
-              <Button size="sm" className="h-8" onClick={() => { if (newFolderName.trim()) createFolderMutation.mutate(newFolderName.trim()); }} disabled={!newFolderName.trim()} data-testid="button-create-folder">
-                <CheckCircle className="w-3 h-3" />
-              </Button>
-              <Button size="sm" variant="ghost" className="h-8" onClick={() => { setShowNewFolderInput(false); setNewFolderName(""); }} data-testid="button-cancel-folder">
-                <X className="w-3 h-3" />
-              </Button>
-            </div>
-          ) : (
-            <Button variant="outline" size="sm" onClick={() => setShowNewFolderInput(true)} data-testid="button-new-folder">
-              <FolderPlus className="w-3 h-3 mr-1" /> Papka
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <BookOpen className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium text-muted-foreground">Darslar:</span>
+          <div className="flex gap-1.5 flex-wrap items-center">
+            <Button
+              variant={folderFilter === "all" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFolderFilter("all")}
+              data-testid="filter-folder-all"
+            >
+              Barchasi
             </Button>
-          )}
+            {folders && folders.map((f, idx) => (
+              <div key={f.id} className="flex items-center gap-0.5">
+                <Button
+                  variant={folderFilter === f.id ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFolderFilter(f.id)}
+                  data-testid={`filter-folder-${f.id}`}
+                  className="gap-1"
+                >
+                  <Badge variant="secondary" className="px-1.5 py-0 text-xs font-bold rounded-full">{idx + 1}</Badge>
+                  {f.name}
+                </Button>
+                {folderFilter === f.id && (
+                  <div className="flex items-center">
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => moveFolderUp(f.id)} disabled={idx === 0} data-testid={`button-folder-up-${f.id}`}>
+                      <ChevronUp className="w-3 h-3" />
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => moveFolderDown(f.id)} disabled={idx === (folders?.length || 1) - 1} data-testid={`button-folder-down-${f.id}`}>
+                      <ChevronDown className="w-3 h-3" />
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => { if (confirm(`"${f.name}" darsini o'chirmoqchimisiz?`)) deleteFolderMutation.mutate(f.id); }} data-testid={`button-delete-folder-${f.id}`}>
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+            <Button
+              variant={folderFilter === "__unfiled" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFolderFilter("__unfiled")}
+              data-testid="filter-folder-unfiled"
+            >
+              Darssiz
+            </Button>
+            {showNewFolderInput ? (
+              <div className="flex items-center gap-1">
+                <Input
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  placeholder="Dars nomi..."
+                  className="h-8 w-40"
+                  onKeyDown={(e) => { if (e.key === "Enter" && newFolderName.trim()) createFolderMutation.mutate(newFolderName.trim()); }}
+                  data-testid="input-new-folder"
+                />
+                <Button size="sm" className="h-8" onClick={() => { if (newFolderName.trim()) createFolderMutation.mutate(newFolderName.trim()); }} disabled={!newFolderName.trim()} data-testid="button-create-folder">
+                  <CheckCircle className="w-3 h-3" />
+                </Button>
+                <Button size="sm" variant="ghost" className="h-8" onClick={() => { setShowNewFolderInput(false); setNewFolderName(""); }} data-testid="button-cancel-folder">
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => setShowNewFolderInput(true)} data-testid="button-new-folder">
+                <FolderPlus className="w-3 h-3 mr-1" /> Dars qo'shish
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -364,11 +438,24 @@ export default function TeacherQuizzes() {
           variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}
           className="grid md:grid-cols-2 lg:grid-cols-3 gap-4"
         >
-          {filteredQuizzes.map((quiz) => (
+          {filteredQuizzes.map((quiz, qIdx) => (
             <motion.div key={quiz.id} variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}>
               <Card className="p-5 hover-elevate" data-testid={`card-quiz-${quiz.id}`}>
                 <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
-                  <h3 className="font-semibold">{quiz.title}</h3>
+                  <div className="flex items-center gap-2">
+                    {folderFilter !== "all" && folderFilter !== "__unfiled" && (
+                      <div className="flex flex-col items-center gap-0.5 mr-1">
+                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => moveQuizUp(quiz.id)} disabled={qIdx === 0} data-testid={`button-quiz-up-${quiz.id}`}>
+                          <ChevronUp className="w-3 h-3" />
+                        </Button>
+                        <span className="text-xs font-bold text-muted-foreground">{qIdx + 1}</span>
+                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => moveQuizDown(quiz.id)} disabled={qIdx === (filteredQuizzes?.length || 1) - 1} data-testid={`button-quiz-down-${quiz.id}`}>
+                          <ChevronDown className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <h3 className="font-semibold">{quiz.title}</h3>
+                  </div>
                   <div className="flex gap-1.5 flex-wrap">
                     {quiz.scheduledStatus === "pending" && (
                       <>
@@ -400,7 +487,7 @@ export default function TeacherQuizzes() {
                 )}
                 <div className="flex gap-1.5 items-center mb-1 flex-wrap">
                   {quiz.category && <Badge variant="secondary" className="text-xs">{quiz.category}</Badge>}
-                  {quiz.folderId && folders && (() => { const f = folders.find(fo => fo.id === quiz.folderId); return f ? <Badge variant="outline" className="text-xs"><FolderOpen className="w-3 h-3 mr-0.5" />{f.name}</Badge> : null; })()}
+                  {quiz.folderId && folders && (() => { const f = folders.find(fo => fo.id === quiz.folderId); const fIdx = folders.findIndex(fo => fo.id === quiz.folderId); return f ? <Badge variant="outline" className="text-xs"><BookOpen className="w-3 h-3 mr-0.5" />{fIdx + 1}-dars: {f.name}</Badge> : null; })()}
                   {quiz.allowReplay && <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-600 dark:text-blue-400"><Repeat className="w-3 h-3 mr-0.5" />Qayta yechish</Badge>}
                   <span className="text-sm text-muted-foreground">{quiz.totalQuestions} savol | {quiz.totalPlays} marta o'ynalgan</span>
                 </div>
@@ -730,14 +817,14 @@ export default function TeacherQuizzes() {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>
-              <FolderInput className="w-5 h-5 inline mr-2" />
-              Papkaga ko'chirish
+              <BookOpen className="w-5 h-5 inline mr-2" />
+              Darsga ko'chirish
             </DialogTitle>
           </DialogHeader>
           {moveQuiz && (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground mb-3">
-                <span className="font-medium text-foreground">"{moveQuiz.title}"</span> quizini qaysi papkaga ko'chirmoqchisiz?
+                <span className="font-medium text-foreground">"{moveQuiz.title}"</span> testini qaysi darsga ko'chirmoqchisiz?
               </p>
               {moveQuiz.folderId && (
                 <div
@@ -746,17 +833,17 @@ export default function TeacherQuizzes() {
                   data-testid="button-remove-from-folder"
                 >
                   <X className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">Papkadan chiqarish</span>
+                  <span className="text-sm">Darsdan chiqarish</span>
                 </div>
               )}
-              {folders && folders.map(f => (
+              {folders && folders.map((f, idx) => (
                 <div
                   key={f.id}
                   className={`flex items-center gap-3 p-3 rounded-md border hover-elevate cursor-pointer ${moveQuiz.folderId === f.id ? "border-primary bg-primary/5" : ""}`}
                   onClick={() => moveToFolderMutation.mutate({ quizId: moveQuiz.id, folderId: f.id })}
                   data-testid={`button-move-to-${f.id}`}
                 >
-                  <FolderOpen className="w-4 h-4 text-muted-foreground" />
+                  <Badge variant="secondary" className="px-1.5 py-0 text-xs font-bold rounded-full">{idx + 1}</Badge>
                   <span className="text-sm font-medium">{f.name}</span>
                   {moveQuiz.folderId === f.id && <CheckCircle className="w-4 h-4 text-primary ml-auto" />}
                 </div>

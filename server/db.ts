@@ -24,6 +24,8 @@ async function runManualMigrations() {
       `ALTER TABLE "quizzes" ADD COLUMN IF NOT EXISTS "allow_replay" boolean NOT NULL DEFAULT false`,
       `ALTER TABLE "quizzes" ADD COLUMN IF NOT EXISTS "folder_id" varchar`,
       `CREATE TABLE IF NOT EXISTS "quiz_folders" ("id" varchar PRIMARY KEY DEFAULT gen_random_uuid(), "name" varchar(255) NOT NULL, "creator_id" varchar NOT NULL, "created_at" timestamp DEFAULT now())`,
+      `ALTER TABLE "quiz_folders" ADD COLUMN IF NOT EXISTS "sort_order" integer NOT NULL DEFAULT 0`,
+      `ALTER TABLE "quizzes" ADD COLUMN IF NOT EXISTS "order_in_folder" integer NOT NULL DEFAULT 0`,
     ];
     for (const q of alterQueries) {
       try {
