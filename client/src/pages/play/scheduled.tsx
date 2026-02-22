@@ -44,6 +44,8 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
   const [alreadyStartedRoomCode, setAlreadyStartedRoomCode] = useState("");
   const [alreadyStartedQuizId, setAlreadyStartedQuizId] = useState("");
   const [quizFinished, setQuizFinished] = useState(false);
+  const [finishedQuizId, setFinishedQuizId] = useState("");
+  const [finishedAllowReplay, setFinishedAllowReplay] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<"connected" | "reconnecting" | "disconnected">("connected");
   const socketRef = useRef<Socket | null>(null);
 
@@ -71,6 +73,8 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
                 }
                 if (statusData?.scheduledStatus === "finished") {
                   setQuizFinished(true);
+                  setFinishedQuizId(targetQuizId);
+                  if (statusData?.allowReplay) setFinishedAllowReplay(true);
                   return null;
                 }
                 throw new Error("Quiz topilmadi");
@@ -84,6 +88,8 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
         if (data) {
           if (data.scheduledStatus === "finished") {
             setQuizFinished(true);
+            setFinishedQuizId(data.id);
+            if (data.allowReplay) setFinishedAllowReplay(true);
           } else if (data.scheduledStatus === "started" && data.scheduledRoomCode) {
             setAlreadyStartedRoomCode(data.scheduledRoomCode);
             setAlreadyStartedQuizId(data.id);
@@ -246,9 +252,16 @@ export default function ScheduledQuizLobby({ mode = "code" }: { mode?: "code" | 
           </div>
           <h2 className="text-xl font-bold" data-testid="text-quiz-finished">Quiz tugagan</h2>
           <p className="text-muted-foreground text-sm">Bu rejalashtirilgan quiz allaqachon yakunlangan.</p>
-          <Button onClick={() => navigate("/")} data-testid="button-go-home">
-            Bosh sahifaga qaytish
-          </Button>
+          <div className="flex gap-2 justify-center flex-wrap">
+            {finishedAllowReplay && finishedQuizId && (
+              <Button className="gradient-purple border-0" onClick={() => navigate(`/quiz/replay/${finishedQuizId}`)} data-testid="button-replay-quiz">
+                Qayta yechish
+              </Button>
+            )}
+            <Button variant={finishedAllowReplay ? "outline" : "default"} onClick={() => navigate("/")} data-testid="button-go-home">
+              Bosh sahifaga qaytish
+            </Button>
+          </div>
         </Card>
       </div>
     );

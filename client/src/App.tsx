@@ -39,6 +39,7 @@ import AuthPage from "@/pages/auth";
 import QuizPlayPage from "@/pages/quiz-play";
 import ScheduledQuizLobby from "@/pages/play/scheduled";
 import ClassroomQuizPage from "@/pages/classroom";
+import QuizReplay from "@/pages/quiz-replay";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -193,6 +194,7 @@ function App() {
             <Route path="/classroom/:id" component={ClassroomQuizPage} />
             <Route path="/play/scheduled/:code">{() => <ScheduledQuizLobby mode="code" />}</Route>
             <Route path="/play/scheduled-open/:quizId">{() => <ScheduledQuizLobby mode="open" />}</Route>
+            <Route path="/quiz/replay/:id" component={QuizReplay} />
 
             <Route component={NotFound} />
           </Switch>

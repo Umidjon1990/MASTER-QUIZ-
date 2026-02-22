@@ -21,6 +21,9 @@ async function runManualMigrations() {
   try {
     const alterQueries = [
       `ALTER TABLE "quizzes" ADD COLUMN IF NOT EXISTS "scheduled_telegram_quiz_chat_id" varchar(100)`,
+      `ALTER TABLE "quizzes" ADD COLUMN IF NOT EXISTS "allow_replay" boolean NOT NULL DEFAULT false`,
+      `ALTER TABLE "quizzes" ADD COLUMN IF NOT EXISTS "folder_id" varchar`,
+      `CREATE TABLE IF NOT EXISTS "quiz_folders" ("id" varchar PRIMARY KEY DEFAULT gen_random_uuid(), "name" varchar(255) NOT NULL, "creator_id" varchar NOT NULL, "created_at" timestamp DEFAULT now())`,
     ];
     for (const q of alterQueries) {
       try {

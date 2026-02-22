@@ -62,8 +62,17 @@ export const quizzes = pgTable("quizzes", {
   scheduledRequireCode: boolean("scheduled_require_code").notNull().default(true),
   scheduledTelegramChatId: varchar("scheduled_telegram_chat_id", { length: 100 }),
   scheduledTelegramQuizChatId: varchar("scheduled_telegram_quiz_chat_id", { length: 100 }),
+  allowReplay: boolean("allow_replay").notNull().default(false),
+  folderId: varchar("folder_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const quizFolders = pgTable("quiz_folders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  creatorId: varchar("creator_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const assignments = pgTable("assignments", {
@@ -223,6 +232,7 @@ export const insertClassMemberSchema = createInsertSchema(classMembers).omit({ i
 export const insertQuestionBankSchema = createInsertSchema(questionBank).omit({ id: true, createdAt: true });
 export const insertQuizLikeSchema = createInsertSchema(quizLikes).omit({ id: true, createdAt: true });
 export const insertLiveLessonSchema = createInsertSchema(liveLessons).omit({ id: true, createdAt: true, participantCount: true, currentPage: true });
+export const insertQuizFolderSchema = createInsertSchema(quizFolders).omit({ id: true, createdAt: true });
 
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type UserProfile = typeof userProfiles.$inferSelect;
@@ -252,6 +262,8 @@ export type InsertQuizLike = z.infer<typeof insertQuizLikeSchema>;
 export type QuizLike = typeof quizLikes.$inferSelect;
 export type InsertLiveLesson = z.infer<typeof insertLiveLessonSchema>;
 export type LiveLesson = typeof liveLessons.$inferSelect;
+export type InsertQuizFolder = z.infer<typeof insertQuizFolderSchema>;
+export type QuizFolder = typeof quizFolders.$inferSelect;
 
 export const activeGames = pgTable("active_games", {
   id: varchar("id").primaryKey(),

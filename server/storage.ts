@@ -14,10 +14,11 @@ import {
   type QuizLike, type InsertQuizLike,
   type LiveLesson, type InsertLiveLesson,
   type QuizCategory,
+  type QuizFolder, type InsertQuizFolder,
   userProfiles, quizzes, questions, liveSessions,
   sessionParticipants, sessionAnswers, quizResults,
   assignments, assignmentAttempts, classes, classMembers, questionBank, quizLikes,
-  liveLessons, quizCategories,
+  liveLessons, quizCategories, quizFolders,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, ilike, isNull, or, inArray, lte } from "drizzle-orm";
@@ -109,6 +110,10 @@ export interface IStorage {
   getQuizCategoriesByCreator(creatorId: string): Promise<QuizCategory[]>;
   deleteQuizCategory(id: string): Promise<void>;
   getAllQuizCategories(): Promise<QuizCategory[]>;
+
+  createQuizFolder(data: InsertQuizFolder): Promise<QuizFolder>;
+  getQuizFoldersByCreator(creatorId: string): Promise<QuizFolder[]>;
+  deleteQuizFolder(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -476,6 +481,20 @@ export class DatabaseStorage implements IStorage {
 
   async getAllQuizCategories(): Promise<QuizCategory[]> {
     return db.select().from(quizCategories).orderBy(quizCategories.name);
+  }
+
+  async createQuizFolder(data: InsertQuizFolder): Promise<QuizFolder> {
+    const [folder] = await db.insert(quizFolders).values(data).returning();
+    return folder;
+  }
+
+  async getQuizFoldersByCreator(creatorId: string): Promise<QuizFolder[]> {
+    return db.select().from(quizFolders).where(eq(quizFolders.creatorId, creatorId)).orderBy(quizFolders.name);
+  }
+
+  async deleteQuizFolder(id: string): Promise<void> {
+    await db.update(quizzes).set({ folderId: null } as any).where(eq(quizzes.folderId, id));
+    await db.delete(quizFolders).where(eq(quizFolders.id, id));
   }
 }
 

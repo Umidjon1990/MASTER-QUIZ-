@@ -9,13 +9,14 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock, School } from "lucide-react";
+import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock, School, Repeat, FolderPlus, FolderInput } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import type { Quiz, UserProfile, TelegramChat, QuizCategory } from "@shared/schema";
+import type { Quiz, UserProfile, TelegramChat, QuizCategory, QuizFolder } from "@shared/schema";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, MoreVertical } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 function getUzbekistanDefaults() {
   const fmt = (n: number) => String(n).padStart(2, "0");
@@ -50,7 +51,12 @@ export default function TeacherQuizzes() {
   const [scheduleTelegramChatId, setScheduleTelegramChatId] = useState("");
   const [scheduleTelegramQuizEnabled, setScheduleTelegramQuizEnabled] = useState(false);
   const [scheduleTelegramQuizChatId, setScheduleTelegramQuizChatId] = useState("");
+  const [scheduleAllowReplay, setScheduleAllowReplay] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [folderFilter, setFolderFilter] = useState("all");
+  const [newFolderName, setNewFolderName] = useState("");
+  const [showNewFolderInput, setShowNewFolderInput] = useState(false);
+  const [moveQuiz, setMoveQuiz] = useState<Quiz | null>(null);
 
   const { data: quizzes, isLoading } = useQuery<Quiz[]>({
     queryKey: ["/api/quizzes"],
@@ -61,10 +67,20 @@ export default function TeacherQuizzes() {
     queryKey: ["/api/quiz-categories"],
   });
 
+  const { data: folders } = useQuery<QuizFolder[]>({
+    queryKey: ["/api/quiz-folders"],
+  });
+
   const filteredQuizzes = quizzes?.filter(q => {
-    if (categoryFilter === "all") return true;
-    if (categoryFilter === "__uncategorized") return !q.category;
-    return q.category === categoryFilter;
+    if (categoryFilter !== "all") {
+      if (categoryFilter === "__uncategorized" && q.category) return false;
+      if (categoryFilter !== "__uncategorized" && q.category !== categoryFilter) return false;
+    }
+    if (folderFilter !== "all") {
+      if (folderFilter === "__unfiled" && q.folderId) return false;
+      if (folderFilter !== "__unfiled" && q.folderId !== folderFilter) return false;
+    }
+    return true;
   });
 
   const { data: profile } = useQuery<UserProfile>({
@@ -91,9 +107,47 @@ export default function TeacherQuizzes() {
     },
   });
 
+  const createFolderMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", "/api/quiz-folders", { name });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quiz-folders"] });
+      setNewFolderName("");
+      setShowNewFolderInput(false);
+      toast({ title: "Papka yaratildi" });
+    },
+  });
+
+  const deleteFolderMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/quiz-folders/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quiz-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
+      if (folderFilter !== "all") setFolderFilter("all");
+      toast({ title: "Papka o'chirildi" });
+    },
+  });
+
+  const moveToFolderMutation = useMutation({
+    mutationFn: async ({ quizId, folderId }: { quizId: string; folderId: string | null }) => {
+      const res = await apiRequest("POST", `/api/quizzes/${quizId}/move-to-folder`, { folderId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
+      setMoveQuiz(null);
+      toast({ title: "Quiz ko'chirildi" });
+    },
+  });
+
   const scheduleMutation = useMutation({
-    mutationFn: async ({ quizId, scheduledAt, requireCode, telegramChatId, telegramQuizChatId }: { quizId: string; scheduledAt: string; requireCode: boolean; telegramChatId?: string; telegramQuizChatId?: string }) => {
-      const res = await apiRequest("POST", `/api/quizzes/${quizId}/schedule`, { scheduledAt, requireCode, telegramChatId, telegramQuizChatId });
+    mutationFn: async ({ quizId, scheduledAt, requireCode, telegramChatId, telegramQuizChatId, allowReplay }: { quizId: string; scheduledAt: string; requireCode: boolean; telegramChatId?: string; telegramQuizChatId?: string; allowReplay?: boolean }) => {
+      const res = await apiRequest("POST", `/api/quizzes/${quizId}/schedule`, { scheduledAt, requireCode, telegramChatId, telegramQuizChatId, allowReplay });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.message || "Xatolik");
@@ -109,6 +163,7 @@ export default function TeacherQuizzes() {
       setScheduleTelegramChatId("");
       setScheduleTelegramQuizEnabled(false);
       setScheduleTelegramQuizChatId("");
+      setScheduleAllowReplay(false);
       toast({ title: "Quiz rejalashtirildi!" });
     },
     onError: (error: any) => {
@@ -156,7 +211,7 @@ export default function TeacherQuizzes() {
     const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}:00+05:00`).toISOString();
     const telegramChatId = scheduleTelegramEnabled && scheduleTelegramChatId ? scheduleTelegramChatId : undefined;
     const telegramQuizChatId = scheduleTelegramQuizEnabled && scheduleTelegramQuizChatId ? scheduleTelegramQuizChatId : undefined;
-    scheduleMutation.mutate({ quizId: scheduleQuiz.id, scheduledAt, requireCode: scheduleRequireCode, telegramChatId, telegramQuizChatId });
+    scheduleMutation.mutate({ quizId: scheduleQuiz.id, scheduledAt, requireCode: scheduleRequireCode, telegramChatId, telegramQuizChatId, allowReplay: scheduleAllowReplay });
   };
 
   const [now, setNow] = useState(Date.now());
@@ -231,6 +286,67 @@ export default function TeacherQuizzes() {
         </div>
       )}
 
+      <div className="flex items-center gap-2 flex-wrap">
+        <FolderInput className="w-4 h-4 text-muted-foreground" />
+        <div className="flex gap-1.5 flex-wrap items-center">
+          <Button
+            variant={folderFilter === "all" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFolderFilter("all")}
+            data-testid="filter-folder-all"
+          >
+            Barchasi
+          </Button>
+          {folders && folders.map(f => (
+            <div key={f.id} className="flex items-center gap-0.5">
+              <Button
+                variant={folderFilter === f.id ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFolderFilter(f.id)}
+                data-testid={`filter-folder-${f.id}`}
+              >
+                {f.name}
+              </Button>
+              {folderFilter === f.id && (
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { if (confirm(`"${f.name}" papkasini o'chirmoqchimisiz?`)) deleteFolderMutation.mutate(f.id); }} data-testid={`button-delete-folder-${f.id}`}>
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              )}
+            </div>
+          ))}
+          <Button
+            variant={folderFilter === "__unfiled" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFolderFilter("__unfiled")}
+            data-testid="filter-folder-unfiled"
+          >
+            Papkasiz
+          </Button>
+          {showNewFolderInput ? (
+            <div className="flex items-center gap-1">
+              <Input
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                placeholder="Papka nomi..."
+                className="h-8 w-36"
+                onKeyDown={(e) => { if (e.key === "Enter" && newFolderName.trim()) createFolderMutation.mutate(newFolderName.trim()); }}
+                data-testid="input-new-folder"
+              />
+              <Button size="sm" className="h-8" onClick={() => { if (newFolderName.trim()) createFolderMutation.mutate(newFolderName.trim()); }} disabled={!newFolderName.trim()} data-testid="button-create-folder">
+                <CheckCircle className="w-3 h-3" />
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8" onClick={() => { setShowNewFolderInput(false); setNewFolderName(""); }} data-testid="button-cancel-folder">
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => setShowNewFolderInput(true)} data-testid="button-new-folder">
+              <FolderPlus className="w-3 h-3 mr-1" /> Papka
+            </Button>
+          )}
+        </div>
+      </div>
+
       {isLoading ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
@@ -284,6 +400,8 @@ export default function TeacherQuizzes() {
                 )}
                 <div className="flex gap-1.5 items-center mb-1 flex-wrap">
                   {quiz.category && <Badge variant="secondary" className="text-xs">{quiz.category}</Badge>}
+                  {quiz.folderId && folders && (() => { const f = folders.find(fo => fo.id === quiz.folderId); return f ? <Badge variant="outline" className="text-xs"><FolderOpen className="w-3 h-3 mr-0.5" />{f.name}</Badge> : null; })()}
+                  {quiz.allowReplay && <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-600 dark:text-blue-400"><Repeat className="w-3 h-3 mr-0.5" />Qayta yechish</Badge>}
                   <span className="text-sm text-muted-foreground">{quiz.totalQuestions} savol | {quiz.totalPlays} marta o'ynalgan</span>
                 </div>
 
@@ -354,6 +472,11 @@ export default function TeacherQuizzes() {
                   {hasTelegramBot && quiz.totalQuestions > 0 && (
                     <Button variant="outline" size="sm" onClick={() => setTelegramQuiz(quiz)} data-testid={`button-telegram-${quiz.id}`}>
                       <Send className="w-3 h-3 mr-1" /> Telegram
+                    </Button>
+                  )}
+                  {folders && folders.length > 0 && (
+                    <Button variant="ghost" size="sm" onClick={() => setMoveQuiz(quiz)} data-testid={`button-move-folder-${quiz.id}`}>
+                      <FolderInput className="w-3 h-3" />
                     </Button>
                   )}
                   <Button variant="ghost" size="sm" onClick={() => deleteQuiz.mutate(quiz.id)} data-testid={`button-delete-${quiz.id}`}>
@@ -430,7 +553,7 @@ export default function TeacherQuizzes() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!scheduleQuiz} onOpenChange={(open) => { if (!open) { setScheduleQuiz(null); setScheduleDate(""); setScheduleTime(""); setScheduleRequireCode(true); setScheduleTelegramEnabled(false); setScheduleTelegramChatId(""); setScheduleTelegramQuizEnabled(false); setScheduleTelegramQuizChatId(""); } else if (!scheduleDate) { const defs = getUzbekistanDefaults(); setScheduleDate(defs.date); setScheduleTime(defs.time); } }}>
+      <Dialog open={!!scheduleQuiz} onOpenChange={(open) => { if (!open) { setScheduleQuiz(null); setScheduleDate(""); setScheduleTime(""); setScheduleRequireCode(true); setScheduleTelegramEnabled(false); setScheduleTelegramChatId(""); setScheduleTelegramQuizEnabled(false); setScheduleTelegramQuizChatId(""); setScheduleAllowReplay(false); } else if (!scheduleDate) { const defs = getUzbekistanDefaults(); setScheduleDate(defs.date); setScheduleTime(defs.time); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
@@ -478,6 +601,22 @@ export default function TeacherQuizzes() {
                   checked={scheduleRequireCode}
                   onCheckedChange={setScheduleRequireCode}
                   data-testid="switch-require-code"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-muted">
+                <div className="flex items-center gap-2">
+                  <Repeat className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm font-medium">Qayta yechish mumkin</p>
+                    <p className="text-xs text-muted-foreground">
+                      {scheduleAllowReplay ? "Test tugagandan keyin o'quvchilar qayta yecha oladi" : "Test tugagandan keyin qayta yechib bo'lmaydi"}
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={scheduleAllowReplay}
+                  onCheckedChange={setScheduleAllowReplay}
+                  data-testid="switch-allow-replay"
                 />
               </div>
               {hasTelegramBot && telegramChats.length > 0 && (
@@ -582,6 +721,46 @@ export default function TeacherQuizzes() {
                 )}
                 Rejalashtirish
               </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!moveQuiz} onOpenChange={(open) => !open && setMoveQuiz(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              <FolderInput className="w-5 h-5 inline mr-2" />
+              Papkaga ko'chirish
+            </DialogTitle>
+          </DialogHeader>
+          {moveQuiz && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground mb-3">
+                <span className="font-medium text-foreground">"{moveQuiz.title}"</span> quizini qaysi papkaga ko'chirmoqchisiz?
+              </p>
+              {moveQuiz.folderId && (
+                <div
+                  className="flex items-center gap-3 p-3 rounded-md border hover-elevate cursor-pointer"
+                  onClick={() => moveToFolderMutation.mutate({ quizId: moveQuiz.id, folderId: null })}
+                  data-testid="button-remove-from-folder"
+                >
+                  <X className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm">Papkadan chiqarish</span>
+                </div>
+              )}
+              {folders && folders.map(f => (
+                <div
+                  key={f.id}
+                  className={`flex items-center gap-3 p-3 rounded-md border hover-elevate cursor-pointer ${moveQuiz.folderId === f.id ? "border-primary bg-primary/5" : ""}`}
+                  onClick={() => moveToFolderMutation.mutate({ quizId: moveQuiz.id, folderId: f.id })}
+                  data-testid={`button-move-to-${f.id}`}
+                >
+                  <FolderOpen className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">{f.name}</span>
+                  {moveQuiz.folderId === f.id && <CheckCircle className="w-4 h-4 text-primary ml-auto" />}
+                </div>
+              ))}
             </div>
           )}
         </DialogContent>

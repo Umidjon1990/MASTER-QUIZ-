@@ -360,7 +360,7 @@ export async function registerRoutes(
 
   app.post("/api/quizzes/:id/schedule", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
-      const { scheduledAt, requireCode, telegramChatId, telegramQuizChatId } = req.body;
+      const { scheduledAt, requireCode, telegramChatId, telegramQuizChatId, allowReplay } = req.body;
       if (!scheduledAt) return res.status(400).json({ message: "Vaqt kerak" });
 
       const quiz = await storage.getQuiz(req.params.id);
@@ -384,6 +384,7 @@ export async function registerRoutes(
         scheduledRequireCode: needCode,
         scheduledTelegramChatId: telegramChatId || null,
         scheduledTelegramQuizChatId: telegramQuizChatId || null,
+        allowReplay: allowReplay === true,
         isPublic: true,
         status: "published",
       } as any);
@@ -391,6 +392,83 @@ export async function registerRoutes(
       res.json(updated);
     } catch (error) {
       console.error("Schedule error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/quiz-folders", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const folders = await storage.getQuizFoldersByCreator(req.userId);
+      res.json(folders);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/quiz-folders", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { name } = req.body;
+      if (!name || !name.trim()) return res.status(400).json({ message: "Papka nomi kerak" });
+      const folder = await storage.createQuizFolder({ name: name.trim(), creatorId: req.userId });
+      res.json(folder);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/quiz-folders/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      await storage.deleteQuizFolder(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/quizzes/:id/move-to-folder", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.userId) return res.status(403).json({ message: "Ruxsat yo'q" });
+      const { folderId } = req.body;
+      const updated = await storage.updateQuiz(req.params.id, { folderId: folderId || null } as any);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/quizzes/:id/replay", async (req, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (!quiz.allowReplay) return res.status(403).json({ message: "Bu testni qayta yechish mumkin emas" });
+      const questionsList = await storage.getQuestionsByQuiz(quiz.id);
+      res.json({
+        id: quiz.id,
+        title: quiz.title,
+        description: quiz.description,
+        category: quiz.category,
+        coverImage: quiz.coverImage,
+        totalQuestions: quiz.totalQuestions,
+        timePerQuestion: quiz.timePerQuestion,
+        timerEnabled: quiz.timerEnabled,
+        shuffleQuestions: quiz.shuffleQuestions,
+        shuffleOptions: quiz.shuffleOptions,
+        showCorrectAnswers: quiz.showCorrectAnswers,
+        questions: questionsList.map(q => ({
+          id: q.id,
+          questionText: q.questionText,
+          type: q.type,
+          options: q.options,
+          correctAnswer: q.correctAnswer,
+          points: q.points,
+          timeLimit: q.timeLimit,
+          mediaUrl: q.mediaUrl,
+          mediaType: q.mediaType,
+        })),
+      });
+    } catch (error) {
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -444,6 +522,7 @@ export async function registerRoutes(
         scheduledCode: quiz.scheduledCode,
         scheduledRoomCode: effectiveRoomCode,
         scheduledRequireCode: quiz.scheduledRequireCode,
+        allowReplay: quiz.allowReplay,
         creatorId: quiz.creatorId,
       });
     } catch (error) {
@@ -490,6 +569,7 @@ export async function registerRoutes(
         return res.json({
           scheduledStatus: "finished",
           roomCode: null,
+          allowReplay: quiz.allowReplay,
         });
       }
       let roomCode: string | null = null;
@@ -499,6 +579,7 @@ export async function registerRoutes(
       res.json({
         scheduledStatus: quiz.scheduledStatus,
         roomCode,
+        allowReplay: quiz.allowReplay,
       });
     } catch (error) {
       res.status(500).json({ status: "error" });
