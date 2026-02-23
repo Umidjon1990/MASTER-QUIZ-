@@ -491,6 +491,19 @@ export default function FolderDetail() {
                       <SelectContent>{telegramChats.map((chat) => <SelectItem key={chat.chatId} value={chat.chatId}>{chat.title || chat.chatId}</SelectItem>)}</SelectContent>
                     </Select>
                   )}
+                  <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-muted">
+                    <div className="flex items-center gap-2">
+                      <Send className="w-4 h-4 text-muted-foreground" />
+                      <p className="text-sm font-medium">Testni Telegramga yuborish</p>
+                    </div>
+                    <Switch checked={scheduleTelegramQuizEnabled} onCheckedChange={(c) => { setScheduleTelegramQuizEnabled(c); if (!c) setScheduleTelegramQuizChatId(""); }} data-testid="switch-telegram-quiz-send" />
+                  </div>
+                  {scheduleTelegramQuizEnabled && (
+                    <Select value={scheduleTelegramQuizChatId} onValueChange={setScheduleTelegramQuizChatId}>
+                      <SelectTrigger data-testid="select-telegram-quiz-chat"><SelectValue placeholder="Chat tanlang..." /></SelectTrigger>
+                      <SelectContent>{telegramChats.map((chat) => <SelectItem key={chat.chatId} value={chat.chatId}>{chat.title || chat.chatId}</SelectItem>)}</SelectContent>
+                    </Select>
+                  )}
                 </div>
               )}
               <Button className="w-full gradient-purple border-0" onClick={handleSchedule} disabled={scheduleMutation.isPending || !scheduleDate || !scheduleTime} data-testid="button-confirm-schedule">
