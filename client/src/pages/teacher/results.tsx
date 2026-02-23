@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Trophy, Send, Users, Megaphone, Loader2, Bot, ChevronDown, ChevronUp, BookOpen, FolderOpen, FileDown, Trash2 } from "lucide-react";
+
 import { queryClient } from "@/lib/queryClient";
 import type { Quiz, UserProfile, TelegramChat, QuizResult, QuizFolder } from "@shared/schema";
 
@@ -18,8 +19,6 @@ export default function TeacherResults() {
   const { toast } = useToast();
   const [telegramQuiz, setTelegramQuiz] = useState<Quiz | null>(null);
   const [expandedQuiz, setExpandedQuiz] = useState<string | null>(null);
-  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
-
   const { data: quizzes, isLoading } = useQuery<Quiz[]>({ queryKey: ["/api/quizzes"] });
   const { data: profile } = useQuery<UserProfile>({ queryKey: ["/api/profile"] });
   const { data: folders } = useQuery<QuizFolder[]>({ queryKey: ["/api/quiz-folders"] });
@@ -42,10 +41,6 @@ export default function TeacherResults() {
   });
 
   const quizzesWithPlays = quizzes?.filter(q => (q.totalPlays || 0) > 0) || [];
-
-  const toggleFolder = (folderId: string) => {
-    setExpandedFolders(prev => ({ ...prev, [folderId]: !prev[folderId] }));
-  };
 
   const folderQuizzesMap: Record<string, Quiz[]> = {};
   const unfiledQuizzes: Quiz[] = [];
@@ -134,54 +129,43 @@ export default function TeacherResults() {
         <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} className="space-y-4">
           {foldersWithResults.map((folder) => {
             const folderQuizzes = folderQuizzesMap[folder.id] || [];
-            const isExpanded = expandedFolders[folder.id] !== false;
             const totalPlays = folderQuizzes.reduce((sum, q) => sum + (q.totalPlays || 0), 0);
 
             return (
               <motion.div key={folder.id} variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}>
-                <Card className="overflow-hidden" data-testid={`folder-results-${folder.id}`}>
-                  <div
-                    className="flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/30 transition-colors"
-                    onClick={() => toggleFolder(folder.id)}
-                    data-testid={`button-toggle-folder-results-${folder.id}`}
-                  >
-                    <FolderOpen className="w-5 h-5 text-primary shrink-0" />
-                    <h3 className="font-semibold text-base flex-1">{folder.name}</h3>
-                    <Badge variant="secondary" className="text-xs shrink-0">{totalPlays} o'yin</Badge>
-                    <Badge variant="outline" className="text-xs shrink-0">{folderQuizzes.length} quiz</Badge>
-                    {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-                  </div>
-
-                  {isExpanded && (
-                    <div className="border-t divide-y">
-                      {folderQuizzes.map(renderQuizCard)}
-                    </div>
-                  )}
-                </Card>
+                <div className="flex items-center gap-2 mb-2">
+                  <FolderOpen className="w-4 h-4 text-primary" />
+                  <h2 className="font-semibold text-base">{folder.name}</h2>
+                  <Badge variant="secondary" className="text-xs">{totalPlays} o'yin</Badge>
+                  <Badge variant="outline" className="text-xs">{folderQuizzes.length} quiz</Badge>
+                </div>
+                <div className="space-y-2">
+                  {folderQuizzes.map(q => (
+                    <Card key={q.id} className="overflow-hidden" data-testid={`folder-results-${folder.id}`}>
+                      {renderQuizCard(q)}
+                    </Card>
+                  ))}
+                </div>
               </motion.div>
             );
           })}
 
           {unfiledQuizzes.length > 0 && (
             <motion.div variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}>
-              <Card className="overflow-hidden" data-testid="folder-results-unfiled">
-                <div
-                  className="flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/30 transition-colors"
-                  onClick={() => toggleFolder("__unfiled")}
-                  data-testid="button-toggle-folder-results-unfiled"
-                >
-                  <BookOpen className="w-5 h-5 text-muted-foreground shrink-0" />
-                  <h3 className="font-semibold text-base flex-1">Darssiz quizlar</h3>
-                  <Badge variant="secondary" className="text-xs shrink-0">{unfiledQuizzes.length} quiz</Badge>
-                  {expandedFolders["__unfiled"] !== false ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+              {foldersWithResults.length > 0 && (
+                <div className="flex items-center gap-2 mb-2">
+                  <BookOpen className="w-4 h-4 text-muted-foreground" />
+                  <h2 className="font-semibold text-base text-muted-foreground">Darssiz quizlar</h2>
+                  <Badge variant="secondary" className="text-xs">{unfiledQuizzes.length}</Badge>
                 </div>
-
-                {expandedFolders["__unfiled"] !== false && (
-                  <div className="border-t divide-y">
-                    {unfiledQuizzes.map(renderQuizCard)}
-                  </div>
-                )}
-              </Card>
+              )}
+              <div className="space-y-2">
+                {unfiledQuizzes.map(q => (
+                  <Card key={q.id} className="overflow-hidden">
+                    {renderQuizCard(q)}
+                  </Card>
+                ))}
+              </div>
             </motion.div>
           )}
         </motion.div>

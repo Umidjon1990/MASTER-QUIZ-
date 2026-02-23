@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock, School, Repeat, FolderPlus, FolderInput, ChevronUp, ChevronDown, ChevronRight, GripVertical, BookOpen, Share2 } from "lucide-react";
+import { Plus, Trash2, Edit, Play, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Clock, CheckCircle, Lock, Unlock, School, Repeat, FolderPlus, FolderInput, ChevronUp, ChevronDown, BookOpen, Share2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import type { Quiz, UserProfile, TelegramChat, QuizCategory, QuizFolder } from "@shared/schema";
@@ -213,7 +213,6 @@ export default function TeacherQuizzes() {
   const [scheduleTelegramQuizChatId, setScheduleTelegramQuizChatId] = useState("");
   const [scheduleAllowReplay, setScheduleAllowReplay] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [newFolderName, setNewFolderName] = useState("");
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [moveQuiz, setMoveQuiz] = useState<Quiz | null>(null);
@@ -239,10 +238,6 @@ export default function TeacherQuizzes() {
   const copyShareLink = () => {
     navigator.clipboard.writeText(shareLink);
     toast({ title: "Link nusxalandi!" });
-  };
-
-  const toggleFolder = (folderId: string) => {
-    setExpandedFolders(prev => ({ ...prev, [folderId]: !prev[folderId] }));
   };
 
   const { data: quizzes, isLoading } = useQuery<Quiz[]>({
@@ -568,95 +563,58 @@ export default function TeacherQuizzes() {
             )}
           </div>
 
-          {folders && folders.map((folder, fIdx) => {
-            const folderQuizzes = getQuizzesForFolder(folder.id);
-            const isExpanded = expandedFolders[folder.id] !== false;
-            return (
-              <motion.div key={folder.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: fIdx * 0.05 }}>
-                <Card className="overflow-hidden" data-testid={`folder-section-${folder.id}`}>
-                  <div
-                    className="flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 transition-colors select-none"
-                    onClick={() => toggleFolder(folder.id)}
-                    data-testid={`folder-header-${folder.id}`}
-                  >
-                    <ChevronRight className={`w-5 h-5 text-muted-foreground transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
-                    <Badge className="px-2 py-0.5 text-sm font-bold rounded-full gradient-purple border-0 text-white shrink-0">{fIdx + 1}-dars</Badge>
-                    <h3 className="font-semibold text-base flex-1 min-w-0 truncate">{folder.name}</h3>
-                    <Badge variant="secondary" className="text-xs shrink-0">{folderQuizzes.length} ta quiz</Badge>
-                    <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => moveFolderUp(folder.id)} disabled={fIdx === 0} data-testid={`button-folder-up-${folder.id}`}>
-                        <ChevronUp className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => moveFolderDown(folder.id)} disabled={fIdx === (folders?.length || 1) - 1} data-testid={`button-folder-down-${folder.id}`}>
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => { if (confirm(`"${folder.name}" darsini o'chirmoqchimisiz?`)) deleteFolderMutation.mutate(folder.id); }} data-testid={`button-delete-folder-${folder.id}`}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="border-t">
-                      {folderQuizzes.length > 0 ? (
-                        <div className="divide-y">
-                          {folderQuizzes.map((quiz, qIdx) => (
-                            <QuizRow
-                              key={quiz.id}
-                              quiz={quiz}
-                              qIdx={qIdx}
-                              totalInFolder={folderQuizzes.length}
-                              folderId={folder.id}
-                              folders={folders}
-                              hasTelegramBot={hasTelegramBot}
-                              onEdit={() => navigate(`/teacher/quizzes/${quiz.id}`)}
-                              onLive={() => navigate(`/teacher/live?quizId=${quiz.id}`)}
-                              onClassroom={() => navigate(`/classroom/${quiz.id}`)}
-                              onSchedule={() => { const defs = getUzbekistanDefaults(); setScheduleDate(defs.date); setScheduleTime(defs.time); setScheduleQuiz(quiz); }}
-                              onTelegram={() => setTelegramQuiz(quiz)}
-                              onMove={() => setMoveQuiz(quiz)}
-                              onDelete={() => deleteQuiz.mutate(quiz.id)}
-                              onMoveUp={() => moveQuizUp(quiz.id, folder.id)}
-                              onMoveDown={() => moveQuizDown(quiz.id, folder.id)}
-                              onCancelSchedule={() => cancelScheduleMutation.mutate(quiz.id)}
-                              onShare={() => handleShare(quiz)}
-                              onCopyLink={copyScheduleLink}
-                              formatCountdown={formatCountdown}
-                              toast={toast}
-                            />
-                          ))}
+          {folders && folders.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {folders.map((folder, fIdx) => {
+                const folderQuizzes = getQuizzesForFolder(folder.id);
+                return (
+                  <motion.div key={folder.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: fIdx * 0.05 }}>
+                    <Card
+                      className="cursor-pointer hover:shadow-md hover:border-primary/30 transition-all"
+                      onClick={() => navigate(`/teacher/folder/${folder.id}`)}
+                      data-testid={`folder-card-${folder.id}`}
+                    >
+                      <div className="p-4">
+                        <div className="flex items-center gap-3 mb-3">
+                          <Badge className="px-2.5 py-1 text-sm font-bold rounded-full gradient-purple border-0 text-white shrink-0">{fIdx + 1}</Badge>
+                          <h3 className="font-semibold text-base flex-1 min-w-0 truncate">{folder.name}</h3>
                         </div>
-                      ) : (
-                        <div className="p-6 text-center text-sm text-muted-foreground">
-                          Bu darsda hali quiz yo'q
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">{folderQuizzes.length} ta quiz</span>
+                          <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => moveFolderUp(folder.id)} disabled={fIdx === 0} data-testid={`button-folder-up-${folder.id}`}>
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => moveFolderDown(folder.id)} disabled={fIdx === (folders?.length || 1) - 1} data-testid={`button-folder-down-${folder.id}`}>
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => { if (confirm(`"${folder.name}" darsini o'chirmoqchimisiz?`)) deleteFolderMutation.mutate(folder.id); }} data-testid={`button-delete-folder-${folder.id}`}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  )}
-                </Card>
-              </motion.div>
-            );
-          })}
+                      </div>
+                    </Card>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
 
           {unfiledQuizzes.length > 0 && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: (folders?.length || 0) * 0.05 }}>
-              <Card className="overflow-hidden" data-testid="folder-section-unfiled">
-                <div
-                  className="flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 transition-colors select-none"
-                  onClick={() => toggleFolder("__unfiled")}
-                  data-testid="folder-header-unfiled"
-                >
-                  <ChevronRight className={`w-5 h-5 text-muted-foreground transition-transform shrink-0 ${expandedFolders["__unfiled"] !== false ? "rotate-90" : ""}`} />
-                  <BookOpen className="w-5 h-5 text-muted-foreground shrink-0" />
-                  <h3 className="font-semibold text-base flex-1">Darssiz quizlar</h3>
-                  <Badge variant="secondary" className="text-xs shrink-0">{unfiledQuizzes.length} ta quiz</Badge>
+            <>
+              {folders && folders.length > 0 && (
+                <div className="flex items-center gap-2 pt-2">
+                  <BookOpen className="w-4 h-4 text-muted-foreground" />
+                  <h2 className="font-semibold text-base text-muted-foreground">Darssiz quizlar</h2>
+                  <Badge variant="secondary" className="text-xs">{unfiledQuizzes.length}</Badge>
                 </div>
-
-                {expandedFolders["__unfiled"] !== false && (
-                  <div className="border-t divide-y">
-                    {unfiledQuizzes.map((quiz, qIdx) => (
+              )}
+              <div className="space-y-3">
+                {unfiledQuizzes.map((quiz, qIdx) => (
+                  <motion.div key={quiz.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: ((folders?.length || 0) + qIdx) * 0.03 }}>
+                    <Card className="overflow-hidden">
                       <QuizRow
-                        key={quiz.id}
                         quiz={quiz}
                         qIdx={qIdx}
                         totalInFolder={unfiledQuizzes.length}
@@ -678,11 +636,11 @@ export default function TeacherQuizzes() {
                         formatCountdown={formatCountdown}
                         toast={toast}
                       />
-                    ))}
-                  </div>
-                )}
-              </Card>
-            </motion.div>
+                    </Card>
+                  </motion.div>
+                ))}
+              </div>
+            </>
           )}
 
           {(!quizzes || quizzes.length === 0) && (!folders || folders.length === 0) && (

@@ -28,6 +28,7 @@ import TeacherQuestionBank from "@/pages/teacher/question-bank";
 import TeacherTelegram from "@/pages/teacher/telegram";
 import TeacherLessons from "@/pages/teacher/lessons";
 import TeacherLessonLive from "@/pages/teacher/lesson-live";
+import FolderDetail from "@/pages/teacher/folder-detail";
 import LessonJoin from "@/pages/lesson/join";
 import StudentDashboard from "@/pages/student/index";
 import StudentResults from "@/pages/student/results";
@@ -144,6 +145,9 @@ function App() {
             </Route>
             <Route path="/teacher/quizzes/:id">
               {() => <ProtectedPage component={QuizEditor} />}
+            </Route>
+            <Route path="/teacher/folder/:id">
+              {() => <ProtectedPage component={FolderDetail} />}
             </Route>
             <Route path="/teacher/live">
               {() => <ProtectedPage component={TeacherLive} />}
