@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock, School, Repeat, FolderPlus, FolderInput, ChevronUp, ChevronDown, ChevronRight, GripVertical, BookOpen } from "lucide-react";
+import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock, School, Repeat, FolderPlus, FolderInput, ChevronUp, ChevronDown, ChevronRight, GripVertical, BookOpen, Share2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import type { Quiz, UserProfile, TelegramChat, QuizCategory, QuizFolder } from "@shared/schema";
@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FolderOpen, MoreVertical } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
-function QuizRow({ quiz, qIdx, totalInFolder, folderId, folders, hasTelegramBot, onEdit, onLive, onClassroom, onSchedule, onTelegram, onMove, onDelete, onMoveUp, onMoveDown, onCancelSchedule, onCopyLink, formatCountdown, toast }: {
+function QuizRow({ quiz, qIdx, totalInFolder, folderId, folders, hasTelegramBot, onEdit, onLive, onClassroom, onSchedule, onTelegram, onMove, onDelete, onMoveUp, onMoveDown, onCancelSchedule, onCopyLink, onShare, formatCountdown, toast }: {
   quiz: Quiz;
   qIdx: number;
   totalInFolder: number;
@@ -36,6 +36,7 @@ function QuizRow({ quiz, qIdx, totalInFolder, folderId, folders, hasTelegramBot,
   onMoveDown: () => void;
   onCancelSchedule: () => void;
   onCopyLink: (code: string) => void;
+  onShare: () => void;
   formatCountdown: (scheduledAt: string | Date) => string;
   toast: (opts: any) => void;
 }) {
@@ -157,6 +158,11 @@ function QuizRow({ quiz, qIdx, totalInFolder, folderId, folders, hasTelegramBot,
                 <Send className="w-3 h-3 mr-1" /> Telegram
               </Button>
             )}
+            {quiz.status === "published" && (
+              <Button variant="outline" size="sm" onClick={onShare} data-testid={`button-share-${quiz.id}`}>
+                <Share2 className="w-3 h-3 mr-1" /> Mustaqil test
+              </Button>
+            )}
             {folders && folders.length > 0 && (
               <Button variant="ghost" size="sm" onClick={onMove} data-testid={`button-move-folder-${quiz.id}`}>
                 <FolderInput className="w-3 h-3" />
@@ -211,6 +217,29 @@ export default function TeacherQuizzes() {
   const [newFolderName, setNewFolderName] = useState("");
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [moveQuiz, setMoveQuiz] = useState<Quiz | null>(null);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareLink, setShareLink] = useState("");
+  const [shareLoading, setShareLoading] = useState(false);
+
+  const handleShare = async (quiz: Quiz) => {
+    setShareLoading(true);
+    try {
+      const res = await apiRequest("POST", `/api/quizzes/${quiz.id}/share`);
+      const data = await res.json();
+      const link = `${window.location.origin}/shared/${data.code}`;
+      setShareLink(link);
+      setShareDialogOpen(true);
+    } catch (err: any) {
+      toast({ title: "Xatolik", description: err.message || "Link yaratib bo'lmadi", variant: "destructive" });
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const copyShareLink = () => {
+    navigator.clipboard.writeText(shareLink);
+    toast({ title: "Link nusxalandi!" });
+  };
 
   const toggleFolder = (folderId: string) => {
     setExpandedFolders(prev => ({ ...prev, [folderId]: !prev[folderId] }));
@@ -590,6 +619,7 @@ export default function TeacherQuizzes() {
                               onMoveUp={() => moveQuizUp(quiz.id, folder.id)}
                               onMoveDown={() => moveQuizDown(quiz.id, folder.id)}
                               onCancelSchedule={() => cancelScheduleMutation.mutate(quiz.id)}
+                              onShare={() => handleShare(quiz)}
                               onCopyLink={copyScheduleLink}
                               formatCountdown={formatCountdown}
                               toast={toast}
@@ -643,6 +673,7 @@ export default function TeacherQuizzes() {
                         onMoveUp={() => {}}
                         onMoveDown={() => {}}
                         onCancelSchedule={() => cancelScheduleMutation.mutate(quiz.id)}
+                        onShare={() => handleShare(quiz)}
                         onCopyLink={copyScheduleLink}
                         formatCountdown={formatCountdown}
                         toast={toast}
@@ -932,6 +963,28 @@ export default function TeacherQuizzes() {
               ))}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              <Share2 className="w-5 h-5 inline mr-2" />
+              Mustaqil test linki
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Bu linkni o'quvchilarga yuboring. Ular mustaqil ravishda testni yechishlari mumkin.
+            </p>
+            <div className="flex items-center gap-2">
+              <Input value={shareLink} readOnly className="font-mono text-sm" data-testid="input-share-link" />
+              <Button size="sm" onClick={copyShareLink} data-testid="button-copy-share-link">
+                <Copy className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

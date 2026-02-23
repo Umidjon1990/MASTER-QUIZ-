@@ -26,6 +26,8 @@ async function runManualMigrations() {
       `CREATE TABLE IF NOT EXISTS "quiz_folders" ("id" varchar PRIMARY KEY DEFAULT gen_random_uuid(), "name" varchar(255) NOT NULL, "creator_id" varchar NOT NULL, "created_at" timestamp DEFAULT now())`,
       `ALTER TABLE "quiz_folders" ADD COLUMN IF NOT EXISTS "sort_order" integer NOT NULL DEFAULT 0`,
       `ALTER TABLE "quizzes" ADD COLUMN IF NOT EXISTS "order_in_folder" integer NOT NULL DEFAULT 0`,
+      `CREATE TABLE IF NOT EXISTS "shared_quizzes" ("id" varchar PRIMARY KEY DEFAULT gen_random_uuid(), "quiz_id" varchar NOT NULL, "creator_id" varchar NOT NULL, "code" varchar(10) NOT NULL UNIQUE, "is_active" boolean NOT NULL DEFAULT true, "created_at" timestamp DEFAULT now())`,
+      `CREATE TABLE IF NOT EXISTS "shared_quiz_attempts" ("id" varchar PRIMARY KEY DEFAULT gen_random_uuid(), "shared_quiz_id" varchar NOT NULL, "player_name" varchar(100) NOT NULL, "score" integer NOT NULL DEFAULT 0, "correct_answers" integer NOT NULL DEFAULT 0, "total_questions" integer NOT NULL DEFAULT 0, "answers" jsonb, "started_at" timestamp DEFAULT now(), "completed_at" timestamp)`,
     ];
     for (const q of alterQueries) {
       try {

@@ -15,10 +15,12 @@ import {
   type LiveLesson, type InsertLiveLesson,
   type QuizCategory,
   type QuizFolder, type InsertQuizFolder,
+  type SharedQuiz, type InsertSharedQuiz,
+  type SharedQuizAttempt, type InsertSharedQuizAttempt,
   userProfiles, quizzes, questions, liveSessions,
   sessionParticipants, sessionAnswers, quizResults,
   assignments, assignmentAttempts, classes, classMembers, questionBank, quizLikes,
-  liveLessons, quizCategories, quizFolders,
+  liveLessons, quizCategories, quizFolders, sharedQuizzes, sharedQuizAttempts,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, ilike, isNull, or, inArray, lte } from "drizzle-orm";
@@ -116,6 +118,16 @@ export interface IStorage {
   deleteQuizFolder(id: string): Promise<void>;
   updateQuizFolderOrder(id: string, sortOrder: number): Promise<void>;
   updateQuizOrderInFolder(quizId: string, orderInFolder: number): Promise<void>;
+
+  createSharedQuiz(data: InsertSharedQuiz): Promise<SharedQuiz>;
+  getSharedQuizByCode(code: string): Promise<SharedQuiz | undefined>;
+  getSharedQuizzesByCreator(creatorId: string): Promise<SharedQuiz[]>;
+  getSharedQuizzesByQuizId(quizId: string): Promise<SharedQuiz[]>;
+  updateSharedQuiz(id: string, data: Partial<SharedQuiz>): Promise<SharedQuiz | undefined>;
+  createSharedQuizAttempt(data: InsertSharedQuizAttempt): Promise<SharedQuizAttempt>;
+  updateSharedQuizAttempt(id: string, data: Partial<SharedQuizAttempt>): Promise<SharedQuizAttempt | undefined>;
+  getSharedQuizAttempts(sharedQuizId: string): Promise<SharedQuizAttempt[]>;
+  getSharedQuizAttempt(id: string): Promise<SharedQuizAttempt | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -507,6 +519,48 @@ export class DatabaseStorage implements IStorage {
 
   async updateQuizOrderInFolder(quizId: string, orderInFolder: number): Promise<void> {
     await db.update(quizzes).set({ orderInFolder } as any).where(eq(quizzes.id, quizId));
+  }
+
+  async createSharedQuiz(data: InsertSharedQuiz): Promise<SharedQuiz> {
+    const [created] = await db.insert(sharedQuizzes).values(data as any).returning();
+    return created;
+  }
+
+  async getSharedQuizByCode(code: string): Promise<SharedQuiz | undefined> {
+    const [sq] = await db.select().from(sharedQuizzes).where(eq(sharedQuizzes.code, code));
+    return sq;
+  }
+
+  async getSharedQuizzesByCreator(creatorId: string): Promise<SharedQuiz[]> {
+    return db.select().from(sharedQuizzes).where(eq(sharedQuizzes.creatorId, creatorId)).orderBy(desc(sharedQuizzes.createdAt));
+  }
+
+  async getSharedQuizzesByQuizId(quizId: string): Promise<SharedQuiz[]> {
+    return db.select().from(sharedQuizzes).where(eq(sharedQuizzes.quizId, quizId)).orderBy(desc(sharedQuizzes.createdAt));
+  }
+
+  async updateSharedQuiz(id: string, data: Partial<SharedQuiz>): Promise<SharedQuiz | undefined> {
+    const [updated] = await db.update(sharedQuizzes).set(data as any).where(eq(sharedQuizzes.id, id)).returning();
+    return updated;
+  }
+
+  async createSharedQuizAttempt(data: InsertSharedQuizAttempt): Promise<SharedQuizAttempt> {
+    const [created] = await db.insert(sharedQuizAttempts).values(data as any).returning();
+    return created;
+  }
+
+  async updateSharedQuizAttempt(id: string, data: Partial<SharedQuizAttempt>): Promise<SharedQuizAttempt | undefined> {
+    const [updated] = await db.update(sharedQuizAttempts).set(data as any).where(eq(sharedQuizAttempts.id, id)).returning();
+    return updated;
+  }
+
+  async getSharedQuizAttempts(sharedQuizId: string): Promise<SharedQuizAttempt[]> {
+    return db.select().from(sharedQuizAttempts).where(eq(sharedQuizAttempts.sharedQuizId, sharedQuizId)).orderBy(desc(sharedQuizAttempts.completedAt));
+  }
+
+  async getSharedQuizAttempt(id: string): Promise<SharedQuizAttempt | undefined> {
+    const [attempt] = await db.select().from(sharedQuizAttempts).where(eq(sharedQuizAttempts.id, id));
+    return attempt;
   }
 }
 

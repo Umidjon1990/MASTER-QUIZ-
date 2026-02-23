@@ -505,6 +505,153 @@ export async function registerRoutes(
     }
   });
 
+  // ===== SHARED QUIZ (Mustaqil test) =====
+  app.post("/api/quizzes/:id/share", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.userId) return res.status(403).json({ message: "Ruxsat yo'q" });
+
+      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const shared = await storage.createSharedQuiz({
+        quizId: quiz.id,
+        creatorId: req.userId,
+        code,
+        isActive: true,
+      });
+      res.json(shared);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/shared-quizzes", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const shared = await storage.getSharedQuizzesByCreator(req.userId);
+      res.json(shared);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.patch("/api/shared-quizzes/:id/toggle", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const sharedList = await storage.getSharedQuizzesByCreator(req.userId);
+      const shared = sharedList.find(s => s.id === req.params.id);
+      if (!shared) return res.status(404).json({ message: "Topilmadi" });
+      const updated = await storage.updateSharedQuiz(req.params.id, { isActive: !shared.isActive });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/shared-quizzes/:id/attempts", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const attempts = await storage.getSharedQuizAttempts(req.params.id);
+      res.json(attempts);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Public endpoints for students taking shared quiz
+  app.get("/api/shared/:code", async (req, res) => {
+    try {
+      const shared = await storage.getSharedQuizByCode(req.params.code);
+      if (!shared) return res.status(404).json({ message: "Test topilmadi" });
+      if (!shared.isActive) return res.status(403).json({ message: "Bu test hozircha yopilgan" });
+
+      const quiz = await storage.getQuiz(shared.quizId);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+
+      const questionsList = await storage.getQuestionsByQuiz(quiz.id);
+      res.json({
+        sharedId: shared.id,
+        quizId: quiz.id,
+        title: quiz.title,
+        description: quiz.description,
+        category: quiz.category,
+        coverImage: quiz.coverImage,
+        totalQuestions: quiz.totalQuestions,
+        timePerQuestion: quiz.timePerQuestion,
+        timerEnabled: quiz.timerEnabled,
+        shuffleQuestions: quiz.shuffleQuestions,
+        shuffleOptions: quiz.shuffleOptions,
+        showCorrectAnswers: quiz.showCorrectAnswers,
+        questions: questionsList.map(q => ({
+          id: q.id,
+          questionText: q.questionText,
+          type: q.type,
+          options: q.options,
+          correctAnswer: q.correctAnswer,
+          points: q.points,
+          timeLimit: q.timeLimit,
+          mediaUrl: q.mediaUrl,
+          mediaType: q.mediaType,
+          orderIndex: q.orderIndex,
+        })).sort((a, b) => a.orderIndex - b.orderIndex),
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/shared/:code/start", async (req, res) => {
+    try {
+      const { playerName } = req.body;
+      if (!playerName || typeof playerName !== "string" || !playerName.trim()) {
+        return res.status(400).json({ message: "Ism kiriting" });
+      }
+      const shared = await storage.getSharedQuizByCode(req.params.code);
+      if (!shared) return res.status(404).json({ message: "Test topilmadi" });
+      if (!shared.isActive) return res.status(403).json({ message: "Bu test hozircha yopilgan" });
+
+      const quiz = await storage.getQuiz(shared.quizId);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+
+      const attempt = await storage.createSharedQuizAttempt({
+        sharedQuizId: shared.id,
+        playerName: playerName.trim(),
+        totalQuestions: quiz.totalQuestions,
+      });
+      res.json(attempt);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/shared/:code/submit", async (req, res) => {
+    try {
+      const { attemptId, answers, score, correctAnswers, totalQuestions } = req.body;
+      if (!attemptId) return res.status(400).json({ message: "attemptId kerak" });
+
+      const attempt = await storage.getSharedQuizAttempt(attemptId);
+      if (!attempt) return res.status(404).json({ message: "Urinish topilmadi" });
+
+      const updated = await storage.updateSharedQuizAttempt(attemptId, {
+        answers: answers || {},
+        score: score || 0,
+        correctAnswers: correctAnswers || 0,
+        totalQuestions: totalQuestions || 0,
+        completedAt: new Date(),
+      });
+
+      // Increment totalPlays via raw query
+      const shared = await storage.getSharedQuizByCode(req.params.code);
+      if (shared) {
+        const { db: dbInstance } = await import("./db");
+        const { quizzes: quizzesTable } = await import("@shared/schema");
+        const { eq: eqOp, sql: sqlOp } = await import("drizzle-orm");
+        await dbInstance.update(quizzesTable).set({ totalPlays: sqlOp`COALESCE(total_plays, 0) + 1` } as any).where(eqOp(quizzesTable.id, shared.quizId));
+      }
+
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.post("/api/quizzes/:id/cancel-schedule", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const quiz = await storage.getQuiz(req.params.id);
@@ -966,6 +1113,131 @@ export async function registerRoutes(
       res.json(results);
     } catch (error) {
       res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/sessions/:id/quiz-results/export", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
+      }
+      const results = await storage.getResultsByQuiz(req.params.id);
+      if (results.length === 0) return res.status(400).json({ message: "Natijalar topilmadi" });
+
+      results.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+
+      const { Document, Packer, Paragraph, TextRun, AlignmentType } = await import("docx");
+
+      const hasRtl = (s: string) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
+      const makeRun = (text: string, bold: boolean, sz: number) => new TextRun({ text, bold, size: sz, font: "Arial", rightToLeft: hasRtl(text) });
+
+      const titleHasRtl = hasRtl(quiz.title);
+      const resultRows: InstanceType<typeof Paragraph>[] = [];
+
+      resultRows.push(new Paragraph({ children: [makeRun(quiz.title, true, 36)], alignment: AlignmentType.CENTER, spacing: { after: 100 }, bidirectional: titleHasRtl }));
+      resultRows.push(new Paragraph({ children: [makeRun(`Natijalar — ${new Date().toLocaleDateString("uz-UZ")}`, false, 22)], alignment: AlignmentType.CENTER, spacing: { after: 200 } }));
+      resultRows.push(new Paragraph({ children: [makeRun("————————————————————————", false, 20)], spacing: { after: 100 } }));
+
+      results.forEach((r: any, i: number) => {
+        const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
+        const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
+        const line = `${i + 1}. ${name} — ${r.totalScore} ball — ${r.correctAnswers}/${r.totalQuestions} to'g'ri (${pct}%)`;
+        const isBold = i < 3;
+        resultRows.push(new Paragraph({ children: [makeRun(line, isBold, 22)], spacing: { after: 80 }, bidirectional: hasRtl(name) }));
+      });
+
+      const doc = new Document({
+        sections: [{
+          properties: {
+            page: {
+              size: { width: 11906, height: 16838 },
+              margin: { top: 720, right: 720, bottom: 720, left: 720 },
+            },
+          },
+          children: resultRows,
+        }],
+      });
+
+      const docxBuffer = await Packer.toBuffer(doc);
+      const safeTitle = quiz.title.replace(/[^a-zA-Z0-9\u0400-\u04FF\u0600-\u06FF]/g, "_");
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}_natijalar.docx"`);
+      res.send(Buffer.from(docxBuffer));
+    } catch (error: any) {
+      console.error("Export error:", error?.message || error);
+      res.status(500).json({ message: "Export xatolik" });
+    }
+  });
+
+  app.get("/api/sessions/:id/quiz-results/export-pdf", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
+      }
+      const results = await storage.getResultsByQuiz(req.params.id);
+      if (results.length === 0) return res.status(400).json({ message: "Natijalar topilmadi" });
+
+      results.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+
+      const PDFDocument = (await import("pdfkit")).default;
+      const doc = new PDFDocument({ size: "A4", margin: 40 });
+
+      const safeTitle = quiz.title.replace(/[^a-zA-Z0-9\u0400-\u04FF\u0600-\u06FF]/g, "_");
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}_natijalar.pdf"`);
+      doc.pipe(res);
+
+      doc.fontSize(20).text(quiz.title, { align: "center" });
+      doc.moveDown(0.3);
+      doc.fontSize(11).fillColor("#666").text(`Natijalar — ${new Date().toLocaleDateString("uz-UZ")}`, { align: "center" });
+      doc.moveDown(0.8);
+
+      doc.fillColor("#000");
+
+      const colX = [45, 80, 280, 380, 450];
+      const headerY = doc.y;
+      doc.fontSize(10).font("Helvetica-Bold");
+      doc.text("#", colX[0], headerY);
+      doc.text("Ism", colX[1], headerY);
+      doc.text("Ball", colX[2], headerY);
+      doc.text("To'g'ri", colX[3], headerY);
+      doc.text("%", colX[4], headerY);
+      doc.moveDown(0.5);
+
+      doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#ccc").stroke();
+      doc.moveDown(0.3);
+
+      doc.font("Helvetica");
+      results.forEach((r: any, i: number) => {
+        const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
+        const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
+
+        if (doc.y > 750) {
+          doc.addPage();
+        }
+
+        const rowY = doc.y;
+        if (i < 3) doc.font("Helvetica-Bold"); else doc.font("Helvetica");
+        doc.fontSize(10);
+        doc.text(`${i + 1}`, colX[0], rowY);
+        doc.text(name, colX[1], rowY, { width: 190 });
+        doc.text(`${r.totalScore}`, colX[2], rowY);
+        doc.text(`${r.correctAnswers}/${r.totalQuestions}`, colX[3], rowY);
+        doc.text(`${pct}%`, colX[4], rowY);
+        doc.moveDown(0.4);
+      });
+
+      doc.end();
+    } catch (error: any) {
+      console.error("PDF Export error:", error?.message || error);
+      if (!res.headersSent) {
+        res.status(500).json({ message: "PDF export xatolik" });
+      }
     }
   });
 

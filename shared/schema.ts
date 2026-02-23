@@ -267,6 +267,35 @@ export type LiveLesson = typeof liveLessons.$inferSelect;
 export type InsertQuizFolder = z.infer<typeof insertQuizFolderSchema>;
 export type QuizFolder = typeof quizFolders.$inferSelect;
 
+export const sharedQuizzes = pgTable("shared_quizzes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  quizId: varchar("quiz_id").notNull(),
+  creatorId: varchar("creator_id").notNull(),
+  code: varchar("code", { length: 10 }).notNull().unique(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const sharedQuizAttempts = pgTable("shared_quiz_attempts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sharedQuizId: varchar("shared_quiz_id").notNull(),
+  playerName: varchar("player_name", { length: 100 }).notNull(),
+  score: integer("score").notNull().default(0),
+  correctAnswers: integer("correct_answers").notNull().default(0),
+  totalQuestions: integer("total_questions").notNull().default(0),
+  answers: jsonb("answers").$type<Record<string, { answer: string | string[]; isCorrect: boolean; points: number; timeSpent: number }>>(),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertSharedQuizSchema = createInsertSchema(sharedQuizzes).omit({ id: true, createdAt: true });
+export const insertSharedQuizAttemptSchema = createInsertSchema(sharedQuizAttempts).omit({ id: true, startedAt: true });
+
+export type InsertSharedQuiz = z.infer<typeof insertSharedQuizSchema>;
+export type SharedQuiz = typeof sharedQuizzes.$inferSelect;
+export type InsertSharedQuizAttempt = z.infer<typeof insertSharedQuizAttemptSchema>;
+export type SharedQuizAttempt = typeof sharedQuizAttempts.$inferSelect;
+
 export const activeGames = pgTable("active_games", {
   id: varchar("id").primaryKey(),
   quizId: varchar("quiz_id").notNull(),

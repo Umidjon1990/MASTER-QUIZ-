@@ -9,17 +9,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
-import { Trophy, Send, Users, Megaphone, Loader2, Bot, ChevronDown, ChevronUp } from "lucide-react";
-import type { Quiz, UserProfile, TelegramChat, QuizResult } from "@shared/schema";
+import { Trophy, Send, Users, Megaphone, Loader2, Bot, ChevronDown, ChevronUp, BookOpen, FolderOpen, FileDown } from "lucide-react";
+import type { Quiz, UserProfile, TelegramChat, QuizResult, QuizFolder } from "@shared/schema";
 
 export default function TeacherResults() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [telegramQuiz, setTelegramQuiz] = useState<Quiz | null>(null);
   const [expandedQuiz, setExpandedQuiz] = useState<string | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
 
   const { data: quizzes, isLoading } = useQuery<Quiz[]>({ queryKey: ["/api/quizzes"] });
   const { data: profile } = useQuery<UserProfile>({ queryKey: ["/api/profile"] });
+  const { data: folders } = useQuery<QuizFolder[]>({ queryKey: ["/api/quiz-folders"] });
 
   const telegramChats = ((profile?.telegramChats as TelegramChat[]) || []);
   const hasTelegramBot = !!(profile as any)?.hasTelegramBot;
@@ -40,6 +42,84 @@ export default function TeacherResults() {
 
   const quizzesWithPlays = quizzes?.filter(q => (q.totalPlays || 0) > 0) || [];
 
+  const toggleFolder = (folderId: string) => {
+    setExpandedFolders(prev => ({ ...prev, [folderId]: !prev[folderId] }));
+  };
+
+  const folderQuizzesMap: Record<string, Quiz[]> = {};
+  const unfiledQuizzes: Quiz[] = [];
+
+  quizzesWithPlays.forEach(quiz => {
+    if (quiz.folderId) {
+      if (!folderQuizzesMap[quiz.folderId]) folderQuizzesMap[quiz.folderId] = [];
+      folderQuizzesMap[quiz.folderId].push(quiz);
+    } else {
+      unfiledQuizzes.push(quiz);
+    }
+  });
+
+  const foldersWithResults = (folders || []).filter(f => (folderQuizzesMap[f.id]?.length || 0) > 0);
+
+  const renderQuizCard = (quiz: Quiz) => (
+    <div key={quiz.id} className="p-4 hover:bg-muted/30 transition-colors" data-testid={`card-result-${quiz.id}`}>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-md gradient-purple flex items-center justify-center shrink-0">
+            <Trophy className="w-5 h-5 text-white" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="font-semibold truncate">{quiz.title}</h3>
+            <p className="text-sm text-muted-foreground">{quiz.totalQuestions} savol | {quiz.totalPlays} marta o'ynalgan</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              window.open(`/api/sessions/${quiz.id}/quiz-results/export-pdf`, "_blank");
+            }}
+            data-testid={`button-export-pdf-${quiz.id}`}
+          >
+            <FileDown className="w-4 h-4 mr-1" /> PDF
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              window.open(`/api/sessions/${quiz.id}/quiz-results/export`, "_blank");
+            }}
+            data-testid={`button-export-results-${quiz.id}`}
+          >
+            <FileDown className="w-4 h-4 mr-1" /> Word
+          </Button>
+          {hasTelegramBot && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTelegramQuiz(quiz)}
+              data-testid={`button-send-results-tg-${quiz.id}`}
+            >
+              <Send className="w-4 h-4 mr-1" /> Telegramga
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setExpandedQuiz(expandedQuiz === quiz.id ? null : quiz.id)}
+            data-testid={`button-expand-results-${quiz.id}`}
+          >
+            {expandedQuiz === quiz.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </Button>
+        </div>
+      </div>
+
+      {expandedQuiz === quiz.id && (
+        <QuizResultsDetail quizId={quiz.id} />
+      )}
+    </div>
+  );
+
   return (
     <div className="p-6 space-y-6">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
@@ -50,48 +130,59 @@ export default function TeacherResults() {
       {isLoading ? (
         <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div>
       ) : quizzesWithPlays.length > 0 ? (
-        <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} className="space-y-3">
-          {quizzesWithPlays.map((quiz) => (
-            <motion.div key={quiz.id} variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}>
-              <Card className="p-5" data-testid={`card-result-${quiz.id}`}>
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-md gradient-purple flex items-center justify-center shrink-0">
-                      <Trophy className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold truncate">{quiz.title}</h3>
-                      <p className="text-sm text-muted-foreground">{quiz.totalQuestions} savol | {quiz.totalPlays} marta o'ynalgan</p>
-                    </div>
+        <motion.div initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }} className="space-y-4">
+          {foldersWithResults.map((folder) => {
+            const folderQuizzes = folderQuizzesMap[folder.id] || [];
+            const isExpanded = expandedFolders[folder.id] !== false;
+            const totalPlays = folderQuizzes.reduce((sum, q) => sum + (q.totalPlays || 0), 0);
+
+            return (
+              <motion.div key={folder.id} variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}>
+                <Card className="overflow-hidden" data-testid={`folder-results-${folder.id}`}>
+                  <div
+                    className="flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/30 transition-colors"
+                    onClick={() => toggleFolder(folder.id)}
+                    data-testid={`button-toggle-folder-results-${folder.id}`}
+                  >
+                    <FolderOpen className="w-5 h-5 text-primary shrink-0" />
+                    <h3 className="font-semibold text-base flex-1">{folder.name}</h3>
+                    <Badge variant="secondary" className="text-xs shrink-0">{totalPlays} o'yin</Badge>
+                    <Badge variant="outline" className="text-xs shrink-0">{folderQuizzes.length} quiz</Badge>
+                    {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {hasTelegramBot && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setTelegramQuiz(quiz)}
-                        data-testid={`button-send-results-tg-${quiz.id}`}
-                      >
-                        <Send className="w-4 h-4 mr-1" /> Telegramga
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setExpandedQuiz(expandedQuiz === quiz.id ? null : quiz.id)}
-                      data-testid={`button-expand-results-${quiz.id}`}
-                    >
-                      {expandedQuiz === quiz.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </Button>
-                  </div>
+
+                  {isExpanded && (
+                    <div className="border-t divide-y">
+                      {folderQuizzes.map(renderQuizCard)}
+                    </div>
+                  )}
+                </Card>
+              </motion.div>
+            );
+          })}
+
+          {unfiledQuizzes.length > 0 && (
+            <motion.div variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}>
+              <Card className="overflow-hidden" data-testid="folder-results-unfiled">
+                <div
+                  className="flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/30 transition-colors"
+                  onClick={() => toggleFolder("__unfiled")}
+                  data-testid="button-toggle-folder-results-unfiled"
+                >
+                  <BookOpen className="w-5 h-5 text-muted-foreground shrink-0" />
+                  <h3 className="font-semibold text-base flex-1">Darssiz quizlar</h3>
+                  <Badge variant="secondary" className="text-xs shrink-0">{unfiledQuizzes.length} quiz</Badge>
+                  {expandedFolders["__unfiled"] !== false ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
                 </div>
 
-                {expandedQuiz === quiz.id && (
-                  <QuizResultsDetail quizId={quiz.id} />
+                {expandedFolders["__unfiled"] !== false && (
+                  <div className="border-t divide-y">
+                    {unfiledQuizzes.map(renderQuizCard)}
+                  </div>
                 )}
               </Card>
             </motion.div>
-          ))}
+          )}
         </motion.div>
       ) : (
         <Card className="p-12 text-center">
