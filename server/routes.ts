@@ -1388,6 +1388,16 @@ export async function registerRoutes(
 
       let sent = 0;
       const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
+      const shouldShuffle = quiz.shuffleOptions === true;
+
+      const shuffleArray = <T>(arr: T[]): T[] => {
+        const a = [...arr];
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+      };
 
       await bot.sendMessage(targetChat, `📝 *${quiz.title}*\n${quiz.description || ""}\n\n_${questionsList.length} ta savol_`, { parse_mode: "Markdown" });
 
@@ -1407,23 +1417,30 @@ export async function registerRoutes(
           } as any);
           sent++;
         } else if (q.type === "poll" && q.options && q.options.length >= 2) {
-          await bot.sendPoll(targetChat, q.questionText, q.options, {
+          const opts = shouldShuffle ? shuffleArray(q.options) : q.options;
+          await bot.sendPoll(targetChat, q.questionText, opts, {
             type: "regular",
             is_anonymous: true,
           } as any);
           sent++;
         } else if (q.type === "multiple_select" && q.options && q.options.length >= 2) {
-          await bot.sendPoll(targetChat, q.questionText, q.options, {
+          const opts = shouldShuffle ? shuffleArray(q.options) : q.options;
+          await bot.sendPoll(targetChat, q.questionText, opts, {
             type: "regular",
             allows_multiple_answers: true,
             is_anonymous: true,
           } as any);
           sent++;
         } else if (q.options && q.options.length >= 2) {
-          const correctIndex = q.options.indexOf(q.correctAnswer);
-          await bot.sendPoll(targetChat, q.questionText, q.options, {
+          let opts = [...q.options];
+          let correctIdx = opts.indexOf(q.correctAnswer);
+          if (shouldShuffle) {
+            opts = shuffleArray(opts);
+            correctIdx = opts.indexOf(q.correctAnswer);
+          }
+          await bot.sendPoll(targetChat, q.questionText, opts, {
             type: "quiz",
-            correct_option_id: correctIndex >= 0 ? correctIndex : 0,
+            correct_option_id: correctIdx >= 0 ? correctIdx : 0,
             is_anonymous: true,
           } as any);
           sent++;
