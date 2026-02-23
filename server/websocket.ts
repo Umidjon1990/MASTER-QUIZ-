@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { activeGames } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { fisherYatesShuffle, balancedShuffleOptions } from "./shuffle";
 
 let io: SocketServer;
 const questionAnswerCounts = new Map<string, number>();
@@ -355,10 +356,8 @@ async function serverNextQuestion(sessionId: string) {
     const q = questionsList[nextIndex];
     let questionOptions = q.options ? [...(q.options as string[])] : null;
     if (quiz?.shuffleOptions && questionOptions) {
-      for (let i = questionOptions.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [questionOptions[i], questionOptions[j]] = [questionOptions[j], questionOptions[i]];
-      }
+      const shuffled = balancedShuffleOptions([{ options: questionOptions, correctAnswer: q.correctAnswer }]);
+      questionOptions = shuffled[0].options as string[];
     }
 
     const timerEnabled = quiz?.timerEnabled ?? true;
@@ -462,10 +461,8 @@ function sendPublicQuestion(roomId: string) {
 
   let questionOptions = q.options ? [...(q.options as string[])] : null;
   if (room.quiz.shuffleOptions && questionOptions) {
-    for (let i = questionOptions.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [questionOptions[i], questionOptions[j]] = [questionOptions[j], questionOptions[i]];
-    }
+    const shuffled = balancedShuffleOptions([{ options: questionOptions, correctAnswer: q.correctAnswer }]);
+    questionOptions = shuffled[0].options as string[];
   }
 
   const timeLimit = q.timeLimit || room.quiz.timePerQuestion || 30;
@@ -904,10 +901,7 @@ async function checkScheduledQuizzes() {
         room.currentQuestionIndex = 0;
 
         if (quiz.shuffleQuestions) {
-          for (let i = room.questions.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [room.questions[i], room.questions[j]] = [room.questions[j], room.questions[i]];
-          }
+          room.questions = fisherYatesShuffle(room.questions);
         }
 
         io.to(`pubroom:${roomId}`).emit("public:game-started", {
@@ -1085,10 +1079,8 @@ export function setupWebSocket(httpServer: HttpServer) {
         const q = questionsList[0];
         let questionOptions = q.options ? [...(q.options as string[])] : null;
         if (quiz?.shuffleOptions && questionOptions) {
-          for (let i = questionOptions.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [questionOptions[i], questionOptions[j]] = [questionOptions[j], questionOptions[i]];
-          }
+          const shuffled = balancedShuffleOptions([{ options: questionOptions, correctAnswer: q.correctAnswer }]);
+          questionOptions = shuffled[0].options as string[];
         }
 
         const timerEnabled = quiz?.timerEnabled ?? true;
@@ -1673,7 +1665,11 @@ export function setupWebSocket(httpServer: HttpServer) {
             const elapsed = Math.floor((Date.now() - room.questionStartTime) / 1000);
             const remainingTime = Math.max(0, timeLimit - elapsed);
 
-            const questionOptions = q.options ? (room.quiz.shuffleOptions ? [...q.options].sort(() => Math.random() - 0.5) : q.options) : null;
+            let questionOptions = q.options ? [...(q.options as string[])] : null;
+            if (room.quiz.shuffleOptions && questionOptions) {
+              const shuffled = balancedShuffleOptions([{ options: questionOptions, correctAnswer: q.correctAnswer }]);
+              questionOptions = shuffled[0].options as string[];
+            }
             socket.emit("public:game-started", { totalQuestions: room.questions.length });
             socket.emit("public:question", {
               question: {
@@ -1710,11 +1706,7 @@ export function setupWebSocket(httpServer: HttpServer) {
         const quiz = room.quiz;
         let questionsList = [...room.questions];
         if (quiz.shuffleQuestions) {
-          for (let i = questionsList.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [questionsList[i], questionsList[j]] = [questionsList[j], questionsList[i]];
-          }
-          room.questions = questionsList;
+          room.questions = fisherYatesShuffle(questionsList);
         }
 
         io.to(`pubroom:${roomId}`).emit("public:game-started", {

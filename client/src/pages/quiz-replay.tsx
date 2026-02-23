@@ -44,6 +44,33 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
+function balancedShuffleReplayOptions(questions: ReplayQuestion[]): ReplayQuestion[] {
+  if (!questions.length) return questions;
+  const maxSlots = Math.max(...questions.filter(q => q.options && q.options.length >= 2).map(q => q.options!.length), 0);
+  if (maxSlots === 0) return questions;
+  const positionCounts = new Array(maxSlots).fill(0);
+
+  return questions.map(q => {
+    if (!q.options || q.options.length < 2 || !q.correctAnswer) return q;
+    const opts = [...q.options];
+    const correctIdx = opts.indexOf(q.correctAnswer);
+    if (correctIdx === -1) return { ...q, options: shuffleArray(opts) };
+
+    const correct = opts.splice(correctIdx, 1)[0];
+    const shuffledWrong = shuffleArray(opts);
+    const numSlots = shuffledWrong.length + 1;
+    const relevantCounts = positionCounts.slice(0, numSlots);
+    const minCount = Math.min(...relevantCounts);
+    const leastUsed = relevantCounts.map((c, i) => ({ count: c, index: i })).filter(x => x.count === minCount).map(x => x.index);
+    const targetPos = leastUsed[Math.floor(Math.random() * leastUsed.length)];
+    positionCounts[targetPos]++;
+
+    const result = [...shuffledWrong];
+    result.splice(targetPos, 0, correct);
+    return { ...q, options: result };
+  });
+}
+
 export default function QuizReplay() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
@@ -72,13 +99,7 @@ export default function QuizReplay() {
     let qs = [...quiz.questions];
     if (quiz.shuffleQuestions) qs = shuffleArray(qs);
     if (quiz.shuffleOptions) {
-      qs = qs.map(q => {
-        if (q.type === "multiple_choice" || q.type === "multiple_select") {
-          const opts = Array.isArray(q.options) ? shuffleArray(q.options) : q.options;
-          return { ...q, options: opts };
-        }
-        return q;
-      });
+      qs = balancedShuffleReplayOptions(qs);
     }
     setPreparedQuestions(qs);
     setCurrentIndex(0);

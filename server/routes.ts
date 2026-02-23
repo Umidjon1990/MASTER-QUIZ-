@@ -9,6 +9,7 @@ import { setupWebSocket, getScheduledQuizRoomCode, isRestorationComplete } from 
 import multer from "multer";
 import * as XLSX from "xlsx";
 import bcrypt from "bcryptjs";
+import { fisherYatesShuffle, balancedShuffleOptions } from "./shuffle";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -1639,22 +1640,11 @@ export async function registerRoutes(
       let questionsList = await storage.getQuestionsByQuiz(req.params.quizId);
 
       if (quiz.shuffleQuestions) {
-        for (let i = questionsList.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [questionsList[i], questionsList[j]] = [questionsList[j], questionsList[i]];
-        }
+        questionsList = fisherYatesShuffle(questionsList);
       }
 
       if (quiz.shuffleOptions) {
-        questionsList = questionsList.map(q => {
-          if (!q.options || q.options.length < 2) return q;
-          const opts = [...q.options];
-          for (let i = opts.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [opts[i], opts[j]] = [opts[j], opts[i]];
-          }
-          return { ...q, options: opts };
-        });
+        questionsList = balancedShuffleOptions(questionsList);
       }
 
       res.json(questionsList);
@@ -1748,10 +1738,7 @@ export async function registerRoutes(
       let questionsList = await storage.getQuestionsByQuiz(assignment.quizId);
 
       if (quiz.shuffleQuestions) {
-        for (let i = questionsList.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [questionsList[i], questionsList[j]] = [questionsList[j], questionsList[i]];
-        }
+        questionsList = fisherYatesShuffle(questionsList);
       }
 
       const userAnswers: Record<string, string | string[]> = req.body.answers || {};
@@ -2189,22 +2176,11 @@ export async function registerRoutes(
       let questionsList = await storage.getQuestionsByQuiz(req.params.id);
 
       if (quiz.shuffleQuestions) {
-        for (let i = questionsList.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [questionsList[i], questionsList[j]] = [questionsList[j], questionsList[i]];
-        }
+        questionsList = fisherYatesShuffle(questionsList);
       }
 
       if (quiz.shuffleOptions) {
-        questionsList = questionsList.map(q => {
-          if (!q.options || q.options.length < 2) return q;
-          const opts = [...q.options];
-          for (let i = opts.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [opts[i], opts[j]] = [opts[j], opts[i]];
-          }
-          return { ...q, options: opts };
-        });
+        questionsList = balancedShuffleOptions(questionsList);
       }
 
       const safeQuestions = questionsList.map(q => ({
