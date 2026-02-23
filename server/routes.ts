@@ -1116,6 +1116,15 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/quiz-results/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      await storage.deleteResult(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "O'chirishda xatolik" });
+    }
+  });
+
   app.get("/api/sessions/:id/quiz-results/export", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const quiz = await storage.getQuiz(req.params.id);

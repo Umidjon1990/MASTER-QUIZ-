@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
-import { Trophy, Send, Users, Megaphone, Loader2, Bot, ChevronDown, ChevronUp, BookOpen, FolderOpen, FileDown } from "lucide-react";
+import { Trophy, Send, Users, Megaphone, Loader2, Bot, ChevronDown, ChevronUp, BookOpen, FolderOpen, FileDown, Trash2 } from "lucide-react";
+import { queryClient } from "@/lib/queryClient";
 import type { Quiz, UserProfile, TelegramChat, QuizResult, QuizFolder } from "@shared/schema";
 
 export default function TeacherResults() {
@@ -252,12 +253,26 @@ export default function TeacherResults() {
 }
 
 function QuizResultsDetail({ quizId }: { quizId: string }) {
+  const { toast } = useToast();
   const { data: results, isLoading } = useQuery<QuizResult[]>({
     queryKey: ["/api/quiz-results", quizId],
     queryFn: async () => {
       const res = await fetch(`/api/sessions/${quizId}/quiz-results`);
       if (!res.ok) return [];
       return res.json();
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (resultId: string) => {
+      await apiRequest("DELETE", `/api/quiz-results/${resultId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quiz-results", quizId] });
+      toast({ title: "O'chirildi", description: "Natija muvaffaqiyatli o'chirildi" });
+    },
+    onError: () => {
+      toast({ title: "Xatolik", description: "O'chirishda xatolik yuz berdi", variant: "destructive" });
     },
   });
 
@@ -275,11 +290,12 @@ function QuizResultsDetail({ quizId }: { quizId: string }) {
 
   return (
     <div className="mt-4 space-y-2">
-      <div className="grid grid-cols-[2rem_1fr_4rem_5rem] gap-2 text-xs font-medium text-muted-foreground px-2">
+      <div className="grid grid-cols-[2rem_1fr_4rem_5rem_2rem] gap-2 text-xs font-medium text-muted-foreground px-2">
         <span>#</span>
         <span>Ism</span>
         <span className="text-center">Ball</span>
         <span className="text-center">To'g'ri</span>
+        <span></span>
       </div>
       {sorted.map((r, i) => {
         const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
@@ -287,7 +303,7 @@ function QuizResultsDetail({ quizId }: { quizId: string }) {
         return (
           <div
             key={r.id}
-            className={`grid grid-cols-[2rem_1fr_4rem_5rem] gap-2 items-center px-2 py-1.5 rounded-md text-sm ${i < 3 ? "font-semibold" : ""}`}
+            className={`grid grid-cols-[2rem_1fr_4rem_5rem_2rem] gap-2 items-center px-2 py-1.5 rounded-md text-sm ${i < 3 ? "font-semibold" : ""}`}
             data-testid={`row-result-${i}`}
           >
             <span className={i < 3 ? "text-foreground font-bold" : "text-muted-foreground"}>
@@ -296,6 +312,15 @@ function QuizResultsDetail({ quizId }: { quizId: string }) {
             <span className="truncate">{name}</span>
             <span className="text-center font-medium">{r.totalScore}</span>
             <span className="text-center text-muted-foreground">{r.correctAnswers}/{r.totalQuestions} ({pct}%)</span>
+            <button
+              onClick={() => deleteMutation.mutate(r.id)}
+              disabled={deleteMutation.isPending}
+              className="text-muted-foreground hover:text-destructive transition-colors"
+              title="O'chirish"
+              data-testid={`button-delete-result-${r.id}`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           </div>
         );
       })}
