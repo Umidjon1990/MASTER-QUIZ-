@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { getTextDir } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -274,8 +275,7 @@ export default function QuizReplay() {
   if (!currentQ) return null;
 
   const progress = ((currentIndex + 1) / preparedQuestions.length) * 100;
-  const hasRtl = (s: string) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
-  const questionRtl = hasRtl(currentQ.questionText);
+  const questionDir = getTextDir(currentQ.questionText);
 
   return (
     <div className="min-h-screen p-6 max-w-2xl mx-auto">
@@ -294,7 +294,7 @@ export default function QuizReplay() {
       <AnimatePresence mode="wait">
         <motion.div key={currentIndex} initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }}>
           <Card className="p-6 mb-4">
-            <h2 className={`text-lg font-semibold mb-4 ${questionRtl ? "text-right" : ""}`} dir={questionRtl ? "rtl" : "ltr"} data-testid="text-question">
+            <h2 className={`text-lg font-semibold mb-4 ${questionDir === "rtl" ? "text-right" : ""}`} dir={questionDir} data-testid="text-question">
               {currentQ.questionText}
             </h2>
             {currentQ.mediaUrl && (
@@ -318,13 +318,13 @@ export default function QuizReplay() {
               ) : Array.isArray(currentQ.options) ? (
                 currentQ.options.map((opt: any, j: number) => {
                   const optText = typeof opt === "string" ? opt : opt.text;
-                  const optRtl = hasRtl(optText);
+                  const optDir = getTextDir(optText);
                   return (
                     <Button
                       key={j}
                       variant={answers[currentIndex] === optText ? "default" : "outline"}
-                      className={`w-full justify-start h-auto py-3 px-4 ${optRtl ? "text-right" : "text-left"}`}
-                      dir={optRtl ? "rtl" : "ltr"}
+                      className={`w-full justify-start h-auto py-3 px-4 ${optDir === "rtl" ? "text-right" : "text-left"}`}
+                      dir={optDir}
                       onClick={() => handleAnswer(optText)}
                       data-testid={`button-answer-${j}`}
                     >

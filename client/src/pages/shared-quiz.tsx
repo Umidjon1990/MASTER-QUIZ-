@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "wouter";
+import { getTextDir } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -379,7 +380,7 @@ export default function SharedQuizPage() {
                 </div>
               )}
 
-              <h2 className="text-xl font-semibold text-center" data-testid="text-question" dir="auto">{currentQuestion.questionText}</h2>
+              <h2 className="text-xl font-semibold text-center" data-testid="text-question" dir={getTextDir(currentQuestion.questionText)}>{currentQuestion.questionText}</h2>
 
               {currentQuestion.type === "open_ended" ? (
                 <div className="space-y-3">

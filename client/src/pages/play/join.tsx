@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { getTextDir } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -423,7 +424,7 @@ export default function JoinPlay() {
             )}
 
             <Card className="p-6 text-center space-y-3">
-              <h2 className="text-xl md:text-2xl font-bold" dir="auto" data-testid="text-question">{currentQuestion.questionText}</h2>
+              <h2 className="text-xl md:text-2xl font-bold" dir={getTextDir(currentQuestion.questionText)} data-testid="text-question">{currentQuestion.questionText}</h2>
               {currentQuestion.type === "poll" && (
                 <p className="text-sm text-muted-foreground">Ball berilmaydi — faqat fikringizni bildiring</p>
               )}
@@ -545,7 +546,7 @@ export default function JoinPlay() {
               </motion.p>
             )}
             {!answerResult.isCorrect && answerResult.showCorrectAnswers !== false && answerResult.correctAnswer && (
-              <p className="text-muted-foreground" dir="auto">To'g'ri javob: <span className="font-semibold">{answerResult.correctAnswer}</span></p>
+              <p className="text-muted-foreground" dir={getTextDir(answerResult.correctAnswer)}>To'g'ri javob: <span className="font-semibold">{answerResult.correctAnswer}</span></p>
             )}
             {answerOrder > 0 && (
               <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="text-muted-foreground" data-testid="text-answer-order">

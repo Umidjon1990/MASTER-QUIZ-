@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { useParams, useLocation } from "wouter";
+import { getTextDir } from "@/lib/utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
@@ -1378,8 +1379,8 @@ export default function QuizPlayPage() {
                     <div className="flex items-start gap-2">
                       {r.isCorrect ? <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 shrink-0" /> : <XCircle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />}
                       <div className="min-w-0">
-                        <p className="text-sm font-medium" dir="auto">{i + 1}. {q.questionText}</p>
-                        {!r.isCorrect && r.correctAnswer && submitResult?.showCorrectAnswers !== false && <p className="text-xs text-muted-foreground mt-1" dir="auto">To'g'ri javob: {r.correctAnswer}</p>}
+                        <p className="text-sm font-medium" dir={getTextDir(q.questionText)}>{i + 1}. {q.questionText}</p>
+                        {!r.isCorrect && r.correctAnswer && submitResult?.showCorrectAnswers !== false && <p className="text-xs text-muted-foreground mt-1" dir={getTextDir(r.correctAnswer)}>{r.correctAnswer}</p>}
                       </div>
                     </div>
                   </div>
@@ -1463,7 +1464,7 @@ export default function QuizPlayPage() {
 
                 <p
                   className="text-xl sm:text-2xl font-bold text-white text-center leading-relaxed"
-                  dir="auto"
+                  dir={getTextDir(currentQuestion.questionText)}
                   data-testid="text-question"
                 >
                   {currentQuestion.questionText}
@@ -1524,7 +1525,7 @@ export default function QuizPlayPage() {
                       </p>
                     )}
                     {!lastAnswerResult.isCorrect && lastAnswerResult.showCorrectAnswers !== false && lastAnswerResult.correctAnswer && (
-                      <p className="text-sm text-white/50 mt-2" dir="auto">
+                      <p className="text-sm text-white/50 mt-2" dir={getTextDir(lastAnswerResult.correctAnswer)}>
                         To'g'ri javob: {lastAnswerResult.correctAnswer}
                       </p>
                     )}
@@ -1711,7 +1712,7 @@ export default function QuizPlayPage() {
 
                 <p
                   className="text-xl sm:text-2xl font-bold text-white text-center leading-relaxed"
-                  dir="auto"
+                  dir={getTextDir(soloCurrentQuestion.questionText)}
                   data-testid="text-question"
                 >
                   {soloCurrentQuestion.questionText}

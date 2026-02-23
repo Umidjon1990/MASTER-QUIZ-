@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { getTextDir } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useRoute, useLocation } from "wouter";
 import { Card } from "@/components/ui/card";
@@ -660,6 +661,7 @@ export default function QuizEditor() {
                       onChange={(e) => setImportText(e.target.value)}
                       placeholder="Savollarni shu yerga yozing yoki joylashtiring..."
                       className="min-h-[200px] font-mono text-sm"
+                      dir="auto"
                       data-testid="textarea-text-import"
                     />
                     <Button onClick={handleTextImport} className="w-full gradient-purple border-0" data-testid="button-submit-text-import">
@@ -689,7 +691,7 @@ export default function QuizEditor() {
                           </Badge>
                           <span className="text-xs text-muted-foreground">{q.points} ball | {q.timeLimit}s</span>
                         </div>
-                        <p className="font-medium" dir="auto">{q.questionText}</p>
+                        <p className="font-medium" dir={getTextDir(q.questionText)}>{q.questionText}</p>
                         {q.mediaUrl && q.mediaType && (
                           <MediaPreview mediaUrl={q.mediaUrl} mediaType={q.mediaType} />
                         )}
