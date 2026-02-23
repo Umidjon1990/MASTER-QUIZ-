@@ -1401,36 +1401,59 @@ export async function registerRoutes(
 
       await bot.sendMessage(targetChat, `📝 *${quiz.title}*\n${quiz.description || ""}\n\n_${questionsList.length} ta savol_`, { parse_mode: "Markdown" });
 
+      const sendWithRetry = async (fn: () => Promise<any>, maxRetries = 3) => {
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            await fn();
+            return true;
+          } catch (err: any) {
+            const retryAfter = err?.response?.body?.parameters?.retry_after;
+            if (retryAfter && attempt < maxRetries) {
+              console.log(`Telegram rate limit, waiting ${retryAfter}s...`);
+              await new Promise(r => setTimeout(r, (retryAfter + 1) * 1000));
+              continue;
+            }
+            if (err?.message?.includes("429") && attempt < maxRetries) {
+              const wait = Math.pow(2, attempt + 1) * 1000;
+              console.log(`Telegram 429, retry after ${wait}ms...`);
+              await new Promise(r => setTimeout(r, wait));
+              continue;
+            }
+            console.error(`Telegram send failed for question ${attempt}:`, err?.message);
+            return false;
+          }
+        }
+        return false;
+      };
+
+      console.log(`Sending ${questionsList.length} questions to Telegram, shuffle=${shouldShuffle}`);
+
       for (let i = 0; i < questionsList.length; i++) {
         const q = questionsList[i];
+        let success = false;
         if (q.type === "open_ended") {
-          
-          await bot.sendMessage(targetChat, `<b>${i + 1}. ${escHtml(q.questionText)}</b>\n\n<i>Yozma javob talab qilinadi</i>\nTo'g'ri javob: <tg-spoiler>${escHtml(q.correctAnswer)}</tg-spoiler>`, { parse_mode: "HTML" });
-          sent++;
+          success = await sendWithRetry(() => bot.sendMessage(targetChat, `<b>${i + 1}. ${escHtml(q.questionText)}</b>\n\n<i>Yozma javob talab qilinadi</i>\nTo'g'ri javob: <tg-spoiler>${escHtml(q.correctAnswer)}</tg-spoiler>`, { parse_mode: "HTML" }));
         } else if (q.type === "true_false") {
           const tfOptions = ["To'g'ri", "Noto'g'ri"];
           const correctIndex = q.correctAnswer === "true" ? 0 : 1;
-          await bot.sendPoll(targetChat, q.questionText, tfOptions, {
+          success = await sendWithRetry(() => bot.sendPoll(targetChat, q.questionText, tfOptions, {
             type: "quiz",
             correct_option_id: correctIndex,
             is_anonymous: true,
-          } as any);
-          sent++;
+          } as any));
         } else if (q.type === "poll" && q.options && q.options.length >= 2) {
           const opts = shouldShuffle ? shuffleArray(q.options) : q.options;
-          await bot.sendPoll(targetChat, q.questionText, opts, {
+          success = await sendWithRetry(() => bot.sendPoll(targetChat, q.questionText, opts, {
             type: "regular",
             is_anonymous: true,
-          } as any);
-          sent++;
+          } as any));
         } else if (q.type === "multiple_select" && q.options && q.options.length >= 2) {
           const opts = shouldShuffle ? shuffleArray(q.options) : q.options;
-          await bot.sendPoll(targetChat, q.questionText, opts, {
+          success = await sendWithRetry(() => bot.sendPoll(targetChat, q.questionText, opts, {
             type: "regular",
             allows_multiple_answers: true,
             is_anonymous: true,
-          } as any);
-          sent++;
+          } as any));
         } else if (q.options && q.options.length >= 2) {
           let opts = [...q.options];
           let correctIdx = opts.indexOf(q.correctAnswer);
@@ -1438,19 +1461,19 @@ export async function registerRoutes(
             opts = shuffleArray(opts);
             correctIdx = opts.indexOf(q.correctAnswer);
           }
-          await bot.sendPoll(targetChat, q.questionText, opts, {
+          success = await sendWithRetry(() => bot.sendPoll(targetChat, q.questionText, opts, {
             type: "quiz",
             correct_option_id: correctIdx >= 0 ? correctIdx : 0,
             is_anonymous: true,
-          } as any);
-          sent++;
+          } as any));
         }
+        if (success) sent++;
         if (i < questionsList.length - 1) {
-          await new Promise(r => setTimeout(r, 500));
+          await new Promise(r => setTimeout(r, 1500));
         }
       }
 
-      res.json({ success: true, sent });
+      res.json({ success: true, sent, total: questionsList.length });
     } catch (error: any) {
       console.error("Telegram error:", error?.message || error);
       const msg = error?.message?.includes("chat not found") ? "Chat topilmadi. Bot guruhga admin qilib qo'shilganligini tekshiring"
