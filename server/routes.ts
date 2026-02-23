@@ -1142,6 +1142,35 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/quiz-results/all/:quizId", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const quiz = await storage.getQuiz(req.params.quizId);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
+      }
+
+      const results = await storage.getResultsByQuiz(req.params.quizId);
+      for (const r of results) {
+        await storage.deleteResult(r.id);
+      }
+
+      const sharedQuizzes = await storage.getSharedQuizzesByQuizId(req.params.quizId);
+      for (const sq of sharedQuizzes) {
+        const attempts = await storage.getSharedQuizAttempts(sq.id);
+        for (const a of attempts) {
+          await storage.deleteSharedQuizAttempt(a.id);
+        }
+      }
+
+      await storage.updateQuiz(req.params.quizId, { totalPlays: 0 } as any);
+
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "O'chirishda xatolik" });
+    }
+  });
+
   app.delete("/api/quiz-results/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       await storage.deleteResult(req.params.id);
@@ -1163,7 +1192,26 @@ export async function registerRoutes(
       if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
         return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
       }
-      const results = await storage.getResultsByQuiz(req.params.id);
+      const liveResults = await storage.getResultsByQuiz(req.params.id);
+
+      const sharedQuizzes = await storage.getSharedQuizzesByQuizId(req.params.id);
+      const sharedResults: any[] = [];
+      for (const sq of sharedQuizzes) {
+        const attempts = await storage.getSharedQuizAttempts(sq.id);
+        for (const a of attempts) {
+          if (a.completedAt) {
+            sharedResults.push({
+              guestName: a.playerName,
+              totalScore: a.score,
+              correctAnswers: a.correctAnswers,
+              totalQuestions: a.totalQuestions,
+              participantId: a.id,
+            });
+          }
+        }
+      }
+
+      const results: any[] = [...liveResults, ...sharedResults];
       if (results.length === 0) return res.status(400).json({ message: "Natijalar topilmadi" });
 
       results.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
@@ -1219,7 +1267,26 @@ export async function registerRoutes(
       if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
         return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
       }
-      const results = await storage.getResultsByQuiz(req.params.id);
+      const liveResults = await storage.getResultsByQuiz(req.params.id);
+
+      const sharedQuizzes = await storage.getSharedQuizzesByQuizId(req.params.id);
+      const sharedResults: any[] = [];
+      for (const sq of sharedQuizzes) {
+        const attempts = await storage.getSharedQuizAttempts(sq.id);
+        for (const a of attempts) {
+          if (a.completedAt) {
+            sharedResults.push({
+              guestName: a.playerName,
+              totalScore: a.score,
+              correctAnswers: a.correctAnswers,
+              totalQuestions: a.totalQuestions,
+              participantId: a.id,
+            });
+          }
+        }
+      }
+
+      const results: any[] = [...liveResults, ...sharedResults];
       if (results.length === 0) return res.status(400).json({ message: "Natijalar topilmadi" });
 
       results.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));

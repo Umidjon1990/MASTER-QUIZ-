@@ -56,6 +56,20 @@ export default function TeacherResults() {
 
   const foldersWithResults = (folders || []).filter(f => (folderQuizzesMap[f.id]?.length || 0) > 0);
 
+  const deleteAllMutation = useMutation({
+    mutationFn: async (quizId: string) => {
+      await apiRequest("DELETE", `/api/quiz-results/all/${quizId}`);
+    },
+    onSuccess: (_, quizId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quiz-results", quizId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
+      toast({ title: "O'chirildi", description: "Barcha natijalar o'chirildi" });
+    },
+    onError: () => {
+      toast({ title: "Xatolik", description: "O'chirishda xatolik", variant: "destructive" });
+    },
+  });
+
   const renderQuizCard = (quiz: Quiz) => (
     <div key={quiz.id} className="p-4 hover:bg-muted/30 transition-colors" data-testid={`card-result-${quiz.id}`}>
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -111,7 +125,11 @@ export default function TeacherResults() {
       </div>
 
       {expandedQuiz === quiz.id && (
-        <QuizResultsDetail quizId={quiz.id} />
+        <QuizResultsDetail quizId={quiz.id} onDeleteAll={() => {
+          if (confirm(`"${quiz.title}" quizning barcha natijalarini o'chirmoqchimisiz?`)) {
+            deleteAllMutation.mutate(quiz.id);
+          }
+        }} />
       )}
     </div>
   );
@@ -236,7 +254,7 @@ export default function TeacherResults() {
   );
 }
 
-function QuizResultsDetail({ quizId }: { quizId: string }) {
+function QuizResultsDetail({ quizId, onDeleteAll }: { quizId: string; onDeleteAll: () => void }) {
   const { toast } = useToast();
   const { data: results, isLoading } = useQuery<QuizResult[]>({
     queryKey: ["/api/quiz-results", quizId],
@@ -274,7 +292,19 @@ function QuizResultsDetail({ quizId }: { quizId: string }) {
 
   return (
     <div className="mt-4 space-y-2">
-      <div className="grid grid-cols-[2rem_1fr_4rem_5rem_2rem] gap-2 text-xs font-medium text-muted-foreground px-2">
+      <div className="flex items-center justify-between px-2 mb-1">
+        <span className="text-xs text-muted-foreground">{sorted.length} ta natija</span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs text-destructive hover:text-destructive border-destructive/30"
+          onClick={onDeleteAll}
+          data-testid="button-delete-all-results"
+        >
+          <Trash2 className="w-3 h-3 mr-1" /> Barchasini o'chirish
+        </Button>
+      </div>
+      <div className="grid grid-cols-[2rem_1fr_4rem_5rem_2.5rem] gap-2 text-xs font-medium text-muted-foreground px-2">
         <span>#</span>
         <span>Ism</span>
         <span className="text-center">Ball</span>
@@ -287,7 +317,7 @@ function QuizResultsDetail({ quizId }: { quizId: string }) {
         return (
           <div
             key={r.id}
-            className={`grid grid-cols-[2rem_1fr_4rem_5rem_2rem] gap-2 items-center px-2 py-1.5 rounded-md text-sm ${i < 3 ? "font-semibold" : ""}`}
+            className={`grid grid-cols-[2rem_1fr_4rem_5rem_2.5rem] gap-2 items-center px-2 py-1.5 rounded-md text-sm ${i < 3 ? "font-semibold" : ""}`}
             data-testid={`row-result-${i}`}
           >
             <span className={i < 3 ? "text-foreground font-bold" : "text-muted-foreground"}>
@@ -299,15 +329,17 @@ function QuizResultsDetail({ quizId }: { quizId: string }) {
             </span>
             <span className="text-center font-medium">{r.totalScore}</span>
             <span className="text-center text-muted-foreground">{r.correctAnswers}/{r.totalQuestions} ({pct}%)</span>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
               onClick={() => deleteMutation.mutate(r.id)}
               disabled={deleteMutation.isPending}
-              className="text-muted-foreground hover:text-destructive transition-colors"
               title="O'chirish"
               data-testid={`button-delete-result-${r.id}`}
             >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+              <Trash2 className="w-4 h-4" />
+            </Button>
           </div>
         );
       })}
