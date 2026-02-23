@@ -695,7 +695,7 @@ export default function QuizEditor() {
                         )}
                         {q.type === "open_ended" ? (
                           <div className="mt-2">
-                            <span className="text-xs px-2 py-1 rounded-sm gradient-teal text-white">Javob: {q.correctAnswer}</span>
+                            <span className="text-xs px-2 py-1 rounded-sm gradient-teal text-white" dir="auto">Javob: {q.correctAnswer}</span>
                           </div>
                         ) : q.options && (
                           <div className="flex gap-2 mt-2 flex-wrap">
@@ -712,7 +712,7 @@ export default function QuizEditor() {
                                 isHighlighted = opt === q.correctAnswer;
                               }
                               return (
-                                <span key={oi} className={`text-xs px-2 py-1 rounded-sm ${isHighlighted ? "gradient-teal text-white" : "bg-muted"}`}>
+                                <span key={oi} className={`text-xs px-2 py-1 rounded-sm ${isHighlighted ? "gradient-teal text-white" : "bg-muted"}`} dir="auto">
                                   {q.type === "true_false" ? opt : `${String.fromCharCode(65 + oi)}) ${opt}`}
                                 </span>
                               );
@@ -892,6 +892,7 @@ export default function QuizEditor() {
                   value={newQ.openAnswer}
                   onChange={(e) => setNewQ({ ...newQ, openAnswer: e.target.value })}
                   placeholder="To'g'ri javobni yozing..."
+                  dir="auto"
                   data-testid="input-open-correct"
                 />
                 <p className="text-xs text-muted-foreground">Talabaning javobi shu matnga mos kelsa, to'g'ri hisoblanadi (katta-kichik harfga e'tibor berilmaydi)</p>
@@ -920,6 +921,7 @@ export default function QuizEditor() {
                       }}
                       placeholder={`Variant ${String.fromCharCode(65 + i)}`}
                       className="flex-1"
+                      dir="auto"
                       data-testid={`input-poll-option-${i}`}
                     />
                   </div>
@@ -961,6 +963,7 @@ export default function QuizEditor() {
                       }}
                       placeholder={`Variant ${String.fromCharCode(65 + i)}`}
                       className="flex-1"
+                      dir="auto"
                       data-testid={`input-ms-option-${i}`}
                     />
                   </label>
@@ -1078,7 +1081,7 @@ export default function QuizEditor() {
             {editQ.type === "open_ended" && (
               <div className="space-y-2">
                 <Label>To'g'ri javob</Label>
-                <Input value={editQ.openAnswer} onChange={(e) => setEditQ({ ...editQ, openAnswer: e.target.value })} placeholder="To'g'ri javobni yozing..." data-testid="edit-input-open-correct" />
+                <Input value={editQ.openAnswer} onChange={(e) => setEditQ({ ...editQ, openAnswer: e.target.value })} placeholder="To'g'ri javobni yozing..." dir="auto" data-testid="edit-input-open-correct" />
               </div>
             )}
 
@@ -1104,6 +1107,7 @@ export default function QuizEditor() {
                       }}
                       placeholder={`Variant ${String.fromCharCode(65 + i)}`}
                       className="flex-1"
+                      dir="auto"
                       data-testid={`edit-input-poll-option-${i}`}
                     />
                   </div>
@@ -1145,6 +1149,7 @@ export default function QuizEditor() {
                       }}
                       placeholder={`Variant ${String.fromCharCode(65 + i)}`}
                       className="flex-1"
+                      dir="auto"
                       data-testid={`edit-input-ms-option-${i}`}
                     />
                   </label>

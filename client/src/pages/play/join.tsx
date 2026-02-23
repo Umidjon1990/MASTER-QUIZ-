@@ -517,6 +517,7 @@ export default function JoinPlay() {
                   value={selectedAnswer || ""}
                   onChange={(e) => !answered && setSelectedAnswer(e.target.value)}
                   className="text-center text-lg h-14"
+                  dir="auto"
                   data-testid="input-open-answer"
                 />
                 <Button className="w-full gradient-purple border-0" onClick={() => selectedAnswer && submitAnswer(selectedAnswer)} disabled={answered || !selectedAnswer} data-testid="button-submit-open">
@@ -591,7 +592,7 @@ export default function JoinPlay() {
                         ) : entry.rank}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`font-semibold truncate ${isMe ? "text-gradient" : ""}`}>
+                        <p className={`font-semibold truncate ${isMe ? "text-gradient" : ""}`} dir="auto">
                           {entry.name} {isMe ? "(Siz)" : ""}
                         </p>
                         <p className="text-xs text-muted-foreground">{entry.correctAnswers} to'g'ri javob</p>
@@ -669,7 +670,7 @@ export default function JoinPlay() {
                         </motion.div>
 
                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: baseDelay + 0.6 }} className="text-center mt-2 mb-1">
-                          <p className={`text-sm font-bold truncate max-w-[6rem] ${isMe ? "text-gradient" : ""}`}>{entry.name}</p>
+                          <p className={`text-sm font-bold truncate max-w-[6rem] ${isMe ? "text-gradient" : ""}`} dir="auto">{entry.name}</p>
                           <p className="font-black text-lg tabular-nums">
                             <AnimatedScore value={entry.score} delay={(baseDelay + 0.8) * 1000} />
                           </p>
@@ -729,7 +730,7 @@ export default function JoinPlay() {
                             {rank}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className={`font-semibold truncate text-sm ${isMe ? "text-gradient" : ""}`}>
+                            <p className={`font-semibold truncate text-sm ${isMe ? "text-gradient" : ""}`} dir="auto">
                               {entry.name} {isMe ? "(Siz)" : ""}
                             </p>
                           </div>

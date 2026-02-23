@@ -1575,6 +1575,7 @@ export default function QuizPlayPage() {
                         onChange={(e) => setAnswers(prev => ({ ...prev, [currentQuestion.id]: e.target.value }))}
                         disabled={hasAnswered}
                         className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-lg"
+                        dir="auto"
                         data-testid="input-open-answer"
                       />
                       <Button
@@ -1756,6 +1757,7 @@ export default function QuizPlayPage() {
                       value={(soloAnswer as string) || ""}
                       onChange={(e) => handleSoloAnswer(soloCurrentQuestion.id, e.target.value)}
                       className="bg-white/10 border-white/20 text-white placeholder:text-white/40 text-lg"
+                      dir="auto"
                       data-testid="input-open-answer"
                     />
                   </motion.div>

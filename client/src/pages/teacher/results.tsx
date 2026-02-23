@@ -323,7 +323,7 @@ function QuizResultsDetail({ quizId, onDeleteAll }: { quizId: string; onDeleteAl
             <span className={i < 3 ? "text-foreground font-bold" : "text-muted-foreground"}>
               {i + 1}
             </span>
-            <span className="truncate">
+            <span className="truncate" dir="auto">
               {name}
               {(r as any)._isShared && <span className="ml-1 text-xs text-primary">(mustaqil)</span>}
             </span>

@@ -353,7 +353,7 @@ export default function SharedQuizPage() {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <Badge variant="secondary" className="shrink-0">{currentIndex + 1}/{processedQuestions.length}</Badge>
-            <span className="text-sm text-muted-foreground truncate">{quizData?.title}</span>
+            <span className="text-sm text-muted-foreground truncate" dir="auto">{quizData?.title}</span>
           </div>
           {quizData?.timerEnabled && (
             <Badge variant={timeLeft <= 5 ? "destructive" : "outline"} className="text-lg px-3 py-1 tabular-nums shrink-0" data-testid="badge-timer">

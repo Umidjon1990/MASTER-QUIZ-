@@ -225,7 +225,7 @@ export default function QuizReplay() {
     return (
       <div className="min-h-screen p-6 max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-bold">{quiz.title} — Javoblar</h1>
+          <h1 className="text-xl font-bold" dir="auto">{quiz.title} — Javoblar</h1>
           <Button variant="outline" onClick={() => setPhase("results")} data-testid="button-back-results">
             Natijaga qaytish
           </Button>
@@ -238,7 +238,7 @@ export default function QuizReplay() {
               <Card key={i} className={`p-4 border-l-4 ${isCorrect ? "border-l-green-500" : "border-l-red-500"}`}>
                 <div className="flex items-start gap-2 mb-2">
                   <span className="font-bold text-muted-foreground">{i + 1}.</span>
-                  <p className="font-medium">{q.questionText}</p>
+                  <p className="font-medium" dir="auto">{q.questionText}</p>
                 </div>
                 {q.mediaUrl && (
                   <img src={q.mediaUrl} alt="" className="max-h-40 rounded-md mb-2" />
@@ -252,13 +252,13 @@ export default function QuizReplay() {
                       <div key={j} className={`text-sm px-2 py-1 rounded ${isCorrectOpt ? "bg-green-100 dark:bg-green-950/30 text-green-700 dark:text-green-400 font-medium" : isUserPick ? "bg-red-100 dark:bg-red-950/30 text-red-700 dark:text-red-400" : ""}`}>
                         {isCorrectOpt && <CheckCircle className="w-3 h-3 inline mr-1" />}
                         {isUserPick && !isCorrectOpt && <XCircle className="w-3 h-3 inline mr-1" />}
-                        {optText}
+                        <span dir="auto">{optText}</span>
                       </div>
                     );
                   }) : (
                     <div className="text-sm">
-                      <p>Sizning javobingiz: <span className={isCorrect ? "text-green-600 font-medium" : "text-red-600"}>{userAnswer || "—"}</span></p>
-                      <p>To'g'ri javob: <span className="text-green-600 font-medium">{q.correctAnswer}</span></p>
+                      <p>Sizning javobingiz: <span className={isCorrect ? "text-green-600 font-medium" : "text-red-600"} dir="auto">{userAnswer || "—"}</span></p>
+                      <p>To'g'ri javob: <span className="text-green-600 font-medium" dir="auto">{q.correctAnswer}</span></p>
                     </div>
                   )}
                 </div>
@@ -339,6 +339,7 @@ export default function QuizReplay() {
                   placeholder="Javobingizni yozing..."
                   value={answers[currentIndex] || ""}
                   onChange={(e) => handleAnswer(e.target.value)}
+                  dir="auto"
                   data-testid="input-open-answer"
                 />
               )}
