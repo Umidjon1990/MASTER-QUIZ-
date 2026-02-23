@@ -9,6 +9,7 @@ import { fisherYatesShuffle, balancedShuffleOptions } from "./shuffle";
 let io: SocketServer;
 const questionAnswerCounts = new Map<string, number>();
 const questionStartTimes = new Map<string, { startedAt: number; timeLimit: number }>();
+const liveSessionShuffledQuestions = new Map<string, any[]>();
 
 export function getIO() {
   return io;
@@ -309,7 +310,7 @@ async function serverNextQuestion(sessionId: string) {
     const session = await storage.getLiveSession(sessionId);
     if (!session || session.status === "finished") return;
 
-    const questionsList = await storage.getQuestionsByQuiz(session.quizId);
+    const questionsList = liveSessionShuffledQuestions.get(sessionId) || await storage.getQuestionsByQuiz(session.quizId);
     const quiz = await storage.getQuiz(session.quizId);
     const nextIndex = session.currentQuestionIndex + 1;
 
@@ -346,6 +347,7 @@ async function serverNextQuestion(sessionId: string) {
       });
 
       cleanupLiveSessionTimer(sessionId);
+      liveSessionShuffledQuestions.delete(sessionId);
       return;
     }
 
@@ -355,10 +357,6 @@ async function serverNextQuestion(sessionId: string) {
 
     const q = questionsList[nextIndex];
     let questionOptions = q.options ? [...(q.options as string[])] : null;
-    if (quiz?.shuffleOptions && questionOptions) {
-      const shuffled = balancedShuffleOptions([{ options: questionOptions, correctAnswer: q.correctAnswer }]);
-      questionOptions = shuffled[0].options as string[];
-    }
 
     const timerEnabled = quiz?.timerEnabled ?? true;
     const effectiveTimeLimit = timerEnabled ? (q.timeLimit || quiz?.timePerQuestion || 30) : 0;
@@ -460,10 +458,6 @@ function sendPublicQuestion(roomId: string) {
   room.answeredThisQuestion = new Set();
 
   let questionOptions = q.options ? [...(q.options as string[])] : null;
-  if (room.quiz.shuffleOptions && questionOptions) {
-    const shuffled = balancedShuffleOptions([{ options: questionOptions, correctAnswer: q.correctAnswer }]);
-    questionOptions = shuffled[0].options as string[];
-  }
 
   const timeLimit = q.timeLimit || room.quiz.timePerQuestion || 30;
   room.currentEffectiveTimeLimit = timeLimit;
@@ -903,6 +897,9 @@ async function checkScheduledQuizzes() {
         if (quiz.shuffleQuestions) {
           room.questions = fisherYatesShuffle(room.questions);
         }
+        if (quiz.shuffleOptions) {
+          room.questions = balancedShuffleOptions(room.questions);
+        }
 
         io.to(`pubroom:${roomId}`).emit("public:game-started", {
           totalQuestions: room.questions.length,
@@ -1060,13 +1057,21 @@ export function setupWebSocket(httpServer: HttpServer) {
           return;
         }
 
-        const questionsList = await storage.getQuestionsByQuiz(session.quizId);
+        let questionsList = await storage.getQuestionsByQuiz(session.quizId);
         if (questionsList.length === 0) {
           callback?.({ success: false, error: "Quizda savollar yo'q. Avval savollar qo'shing" });
           return;
         }
 
         const quiz = await storage.getQuiz(session.quizId);
+
+        if (quiz?.shuffleQuestions) {
+          questionsList = fisherYatesShuffle(questionsList);
+        }
+        if (quiz?.shuffleOptions) {
+          questionsList = balancedShuffleOptions(questionsList);
+        }
+        liveSessionShuffledQuestions.set(sessionId, questionsList);
 
         await storage.updateLiveSession(sessionId, {
           status: "active",
@@ -1078,10 +1083,6 @@ export function setupWebSocket(httpServer: HttpServer) {
 
         const q = questionsList[0];
         let questionOptions = q.options ? [...(q.options as string[])] : null;
-        if (quiz?.shuffleOptions && questionOptions) {
-          const shuffled = balancedShuffleOptions([{ options: questionOptions, correctAnswer: q.correctAnswer }]);
-          questionOptions = shuffled[0].options as string[];
-        }
 
         const timerEnabled = quiz?.timerEnabled ?? true;
         const effectiveTimeLimit = timerEnabled ? (q.timeLimit || quiz?.timePerQuestion || 30) : 0;
@@ -1666,10 +1667,6 @@ export function setupWebSocket(httpServer: HttpServer) {
             const remainingTime = Math.max(0, timeLimit - elapsed);
 
             let questionOptions = q.options ? [...(q.options as string[])] : null;
-            if (room.quiz.shuffleOptions && questionOptions) {
-              const shuffled = balancedShuffleOptions([{ options: questionOptions, correctAnswer: q.correctAnswer }]);
-              questionOptions = shuffled[0].options as string[];
-            }
             socket.emit("public:game-started", { totalQuestions: room.questions.length });
             socket.emit("public:question", {
               question: {
@@ -1707,6 +1704,9 @@ export function setupWebSocket(httpServer: HttpServer) {
         let questionsList = [...room.questions];
         if (quiz.shuffleQuestions) {
           room.questions = fisherYatesShuffle(questionsList);
+        }
+        if (quiz.shuffleOptions) {
+          room.questions = balancedShuffleOptions(room.questions);
         }
 
         io.to(`pubroom:${roomId}`).emit("public:game-started", {
