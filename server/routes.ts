@@ -941,9 +941,16 @@ export async function registerRoutes(
         }
       };
 
-      for (const rawLine of rawLines) {
-        const line = rawLine.replace(/^\s+/, "").replace(/\s+$/, "");
-        if (!line) continue;
+      for (let li = 0; li < rawLines.length; li++) {
+        const line = rawLines[li].replace(/^\s+/, "").replace(/\s+$/, "");
+
+        if (!line) {
+          if (currentQ && currentQ.options.length >= 2) {
+            await saveCurrentQ();
+            currentQ = null;
+          }
+          continue;
+        }
 
         const optMatch = line.match(/^([A-Da-d])[\.\)\s]\s*(.*)/);
         const qMatch = line.match(/^(\d+)\s*[\.\)\-\t]\s*(.*)/);
@@ -955,8 +962,13 @@ export async function registerRoutes(
           let qText = qMatch[2].trim();
           if (!qText) continue;
           currentQ = { questionText: qText, options: [], correctAnswer: "" };
-        } else if (currentQ && currentQ.options.length === 0) {
-          currentQ.questionText += " " + line;
+        } else if (!optMatch) {
+          if (currentQ && currentQ.options.length === 0) {
+            currentQ.questionText += " " + line;
+          } else {
+            await saveCurrentQ();
+            currentQ = { questionText: line, options: [], correctAnswer: "" };
+          }
         }
       }
 
