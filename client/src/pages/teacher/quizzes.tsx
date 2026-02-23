@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock, School, Repeat, FolderPlus, FolderInput, ChevronUp, ChevronDown, GripVertical, BookOpen } from "lucide-react";
+import { Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock, School, Repeat, FolderPlus, FolderInput, ChevronUp, ChevronDown, ChevronRight, GripVertical, BookOpen } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import type { Quiz, UserProfile, TelegramChat, QuizCategory, QuizFolder } from "@shared/schema";
@@ -17,6 +17,160 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FolderOpen, MoreVertical } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+
+function QuizRow({ quiz, qIdx, totalInFolder, folderId, folders, hasTelegramBot, onEdit, onLive, onClassroom, onSchedule, onTelegram, onMove, onDelete, onMoveUp, onMoveDown, onCancelSchedule, onCopyLink, formatCountdown, toast }: {
+  quiz: Quiz;
+  qIdx: number;
+  totalInFolder: number;
+  folderId: string | null;
+  folders: QuizFolder[];
+  hasTelegramBot: boolean;
+  onEdit: () => void;
+  onLive: () => void;
+  onClassroom: () => void;
+  onSchedule: () => void;
+  onTelegram: () => void;
+  onMove: () => void;
+  onDelete: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onCancelSchedule: () => void;
+  onCopyLink: (code: string) => void;
+  formatCountdown: (scheduledAt: string | Date) => string;
+  toast: (opts: any) => void;
+}) {
+  return (
+    <div className="p-4 hover:bg-muted/30 transition-colors" data-testid={`card-quiz-${quiz.id}`}>
+      <div className="flex items-start gap-3">
+        {folderId && (
+          <div className="flex flex-col items-center gap-0.5 pt-0.5 shrink-0">
+            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={onMoveUp} disabled={qIdx === 0} data-testid={`button-quiz-up-${quiz.id}`}>
+              <ChevronUp className="w-3 h-3" />
+            </Button>
+            <span className="text-xs font-bold text-muted-foreground w-5 text-center">{qIdx + 1}</span>
+            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={onMoveDown} disabled={qIdx === totalInFolder - 1} data-testid={`button-quiz-down-${quiz.id}`}>
+              <ChevronDown className="w-3 h-3" />
+            </Button>
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2 mb-1 flex-wrap">
+            <h3 className="font-semibold">{quiz.title}</h3>
+            <div className="flex gap-1.5 flex-wrap shrink-0">
+              {quiz.scheduledStatus === "pending" && (
+                <>
+                  <Badge variant="outline" className="text-xs border-orange-500/30 text-orange-600 dark:text-orange-400">
+                    <CalendarClock className="w-3 h-3 mr-1" />
+                    Rejalashtirilgan
+                  </Badge>
+                  {!quiz.scheduledRequireCode && (
+                    <Badge variant="outline" className="text-xs border-green-500/30 text-green-600 dark:text-green-400">
+                      <Unlock className="w-3 h-3 mr-1" />
+                      Ochiq
+                    </Badge>
+                  )}
+                </>
+              )}
+              {quiz.scheduledStatus === "started" && (
+                <Badge variant="outline" className="text-xs border-green-500/30 text-green-600 dark:text-green-400">
+                  <Play className="w-3 h-3 mr-1" />
+                  Boshlandi
+                </Badge>
+              )}
+              <Badge variant={quiz.status === "published" ? "default" : "secondary"}>
+                {quiz.status === "published" ? "Nashr" : "Qoralama"}
+              </Badge>
+            </div>
+          </div>
+
+          {quiz.description && (
+            <p className="text-sm text-muted-foreground mb-1.5 line-clamp-1">{quiz.description}</p>
+          )}
+
+          <div className="flex gap-1.5 items-center mb-2 flex-wrap">
+            {quiz.category && <Badge variant="secondary" className="text-xs">{quiz.category}</Badge>}
+            {quiz.allowReplay && <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-600 dark:text-blue-400"><Repeat className="w-3 h-3 mr-0.5" />Qayta yechish</Badge>}
+            <span className="text-sm text-muted-foreground">{quiz.totalQuestions} savol | {quiz.totalPlays} marta o'ynalgan</span>
+          </div>
+
+          {quiz.scheduledStatus === "pending" && quiz.scheduledAt && (
+            <div className="mb-2 p-2.5 rounded-md bg-orange-50 dark:bg-orange-950/20 border border-orange-200/50 dark:border-orange-800/30">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Clock className="w-3.5 h-3.5 text-orange-500" />
+                    <span className="text-orange-700 dark:text-orange-300 font-medium">
+                      {new Date(quiz.scheduledAt).toLocaleDateString("uz-UZ", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tashkent" })}
+                    </span>
+                  </div>
+                  <p className="text-xs font-medium tabular-nums text-orange-600 dark:text-orange-400 pl-5" data-testid={`countdown-${quiz.id}`}>
+                    {formatCountdown(quiz.scheduledAt)}
+                  </p>
+                </div>
+                <div className="flex gap-1.5 items-center flex-wrap">
+                  {quiz.scheduledRequireCode && quiz.scheduledCode && (
+                    <>
+                      <Badge variant="secondary" className="font-mono tracking-wider text-xs">{quiz.scheduledCode}</Badge>
+                      <Button variant="ghost" size="sm" onClick={() => onCopyLink(quiz.scheduledCode!)} data-testid={`button-copy-link-${quiz.id}`}>
+                        <Copy className="w-3 h-3 mr-1" /> Link
+                      </Button>
+                    </>
+                  )}
+                  {!quiz.scheduledRequireCode && (
+                    <Button variant="ghost" size="sm" onClick={() => {
+                      const link = `${window.location.origin}/play/scheduled-open/${quiz.id}`;
+                      navigator.clipboard.writeText(link);
+                      toast({ title: "Link nusxalandi!" });
+                    }} data-testid={`button-copy-open-link-${quiz.id}`}>
+                      <Copy className="w-3 h-3 mr-1" /> Ochiq link
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={onCancelSchedule} data-testid={`button-cancel-schedule-${quiz.id}`}>
+                    <X className="w-3 h-3 mr-1" /> Bekor
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={onEdit} data-testid={`button-edit-${quiz.id}`}>
+              <Edit className="w-3 h-3 mr-1" /> Tahrirlash
+            </Button>
+            {quiz.status === "published" && (
+              <Button size="sm" className="gradient-purple border-0" onClick={onLive} data-testid={`button-start-live-${quiz.id}`}>
+                <Play className="w-3 h-3 mr-1" /> Jonli
+              </Button>
+            )}
+            {quiz.status === "published" && (
+              <Button size="sm" variant="outline" onClick={onClassroom} data-testid={`button-classroom-${quiz.id}`}>
+                <School className="w-3 h-3 mr-1" /> Sinf Xona
+              </Button>
+            )}
+            {quiz.status === "published" && quiz.scheduledStatus !== "pending" && (
+              <Button variant="outline" size="sm" onClick={onSchedule} data-testid={`button-schedule-${quiz.id}`}>
+                <CalendarClock className="w-3 h-3 mr-1" /> Rejalashtirish
+              </Button>
+            )}
+            {hasTelegramBot && quiz.totalQuestions > 0 && (
+              <Button variant="outline" size="sm" onClick={onTelegram} data-testid={`button-telegram-${quiz.id}`}>
+                <Send className="w-3 h-3 mr-1" /> Telegram
+              </Button>
+            )}
+            {folders && folders.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={onMove} data-testid={`button-move-folder-${quiz.id}`}>
+                <FolderInput className="w-3 h-3" />
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={onDelete} data-testid={`button-delete-${quiz.id}`}>
+              <Trash2 className="w-3 h-3" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function getUzbekistanDefaults() {
   const fmt = (n: number) => String(n).padStart(2, "0");
@@ -53,10 +207,14 @@ export default function TeacherQuizzes() {
   const [scheduleTelegramQuizChatId, setScheduleTelegramQuizChatId] = useState("");
   const [scheduleAllowReplay, setScheduleAllowReplay] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [folderFilter, setFolderFilter] = useState("all");
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [newFolderName, setNewFolderName] = useState("");
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [moveQuiz, setMoveQuiz] = useState<Quiz | null>(null);
+
+  const toggleFolder = (folderId: string) => {
+    setExpandedFolders(prev => ({ ...prev, [folderId]: !prev[folderId] }));
+  };
 
   const { data: quizzes, isLoading } = useQuery<Quiz[]>({
     queryKey: ["/api/quizzes"],
@@ -71,22 +229,19 @@ export default function TeacherQuizzes() {
     queryKey: ["/api/quiz-folders"],
   });
 
-  const filteredQuizzes = quizzes?.filter(q => {
-    if (categoryFilter !== "all") {
-      if (categoryFilter === "__uncategorized" && q.category) return false;
-      if (categoryFilter !== "__uncategorized" && q.category !== categoryFilter) return false;
-    }
-    if (folderFilter !== "all") {
-      if (folderFilter === "__unfiled" && q.folderId) return false;
-      if (folderFilter !== "__unfiled" && q.folderId !== folderFilter) return false;
-    }
-    return true;
-  })?.sort((a, b) => {
-    if (folderFilter !== "all" && folderFilter !== "__unfiled") {
-      return ((a as any).orderInFolder || 0) - ((b as any).orderInFolder || 0);
-    }
-    return 0;
+  const categoryFiltered = quizzes?.filter(q => {
+    if (categoryFilter === "all") return true;
+    if (categoryFilter === "__uncategorized") return !q.category;
+    return q.category === categoryFilter;
   });
+
+  const getQuizzesForFolder = (folderId: string) => {
+    return (categoryFiltered || [])
+      .filter(q => q.folderId === folderId)
+      .sort((a, b) => ((a as any).orderInFolder || 0) - ((b as any).orderInFolder || 0));
+  };
+
+  const unfiledQuizzes = (categoryFiltered || []).filter(q => !q.folderId);
 
   const { data: profile } = useQuery<UserProfile>({
     queryKey: ["/api/profile"],
@@ -133,7 +288,6 @@ export default function TeacherQuizzes() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quiz-folders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
-      if (folderFilter !== "all") setFolderFilter("all");
       toast({ title: "Dars o'chirildi" });
     },
   });
@@ -188,22 +342,22 @@ export default function TeacherQuizzes() {
     reorderFoldersMutation.mutate(newOrder);
   };
 
-  const moveQuizUp = (quizId: string) => {
-    if (!filteredQuizzes || folderFilter === "all" || folderFilter === "__unfiled") return;
-    const idx = filteredQuizzes.findIndex(q => q.id === quizId);
+  const moveQuizUp = (quizId: string, folderId: string) => {
+    const folderQuizzes = getQuizzesForFolder(folderId);
+    const idx = folderQuizzes.findIndex(q => q.id === quizId);
     if (idx <= 0) return;
-    const newOrder = filteredQuizzes.map(q => q.id);
+    const newOrder = folderQuizzes.map(q => q.id);
     [newOrder[idx - 1], newOrder[idx]] = [newOrder[idx], newOrder[idx - 1]];
-    reorderQuizzesMutation.mutate({ folderId: folderFilter, quizIds: newOrder });
+    reorderQuizzesMutation.mutate({ folderId, quizIds: newOrder });
   };
 
-  const moveQuizDown = (quizId: string) => {
-    if (!filteredQuizzes || folderFilter === "all" || folderFilter === "__unfiled") return;
-    const idx = filteredQuizzes.findIndex(q => q.id === quizId);
-    if (idx < 0 || idx >= filteredQuizzes.length - 1) return;
-    const newOrder = filteredQuizzes.map(q => q.id);
+  const moveQuizDown = (quizId: string, folderId: string) => {
+    const folderQuizzes = getQuizzesForFolder(folderId);
+    const idx = folderQuizzes.findIndex(q => q.id === quizId);
+    if (idx < 0 || idx >= folderQuizzes.length - 1) return;
+    const newOrder = folderQuizzes.map(q => q.id);
     [newOrder[idx], newOrder[idx + 1]] = [newOrder[idx + 1], newOrder[idx]];
-    reorderQuizzesMutation.mutate({ folderId: folderFilter, quizIds: newOrder });
+    reorderQuizzesMutation.mutate({ folderId, quizIds: newOrder });
   };
 
   const scheduleMutation = useMutation({
@@ -347,62 +501,28 @@ export default function TeacherQuizzes() {
         </div>
       )}
 
-      <div className="space-y-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <BookOpen className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-medium text-muted-foreground">Darslar:</span>
-          <div className="flex gap-1.5 flex-wrap items-center">
-            <Button
-              variant={folderFilter === "all" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setFolderFilter("all")}
-              data-testid="filter-folder-all"
-            >
-              Barchasi
-            </Button>
-            {folders && folders.map((f, idx) => (
-              <div key={f.id} className="flex items-center gap-0.5">
-                <Button
-                  variant={folderFilter === f.id ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setFolderFilter(f.id)}
-                  data-testid={`filter-folder-${f.id}`}
-                  className="gap-1"
-                >
-                  <Badge variant="secondary" className="px-1.5 py-0 text-xs font-bold rounded-full">{idx + 1}</Badge>
-                  {f.name}
-                </Button>
-                {folderFilter === f.id && (
-                  <div className="flex items-center">
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => moveFolderUp(f.id)} disabled={idx === 0} data-testid={`button-folder-up-${f.id}`}>
-                      <ChevronUp className="w-3 h-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => moveFolderDown(f.id)} disabled={idx === (folders?.length || 1) - 1} data-testid={`button-folder-down-${f.id}`}>
-                      <ChevronDown className="w-3 h-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => { if (confirm(`"${f.name}" darsini o'chirmoqchimisiz?`)) deleteFolderMutation.mutate(f.id); }} data-testid={`button-delete-folder-${f.id}`}>
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))}
-            <Button
-              variant={folderFilter === "__unfiled" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setFolderFilter("__unfiled")}
-              data-testid="filter-folder-unfiled"
-            >
-              Darssiz
-            </Button>
+      {isLoading ? (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <Card key={i} className="p-5">
+              <Skeleton className="h-5 w-3/4 mb-3" />
+              <Skeleton className="h-4 w-1/2 mb-4" />
+              <Skeleton className="h-9 w-full" />
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 flex-wrap">
             {showNewFolderInput ? (
               <div className="flex items-center gap-1">
                 <Input
                   value={newFolderName}
                   onChange={(e) => setNewFolderName(e.target.value)}
                   placeholder="Dars nomi..."
-                  className="h-8 w-40"
-                  onKeyDown={(e) => { if (e.key === "Enter" && newFolderName.trim()) createFolderMutation.mutate(newFolderName.trim()); }}
+                  className="h-8 w-48"
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === "Enter" && newFolderName.trim()) createFolderMutation.mutate(newFolderName.trim()); if (e.key === "Escape") { setShowNewFolderInput(false); setNewFolderName(""); } }}
                   data-testid="input-new-folder"
                 />
                 <Button size="sm" className="h-8" onClick={() => { if (newFolderName.trim()) createFolderMutation.mutate(newFolderName.trim()); }} disabled={!newFolderName.trim()} data-testid="button-create-folder">
@@ -414,177 +534,139 @@ export default function TeacherQuizzes() {
               </div>
             ) : (
               <Button variant="outline" size="sm" onClick={() => setShowNewFolderInput(true)} data-testid="button-new-folder">
-                <FolderPlus className="w-3 h-3 mr-1" /> Dars qo'shish
+                <FolderPlus className="w-4 h-4 mr-1" /> Yangi dars qo'shish
               </Button>
             )}
           </div>
-        </div>
-      </div>
 
-      {isLoading ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <Card key={i} className="p-5">
-              <Skeleton className="h-5 w-3/4 mb-3" />
-              <Skeleton className="h-4 w-1/2 mb-4" />
-              <Skeleton className="h-9 w-full" />
-            </Card>
-          ))}
-        </div>
-      ) : filteredQuizzes && filteredQuizzes.length > 0 ? (
-        <motion.div
-          initial="hidden"
-          animate="show"
-          variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}
-          className="grid md:grid-cols-2 lg:grid-cols-3 gap-4"
-        >
-          {filteredQuizzes.map((quiz, qIdx) => (
-            <motion.div key={quiz.id} variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}>
-              <Card className="p-5 hover-elevate" data-testid={`card-quiz-${quiz.id}`}>
-                <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    {folderFilter !== "all" && folderFilter !== "__unfiled" && (
-                      <div className="flex flex-col items-center gap-0.5 mr-1">
-                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => moveQuizUp(quiz.id)} disabled={qIdx === 0} data-testid={`button-quiz-up-${quiz.id}`}>
-                          <ChevronUp className="w-3 h-3" />
-                        </Button>
-                        <span className="text-xs font-bold text-muted-foreground">{qIdx + 1}</span>
-                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => moveQuizDown(quiz.id)} disabled={qIdx === (filteredQuizzes?.length || 1) - 1} data-testid={`button-quiz-down-${quiz.id}`}>
-                          <ChevronDown className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    )}
-                    <h3 className="font-semibold">{quiz.title}</h3>
-                  </div>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {quiz.scheduledStatus === "pending" && (
-                      <>
-                        <Badge variant="outline" className="text-xs border-orange-500/30 text-orange-600 dark:text-orange-400">
-                          <CalendarClock className="w-3 h-3 mr-1" />
-                          Rejalashtirilgan
-                        </Badge>
-                        {!quiz.scheduledRequireCode && (
-                          <Badge variant="outline" className="text-xs border-green-500/30 text-green-600 dark:text-green-400">
-                            <Unlock className="w-3 h-3 mr-1" />
-                            Ochiq
-                          </Badge>
-                        )}
-                      </>
-                    )}
-                    {quiz.scheduledStatus === "started" && (
-                      <Badge variant="outline" className="text-xs border-green-500/30 text-green-600 dark:text-green-400">
-                        <Play className="w-3 h-3 mr-1" />
-                        Boshlandi
-                      </Badge>
-                    )}
-                    <Badge variant={quiz.status === "published" ? "default" : "secondary"}>
-                      {quiz.status === "published" ? "Nashr" : "Qoralama"}
-                    </Badge>
-                  </div>
-                </div>
-                {quiz.description && (
-                  <p className="text-sm text-muted-foreground mb-2 line-clamp-2">{quiz.description}</p>
-                )}
-                <div className="flex gap-1.5 items-center mb-1 flex-wrap">
-                  {quiz.category && <Badge variant="secondary" className="text-xs">{quiz.category}</Badge>}
-                  {quiz.folderId && folders && (() => { const f = folders.find(fo => fo.id === quiz.folderId); const fIdx = folders.findIndex(fo => fo.id === quiz.folderId); return f ? <Badge variant="outline" className="text-xs"><BookOpen className="w-3 h-3 mr-0.5" />{fIdx + 1}-dars: {f.name}</Badge> : null; })()}
-                  {quiz.allowReplay && <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-600 dark:text-blue-400"><Repeat className="w-3 h-3 mr-0.5" />Qayta yechish</Badge>}
-                  <span className="text-sm text-muted-foreground">{quiz.totalQuestions} savol | {quiz.totalPlays} marta o'ynalgan</span>
-                </div>
-
-                {quiz.scheduledStatus === "pending" && quiz.scheduledAt && (
-                  <div className="mb-3 p-2.5 rounded-md bg-orange-50 dark:bg-orange-950/20 border border-orange-200/50 dark:border-orange-800/30">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2 text-sm">
-                          <Clock className="w-3.5 h-3.5 text-orange-500" />
-                          <span className="text-orange-700 dark:text-orange-300 font-medium">
-                            {new Date(quiz.scheduledAt).toLocaleDateString("uz-UZ", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tashkent" })}
-                          </span>
-                        </div>
-                        <p className="text-xs font-medium tabular-nums text-orange-600 dark:text-orange-400 pl-5" data-testid={`countdown-${quiz.id}`}>
-                          {formatCountdown(quiz.scheduledAt)}
-                        </p>
-                      </div>
-                      <div className="flex gap-1.5 items-center flex-wrap">
-                        {quiz.scheduledRequireCode && quiz.scheduledCode && (
-                          <>
-                            <Badge variant="secondary" className="font-mono tracking-wider text-xs">{quiz.scheduledCode}</Badge>
-                            <Button variant="ghost" size="sm" onClick={() => copyScheduleLink(quiz.scheduledCode!)} data-testid={`button-copy-link-${quiz.id}`}>
-                              <Copy className="w-3 h-3 mr-1" /> Link
-                            </Button>
-                          </>
-                        )}
-                        {!quiz.scheduledRequireCode && (
-                          <Button variant="ghost" size="sm" onClick={() => {
-                            const link = `${window.location.origin}/play/scheduled-open/${quiz.id}`;
-                            navigator.clipboard.writeText(link);
-                            toast({ title: "Link nusxalandi!" });
-                          }} data-testid={`button-copy-open-link-${quiz.id}`}>
-                            <Copy className="w-3 h-3 mr-1" /> Ochiq link
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => cancelScheduleMutation.mutate(quiz.id)}
-                          data-testid={`button-cancel-schedule-${quiz.id}`}
-                        >
-                          <X className="w-3 h-3 mr-1" /> Bekor
-                        </Button>
-                      </div>
+          {folders && folders.map((folder, fIdx) => {
+            const folderQuizzes = getQuizzesForFolder(folder.id);
+            const isExpanded = expandedFolders[folder.id] !== false;
+            return (
+              <motion.div key={folder.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: fIdx * 0.05 }}>
+                <Card className="overflow-hidden" data-testid={`folder-section-${folder.id}`}>
+                  <div
+                    className="flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 transition-colors select-none"
+                    onClick={() => toggleFolder(folder.id)}
+                    data-testid={`folder-header-${folder.id}`}
+                  >
+                    <ChevronRight className={`w-5 h-5 text-muted-foreground transition-transform shrink-0 ${isExpanded ? "rotate-90" : ""}`} />
+                    <Badge className="px-2 py-0.5 text-sm font-bold rounded-full gradient-purple border-0 text-white shrink-0">{fIdx + 1}-dars</Badge>
+                    <h3 className="font-semibold text-base flex-1 min-w-0 truncate">{folder.name}</h3>
+                    <Badge variant="secondary" className="text-xs shrink-0">{folderQuizzes.length} ta quiz</Badge>
+                    <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => moveFolderUp(folder.id)} disabled={fIdx === 0} data-testid={`button-folder-up-${folder.id}`}>
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => moveFolderDown(folder.id)} disabled={fIdx === (folders?.length || 1) - 1} data-testid={`button-folder-down-${folder.id}`}>
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => { if (confirm(`"${folder.name}" darsini o'chirmoqchimisiz?`)) deleteFolderMutation.mutate(folder.id); }} data-testid={`button-delete-folder-${folder.id}`}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
                     </div>
                   </div>
-                )}
 
-                <div className="flex gap-2 flex-wrap">
-                  <Button variant="outline" size="sm" onClick={() => navigate(`/teacher/quizzes/${quiz.id}`)} data-testid={`button-edit-${quiz.id}`}>
-                    <Edit className="w-3 h-3 mr-1" /> Tahrirlash
-                  </Button>
-                  {quiz.status === "published" && (
-                    <Button size="sm" className="gradient-purple border-0" onClick={() => navigate(`/teacher/live?quizId=${quiz.id}`)} data-testid={`button-start-live-${quiz.id}`}>
-                      <Play className="w-3 h-3 mr-1" /> Jonli
-                    </Button>
+                  {isExpanded && (
+                    <div className="border-t">
+                      {folderQuizzes.length > 0 ? (
+                        <div className="divide-y">
+                          {folderQuizzes.map((quiz, qIdx) => (
+                            <QuizRow
+                              key={quiz.id}
+                              quiz={quiz}
+                              qIdx={qIdx}
+                              totalInFolder={folderQuizzes.length}
+                              folderId={folder.id}
+                              folders={folders}
+                              hasTelegramBot={hasTelegramBot}
+                              onEdit={() => navigate(`/teacher/quizzes/${quiz.id}`)}
+                              onLive={() => navigate(`/teacher/live?quizId=${quiz.id}`)}
+                              onClassroom={() => navigate(`/classroom/${quiz.id}`)}
+                              onSchedule={() => { const defs = getUzbekistanDefaults(); setScheduleDate(defs.date); setScheduleTime(defs.time); setScheduleQuiz(quiz); }}
+                              onTelegram={() => setTelegramQuiz(quiz)}
+                              onMove={() => setMoveQuiz(quiz)}
+                              onDelete={() => deleteQuiz.mutate(quiz.id)}
+                              onMoveUp={() => moveQuizUp(quiz.id, folder.id)}
+                              onMoveDown={() => moveQuizDown(quiz.id, folder.id)}
+                              onCancelSchedule={() => cancelScheduleMutation.mutate(quiz.id)}
+                              onCopyLink={copyScheduleLink}
+                              formatCountdown={formatCountdown}
+                              toast={toast}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-6 text-center text-sm text-muted-foreground">
+                          Bu darsda hali quiz yo'q
+                        </div>
+                      )}
+                    </div>
                   )}
-                  {quiz.status === "published" && (
-                    <Button size="sm" variant="outline" onClick={() => navigate(`/classroom/${quiz.id}`)} data-testid={`button-classroom-${quiz.id}`}>
-                      <School className="w-3 h-3 mr-1" /> Sinf Xona
-                    </Button>
-                  )}
-                  {quiz.status === "published" && quiz.scheduledStatus !== "pending" && (
-                    <Button variant="outline" size="sm" onClick={() => { const defs = getUzbekistanDefaults(); setScheduleDate(defs.date); setScheduleTime(defs.time); setScheduleQuiz(quiz); }} data-testid={`button-schedule-${quiz.id}`}>
-                      <CalendarClock className="w-3 h-3 mr-1" /> Rejalashtirish
-                    </Button>
-                  )}
-                  {hasTelegramBot && quiz.totalQuestions > 0 && (
-                    <Button variant="outline" size="sm" onClick={() => setTelegramQuiz(quiz)} data-testid={`button-telegram-${quiz.id}`}>
-                      <Send className="w-3 h-3 mr-1" /> Telegram
-                    </Button>
-                  )}
-                  {folders && folders.length > 0 && (
-                    <Button variant="ghost" size="sm" onClick={() => setMoveQuiz(quiz)} data-testid={`button-move-folder-${quiz.id}`}>
-                      <FolderInput className="w-3 h-3" />
-                    </Button>
-                  )}
-                  <Button variant="ghost" size="sm" onClick={() => deleteQuiz.mutate(quiz.id)} data-testid={`button-delete-${quiz.id}`}>
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
+                </Card>
+              </motion.div>
+            );
+          })}
+
+          {unfiledQuizzes.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: (folders?.length || 0) * 0.05 }}>
+              <Card className="overflow-hidden" data-testid="folder-section-unfiled">
+                <div
+                  className="flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 transition-colors select-none"
+                  onClick={() => toggleFolder("__unfiled")}
+                  data-testid="folder-header-unfiled"
+                >
+                  <ChevronRight className={`w-5 h-5 text-muted-foreground transition-transform shrink-0 ${expandedFolders["__unfiled"] !== false ? "rotate-90" : ""}`} />
+                  <BookOpen className="w-5 h-5 text-muted-foreground shrink-0" />
+                  <h3 className="font-semibold text-base flex-1">Darssiz quizlar</h3>
+                  <Badge variant="secondary" className="text-xs shrink-0">{unfiledQuizzes.length} ta quiz</Badge>
                 </div>
+
+                {expandedFolders["__unfiled"] !== false && (
+                  <div className="border-t divide-y">
+                    {unfiledQuizzes.map((quiz, qIdx) => (
+                      <QuizRow
+                        key={quiz.id}
+                        quiz={quiz}
+                        qIdx={qIdx}
+                        totalInFolder={unfiledQuizzes.length}
+                        folderId={null}
+                        folders={folders || []}
+                        hasTelegramBot={hasTelegramBot}
+                        onEdit={() => navigate(`/teacher/quizzes/${quiz.id}`)}
+                        onLive={() => navigate(`/teacher/live?quizId=${quiz.id}`)}
+                        onClassroom={() => navigate(`/classroom/${quiz.id}`)}
+                        onSchedule={() => { const defs = getUzbekistanDefaults(); setScheduleDate(defs.date); setScheduleTime(defs.time); setScheduleQuiz(quiz); }}
+                        onTelegram={() => setTelegramQuiz(quiz)}
+                        onMove={() => setMoveQuiz(quiz)}
+                        onDelete={() => deleteQuiz.mutate(quiz.id)}
+                        onMoveUp={() => {}}
+                        onMoveDown={() => {}}
+                        onCancelSchedule={() => cancelScheduleMutation.mutate(quiz.id)}
+                        onCopyLink={copyScheduleLink}
+                        formatCountdown={formatCountdown}
+                        toast={toast}
+                      />
+                    ))}
+                  </div>
+                )}
               </Card>
             </motion.div>
-          ))}
-        </motion.div>
-      ) : (
-        <Card className="p-12 text-center">
-          <div className="w-16 h-16 rounded-full gradient-purple/10 flex items-center justify-center mx-auto mb-4">
-            <Plus className="w-8 h-8 text-muted-foreground" />
-          </div>
-          <h3 className="font-semibold text-lg mb-2">Quizlaringiz yo'q</h3>
-          <p className="text-muted-foreground mb-4">Birinchi quizingizni yarating!</p>
-          <Button className="gradient-purple border-0" onClick={() => navigate("/teacher/quizzes/new")} data-testid="button-first-quiz">
-            <Plus className="w-4 h-4 mr-1" /> Yangi Quiz
-          </Button>
-        </Card>
+          )}
+
+          {(!quizzes || quizzes.length === 0) && (!folders || folders.length === 0) && (
+            <Card className="p-12 text-center">
+              <div className="w-16 h-16 rounded-full gradient-purple/10 flex items-center justify-center mx-auto mb-4">
+                <Plus className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <h3 className="font-semibold text-lg mb-2">Quizlaringiz yo'q</h3>
+              <p className="text-muted-foreground mb-4">Birinchi quizingizni yarating!</p>
+              <Button className="gradient-purple border-0" onClick={() => navigate("/teacher/quizzes/new")} data-testid="button-first-quiz">
+                <Plus className="w-4 h-4 mr-1" /> Yangi Quiz
+              </Button>
+            </Card>
+          )}
+        </div>
       )}
 
       <Dialog open={!!telegramQuiz} onOpenChange={(open) => !open && setTelegramQuiz(null)}>
