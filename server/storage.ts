@@ -129,6 +129,7 @@ export interface IStorage {
   updateSharedQuizAttempt(id: string, data: Partial<SharedQuizAttempt>): Promise<SharedQuizAttempt | undefined>;
   getSharedQuizAttempts(sharedQuizId: string): Promise<SharedQuizAttempt[]>;
   getSharedQuizAttempt(id: string): Promise<SharedQuizAttempt | undefined>;
+  deleteSharedQuizAttempt(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -566,6 +567,10 @@ export class DatabaseStorage implements IStorage {
   async getSharedQuizAttempt(id: string): Promise<SharedQuizAttempt | undefined> {
     const [attempt] = await db.select().from(sharedQuizAttempts).where(eq(sharedQuizAttempts.id, id));
     return attempt;
+  }
+
+  async deleteSharedQuizAttempt(id: string): Promise<void> {
+    await db.delete(sharedQuizAttempts).where(eq(sharedQuizAttempts.id, id));
   }
 }
 

@@ -1110,7 +1110,32 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
       }
       const results = await storage.getResultsByQuiz(req.params.id);
-      res.json(results);
+
+      const sharedQuizzes = await storage.getSharedQuizzesByQuizId(req.params.id);
+      const sharedResults: any[] = [];
+      for (const sq of sharedQuizzes) {
+        const attempts = await storage.getSharedQuizAttempts(sq.id);
+        for (const a of attempts) {
+          if (a.completedAt) {
+            sharedResults.push({
+              id: a.id,
+              sessionId: `shared_${sq.id}`,
+              quizId: req.params.id,
+              participantId: a.id,
+              userId: null,
+              guestName: a.playerName,
+              totalScore: a.score,
+              correctAnswers: a.correctAnswers,
+              totalQuestions: a.totalQuestions,
+              rank: null,
+              completedAt: a.completedAt,
+              _isShared: true,
+            });
+          }
+        }
+      }
+
+      res.json([...results, ...sharedResults]);
     } catch (error) {
       res.status(500).json({ message: "Server error" });
     }
@@ -1120,8 +1145,13 @@ export async function registerRoutes(
     try {
       await storage.deleteResult(req.params.id);
       res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ message: "O'chirishda xatolik" });
+    } catch (error1) {
+      try {
+        await storage.deleteSharedQuizAttempt(req.params.id);
+        res.json({ success: true });
+      } catch (error2) {
+        res.status(500).json({ message: "O'chirishda xatolik" });
+      }
     }
   });
 

@@ -309,7 +309,10 @@ function QuizResultsDetail({ quizId }: { quizId: string }) {
             <span className={i < 3 ? "text-foreground font-bold" : "text-muted-foreground"}>
               {i + 1}
             </span>
-            <span className="truncate">{name}</span>
+            <span className="truncate">
+              {name}
+              {(r as any)._isShared && <span className="ml-1 text-xs text-primary">(mustaqil)</span>}
+            </span>
             <span className="text-center font-medium">{r.totalScore}</span>
             <span className="text-center text-muted-foreground">{r.correctAnswers}/{r.totalQuestions} ({pct}%)</span>
             <button
