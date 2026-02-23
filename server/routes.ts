@@ -914,61 +914,53 @@ export async function registerRoutes(
       const existingQuestions = await storage.getQuestionsByQuiz(req.params.quizId);
       const startIndex = existingQuestions.length;
 
-      const lines = text.split("\n").map((l: string) => l.trim()).filter(Boolean);
+      const rawLines = text.split("\n");
       const imported: any[] = [];
       let currentQ: any = null;
 
-      for (const line of lines) {
-        const qMatch = line.match(/^(\d+[\.\)]\s*|Savol:\s*)(.*)/i);
-        const optMatch = line.match(/^([A-Da-d])[\.\)]\s*(.*)/);
-
-        if (qMatch && !optMatch) {
-          if (currentQ && currentQ.questionText) {
-            const correct = currentQ.options.find((o: string) => o.endsWith(" *"));
-            if (correct) {
-              currentQ.correctAnswer = correct.replace(/\s*\*$/, "");
-              currentQ.options = currentQ.options.map((o: string) => o.replace(/\s*\*$/, ""));
-            }
-            if (currentQ.correctAnswer) {
-              const question = await storage.createQuestion({
-                quizId: req.params.quizId,
-                orderIndex: startIndex + imported.length,
-                type: "multiple_choice",
-                questionText: currentQ.questionText,
-                options: currentQ.options.filter(Boolean),
-                correctAnswer: currentQ.correctAnswer,
-                points: 100,
-                timeLimit: 30,
-              });
-              imported.push(question);
-            }
-          }
-          currentQ = { questionText: qMatch[2].trim(), options: [], correctAnswer: "" };
-        } else if (optMatch && currentQ) {
-          currentQ.options.push(optMatch[2].trim());
-        }
-      }
-
-      if (currentQ && currentQ.questionText) {
-        const correct = currentQ.options.find((o: string) => o.endsWith(" *"));
+      const saveCurrentQ = async () => {
+        if (!currentQ || !currentQ.questionText) return;
+        const correct = currentQ.options.find((o: string) => o.endsWith(" *") || o.endsWith("*"));
         if (correct) {
-          currentQ.correctAnswer = correct.replace(/\s*\*$/, "");
-          currentQ.options = currentQ.options.map((o: string) => o.replace(/\s*\*$/, ""));
+          currentQ.correctAnswer = correct.replace(/\s*\*+$/, "").trim();
+          currentQ.options = currentQ.options.map((o: string) => o.replace(/\s*\*+$/, "").trim());
         }
-        if (currentQ.correctAnswer) {
+        const validOptions = currentQ.options.filter(Boolean);
+        if (currentQ.correctAnswer && validOptions.length >= 2) {
           const question = await storage.createQuestion({
             quizId: req.params.quizId,
             orderIndex: startIndex + imported.length,
             type: "multiple_choice",
-            questionText: currentQ.questionText,
-            options: currentQ.options.filter(Boolean),
+            questionText: currentQ.questionText.trim(),
+            options: validOptions,
             correctAnswer: currentQ.correctAnswer,
             points: 100,
             timeLimit: 30,
           });
           imported.push(question);
         }
+      };
+
+      for (const rawLine of rawLines) {
+        const line = rawLine.replace(/^\s+/, "").replace(/\s+$/, "");
+        if (!line) continue;
+
+        const optMatch = line.match(/^([A-Da-d])[\.\)\s]\s*(.*)/);
+        const qMatch = line.match(/^(\d+)\s*[\.\)\-\t]\s*(.*)/);
+
+        if (optMatch && currentQ) {
+          currentQ.options.push(optMatch[2].trim());
+        } else if (qMatch) {
+          await saveCurrentQ();
+          let qText = qMatch[2].trim();
+          if (!qText) continue;
+          currentQ = { questionText: qText, options: [], correctAnswer: "" };
+        } else if (currentQ && currentQ.options.length === 0) {
+          currentQ.questionText += " " + line;
+        }
       }
+
+      await saveCurrentQ();
 
       res.json({ imported: imported.length, questions: imported });
     } catch (error) {
