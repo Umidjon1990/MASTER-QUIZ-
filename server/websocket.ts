@@ -183,9 +183,13 @@ async function restoreGamesFromDB() {
                 const maxExp = (r.currentEffectiveTimeLimit || 30) + 5;
                 if (r.currentQuestionIndex === lastSeenQI && el > maxExp) {
                   stuckCount++;
-                  if (stuckCount >= 2 && !r.questionTimer) {
-                    console.warn(`[RESTORE HEARTBEAT ${game.id}] Stuck! Forcing leaderboard.`);
+                  if (stuckCount >= 1) {
+                    console.warn(`[RESTORE HEARTBEAT ${game.id}] Stuck at Q${r.currentQuestionIndex + 1}, elapsed=${el.toFixed(0)}s > max=${maxExp}s. Forcing leaderboard.`);
                     stuckCount = 0;
+                    if (r.questionTimer) {
+                      clearTimeout(r.questionTimer);
+                      r.questionTimer = null;
+                    }
                     showPublicLeaderboard(game.id);
                   }
                 } else { stuckCount = 0; }
