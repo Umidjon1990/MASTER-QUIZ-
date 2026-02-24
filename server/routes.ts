@@ -1389,7 +1389,8 @@ export async function registerRoutes(
 
       let sent = 0;
       const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
-      const shouldShuffle = quiz.shuffleOptions === true;
+      const shouldShuffle = quiz.shuffleOptions === true || quiz.shuffleOptions === "true" as any;
+      console.log(`[TG] Quiz "${quiz.title}" shuffleOptions=${quiz.shuffleOptions} (type: ${typeof quiz.shuffleOptions}), shouldShuffle=${shouldShuffle}`);
 
       const shuffleArray = <T>(arr: T[]): T[] => {
         const a = [...arr];
@@ -1497,9 +1498,14 @@ export async function registerRoutes(
           console.log(`[TG] Q${qNum} skipped: type=${q.type}, options=${q.options?.length || 0}`);
         }
         if (success) sent++;
-        console.log(`[TG] Q${qNum}/${questionsList.length} ${success ? "✓" : "✗"} (sent: ${sent})`);
+        console.log(`[TG] Q${qNum}/${questionsList.length} ${success ? "✓" : "✗"} (sent: ${sent}, delay=${baseDelay}ms)`);
         if (i < questionsList.length - 1) {
-          await new Promise(r => setTimeout(r, baseDelay));
+          if ((i + 1) % 20 === 0) {
+            console.log(`[TG] Batch pause after ${i + 1} messages, waiting 10s...`);
+            await new Promise(r => setTimeout(r, 10000));
+          } else {
+            await new Promise(r => setTimeout(r, baseDelay));
+          }
         }
       }
 
