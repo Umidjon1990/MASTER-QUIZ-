@@ -319,63 +319,89 @@ export async function generateQuizDOCX(
     const questionText = q.questionText;
     const rtl = isRtlText(questionText);
 
-    const questionRuns: TextRun[] = [];
-    questionRuns.push(
-      new TextRun({
-        text: `${idx + 1}. `,
-        bold: true,
-        size: 24,
-        font: "Arial",
-      })
-    );
-    questionRuns.push(
-      new TextRun({
-        text: questionText,
-        bold: true,
-        size: 24,
-        font: "Arial",
-        rightToLeft: rtl,
-      })
-    );
-
-    children.push(
-      new Paragraph({
-        children: questionRuns,
-        alignment: AlignmentType.LEFT,
-        spacing: { before: 200, after: 100 },
-      })
-    );
+    if (rtl) {
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `\u200E${idx + 1}. `,
+              bold: true,
+              size: 24,
+              font: "Arial",
+              rightToLeft: false,
+            }),
+            new TextRun({
+              text: questionText,
+              bold: true,
+              size: 24,
+              font: "Arial",
+              rightToLeft: true,
+            }),
+          ],
+          bidirectional: true,
+          spacing: { before: 200, after: 100 },
+        })
+      );
+    } else {
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `${idx + 1}. ${questionText}`,
+              bold: true,
+              size: 24,
+              font: "Arial",
+            }),
+          ],
+          alignment: AlignmentType.LEFT,
+          spacing: { before: 200, after: 100 },
+        })
+      );
+    }
 
     if (q.options && q.options.length > 0) {
       q.options.forEach((opt, optIdx) => {
         const letter = getLetterForIndex(optIdx);
         const optRtl = isRtlText(opt);
 
-        const optRuns: TextRun[] = [];
-        optRuns.push(
-          new TextRun({
-            text: `${letter}) `,
-            size: 22,
-            font: "Arial",
-          })
-        );
-        optRuns.push(
-          new TextRun({
-            text: opt,
-            size: 22,
-            font: "Arial",
-            rightToLeft: optRtl,
-          })
-        );
-
-        children.push(
-          new Paragraph({
-            children: optRuns,
-            alignment: AlignmentType.LEFT,
-            indent: { left: 400 },
-            spacing: { after: 40 },
-          })
-        );
+        if (optRtl) {
+          children.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `\u200E${letter}) `,
+                  size: 22,
+                  font: "Arial",
+                  rightToLeft: false,
+                }),
+                new TextRun({
+                  text: opt,
+                  size: 22,
+                  font: "Arial",
+                  rightToLeft: true,
+                }),
+              ],
+              bidirectional: true,
+              indent: { left: 400 },
+              spacing: { after: 40 },
+            })
+          );
+        } else {
+          children.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `${letter}) ${opt}`,
+                  size: 22,
+                  font: "Arial",
+                }),
+              ],
+              alignment: AlignmentType.LEFT,
+              indent: { left: 400 },
+              spacing: { after: 40 },
+            })
+          );
+        }
       });
     }
   });
