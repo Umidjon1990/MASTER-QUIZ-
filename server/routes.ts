@@ -1543,6 +1543,32 @@ export async function registerRoutes(
         ? await storage.getResultsBySession(sessionId)
         : await storage.getResultsByQuiz(quizId);
 
+      const sharedQuizzes = await storage.getSharedQuizzesByQuizId(quizId);
+      const sharedResults: any[] = [];
+      for (const sq of sharedQuizzes) {
+        const attempts = await storage.getSharedQuizAttempts(sq.id);
+        for (const a of attempts) {
+          if (a.completedAt) {
+            sharedResults.push({
+              id: a.id,
+              sessionId: `shared_${sq.id}`,
+              quizId: quizId,
+              participantId: a.id,
+              userId: null,
+              guestName: a.playerName,
+              totalScore: a.score,
+              correctAnswers: a.correctAnswers,
+              totalQuestions: a.totalQuestions,
+              rank: null,
+              completedAt: a.completedAt,
+              _isShared: true,
+            });
+          }
+        }
+      }
+
+      results = [...results, ...sharedResults];
+
       if (results.length === 0) return res.status(400).json({ message: "Natijalar topilmadi" });
 
       results.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));

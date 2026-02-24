@@ -173,7 +173,7 @@ export default function TeacherResults() {
               {foldersWithResults.length > 0 && (
                 <div className="flex items-center gap-2 mb-2">
                   <BookOpen className="w-4 h-4 text-muted-foreground" />
-                  <h2 className="font-semibold text-base text-muted-foreground">Darssiz quizlar</h2>
+                  <h2 className="font-semibold text-base text-muted-foreground">Bo'limsiz quizlar</h2>
                   <Badge variant="secondary" className="text-xs">{unfiledQuizzes.length}</Badge>
                 </div>
               )}
