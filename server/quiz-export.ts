@@ -315,95 +315,74 @@ export async function generateQuizDOCX(
     })
   );
 
+  const splitArabicLatin = (text: string): { text: string; rtl: boolean }[] => {
+    const arabicRe = /([\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED\u0640\u06A9\u06AF\u067E\u0686\u0698\u06CC]+[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED\u0640\u06A9\u06AF\u067E\u0686\u0698\u06CC\s\u060C\u061B\u061F\u0021-\u002F\u003A-\u0040\u005B-\u0060\u007B-\u007E]*[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED\u0640\u06A9\u06AF\u067E\u0686\u0698\u06CC]*)/g;
+    const parts: { text: string; rtl: boolean }[] = [];
+    let lastIdx = 0;
+    let m;
+    while ((m = arabicRe.exec(text)) !== null) {
+      if (m.index > lastIdx) {
+        parts.push({ text: text.slice(lastIdx, m.index), rtl: false });
+      }
+      parts.push({ text: m[0], rtl: true });
+      lastIdx = arabicRe.lastIndex;
+    }
+    if (lastIdx < text.length) {
+      parts.push({ text: text.slice(lastIdx), rtl: false });
+    }
+    return parts.length > 0 ? parts : [{ text, rtl: false }];
+  };
+
   questions.forEach((q, idx) => {
     const questionText = q.questionText;
-    const rtl = isRtlText(questionText);
 
-    if (rtl) {
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: questionText,
-              bold: true,
-              size: 24,
-              font: "Arial",
-            }),
-          ],
-          bidirectional: true,
-          alignment: AlignmentType.RIGHT,
-          spacing: { before: 200, after: 20 },
-        })
-      );
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: `${idx + 1}-savol`,
-              bold: true,
-              size: 20,
-              font: "Arial",
-              color: "666666",
-            }),
-          ],
-          alignment: AlignmentType.RIGHT,
-          spacing: { after: 100 },
-        })
-      );
-    } else {
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: `${idx + 1}. ${questionText}`,
-              bold: true,
-              size: 24,
-              font: "Arial",
-            }),
-          ],
-          alignment: AlignmentType.LEFT,
-          spacing: { before: 200, after: 100 },
-        })
-      );
+    const runs: TextRun[] = [];
+    runs.push(new TextRun({ text: `${idx + 1}. `, bold: true, size: 24, font: "Arial" }));
+
+    const parts = splitArabicLatin(questionText);
+    for (const part of parts) {
+      runs.push(new TextRun({
+        text: part.text,
+        bold: true,
+        size: 24,
+        font: part.rtl ? "Arial" : "Arial",
+        rightToLeft: part.rtl,
+      }));
     }
+
+    children.push(
+      new Paragraph({
+        children: runs,
+        alignment: AlignmentType.LEFT,
+        spacing: { before: 200, after: 100 },
+      })
+    );
 
     if (q.options && q.options.length > 0) {
       q.options.forEach((opt, optIdx) => {
         const letter = getLetterForIndex(optIdx);
-        const optRtl = isRtlText(opt);
 
-        if (optRtl) {
-          children.push(
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `${opt} (${letter}`,
-                  size: 22,
-                  font: "Arial",
-                }),
-              ],
-              bidirectional: true,
-              alignment: AlignmentType.RIGHT,
-              indent: { right: 400 },
-              spacing: { after: 40 },
-            })
-          );
-        } else {
-          children.push(
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `${letter}) ${opt}`,
-                  size: 22,
-                  font: "Arial",
-                }),
-              ],
-              alignment: AlignmentType.LEFT,
-              indent: { left: 400 },
-              spacing: { after: 40 },
-            })
-          );
+        const optRuns: TextRun[] = [];
+        optRuns.push(new TextRun({ text: `${letter}) `, size: 22, font: "Arial" }));
+
+        const optParts = splitArabicLatin(opt);
+        for (const part of optParts) {
+          optRuns.push(new TextRun({
+            text: part.text,
+            size: 22,
+            font: "Arial",
+            rightToLeft: part.rtl,
+          }));
         }
+
+        children.push(
+          new Paragraph({
+            children: optRuns,
+            alignment: AlignmentType.LEFT,
+            indent: { left: 400 },
+            spacing: { after: 40 },
+          })
+        );
       });
     }
   });

@@ -1405,6 +1405,8 @@ export async function registerRoutes(
 
       const truncate = (s: string, max: number) => s.length > max ? s.slice(0, max - 1) + "…" : s;
 
+      let baseDelay = questionsList.length > 15 ? 3500 : 2000;
+
       const sendWithRetry = async (fn: () => Promise<any>, questionNum: number, maxRetries = 4) => {
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
           try {
@@ -1416,28 +1418,31 @@ export async function registerRoutes(
             if (retryAfter && attempt < maxRetries) {
               const waitSec = Math.max(Number(retryAfter), 3) + 2;
               console.log(`[TG] Q${questionNum} rate limit, waiting ${waitSec}s (attempt ${attempt + 1}/${maxRetries})...`);
+              baseDelay = Math.max(baseDelay, 4000);
               await new Promise(r => setTimeout(r, waitSec * 1000));
               continue;
             }
             const is429 = err?.response?.statusCode === 429
               || err?.statusCode === 429
               || err?.message?.includes("429")
-              || err?.message?.includes("Too Many Requests");
+              || err?.message?.includes("Too Many Requests")
+              || err?.message?.includes("ETELEGRAM");
             if (is429 && attempt < maxRetries) {
-              const wait = Math.pow(2, attempt + 1) * 1000 + 2000;
+              const wait = Math.pow(2, attempt + 1) * 1000 + 3000;
               console.log(`[TG] Q${questionNum} 429, retry after ${wait}ms (attempt ${attempt + 1}/${maxRetries})...`);
+              baseDelay = Math.max(baseDelay, 4000);
               await new Promise(r => setTimeout(r, wait));
               continue;
             }
             console.error(`[TG] Q${questionNum} send failed (attempt ${attempt + 1}/${maxRetries}):`, err?.message);
             if (attempt >= maxRetries) return false;
-            await new Promise(r => setTimeout(r, 3000));
+            await new Promise(r => setTimeout(r, 4000));
           }
         }
         return false;
       };
 
-      console.log(`[TG] Sending ${questionsList.length} questions, shuffle=${shouldShuffle}`);
+      console.log(`[TG] Sending ${questionsList.length} questions, shuffle=${shouldShuffle}, baseDelay=${baseDelay}ms`);
 
       for (let i = 0; i < questionsList.length; i++) {
         const q = questionsList[i];
@@ -1494,8 +1499,7 @@ export async function registerRoutes(
         if (success) sent++;
         console.log(`[TG] Q${qNum}/${questionsList.length} ${success ? "✓" : "✗"} (sent: ${sent})`);
         if (i < questionsList.length - 1) {
-          const delay = questionsList.length > 20 ? 2500 : 1500;
-          await new Promise(r => setTimeout(r, delay));
+          await new Promise(r => setTimeout(r, baseDelay));
         }
       }
 
