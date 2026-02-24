@@ -315,93 +315,47 @@ export async function generateQuizDOCX(
     })
   );
 
+  const RLI = "\u2067";
+  const PDI = "\u2069";
+
   questions.forEach((q, idx) => {
     const questionText = q.questionText;
     const rtl = isRtlText(questionText);
 
-    if (rtl) {
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: `\u200E${idx + 1}. `,
-              bold: true,
-              size: 24,
-              font: "Arial",
-              rightToLeft: false,
-            }),
-            new TextRun({
-              text: questionText,
-              bold: true,
-              size: 24,
-              font: "Arial",
-              rightToLeft: true,
-            }),
-          ],
-          bidirectional: true,
-          spacing: { before: 200, after: 100 },
-        })
-      );
-    } else {
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: `${idx + 1}. ${questionText}`,
-              bold: true,
-              size: 24,
-              font: "Arial",
-            }),
-          ],
-          alignment: AlignmentType.LEFT,
-          spacing: { before: 200, after: 100 },
-        })
-      );
-    }
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `${idx + 1}. ${rtl ? `${RLI}${questionText}${PDI}` : questionText}`,
+            bold: true,
+            size: 24,
+            font: "Arial",
+          }),
+        ],
+        alignment: AlignmentType.LEFT,
+        spacing: { before: 200, after: 100 },
+      })
+    );
 
     if (q.options && q.options.length > 0) {
       q.options.forEach((opt, optIdx) => {
         const letter = getLetterForIndex(optIdx);
         const optRtl = isRtlText(opt);
 
-        if (optRtl) {
-          children.push(
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `\u200E${letter}) `,
-                  size: 22,
-                  font: "Arial",
-                  rightToLeft: false,
-                }),
-                new TextRun({
-                  text: opt,
-                  size: 22,
-                  font: "Arial",
-                  rightToLeft: true,
-                }),
-              ],
-              bidirectional: true,
-              indent: { left: 400 },
-              spacing: { after: 40 },
-            })
-          );
-        } else {
-          children.push(
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `${letter}) ${opt}`,
-                  size: 22,
-                  font: "Arial",
-                }),
-              ],
-              alignment: AlignmentType.LEFT,
-              indent: { left: 400 },
-              spacing: { after: 40 },
-            })
-          );
-        }
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `${letter}) ${optRtl ? `${RLI}${opt}${PDI}` : opt}`,
+                size: 22,
+                font: "Arial",
+              }),
+            ],
+            alignment: AlignmentType.LEFT,
+            indent: { left: 400 },
+            spacing: { after: 40 },
+          })
+        );
       });
     }
   });
