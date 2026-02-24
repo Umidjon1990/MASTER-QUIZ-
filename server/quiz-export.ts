@@ -3,8 +3,16 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
-const __filename_esm = fileURLToPath(import.meta.url);
-const __dirname_esm = path.dirname(__filename_esm);
+const __mod_dirname = (() => {
+  try {
+    if (typeof __dirname !== "undefined") return __dirname;
+  } catch {}
+  try {
+    return path.dirname(fileURLToPath(import.meta.url));
+  } catch {}
+  return process.cwd();
+})();
+
 import {
   Document,
   Paragraph,
@@ -47,9 +55,9 @@ function findFontDir(): string {
     path.join(process.cwd(), "server", "fonts"),
     path.join(process.cwd(), "dist", "fonts"),
     path.join(process.cwd(), "fonts"),
-    path.join(__dirname_esm, "fonts"),
-    path.join(__dirname_esm, "..", "server", "fonts"),
-    path.join(__dirname_esm, "..", "fonts"),
+    path.join(__mod_dirname, "fonts"),
+    path.join(__mod_dirname, "..", "server", "fonts"),
+    path.join(__mod_dirname, "..", "fonts"),
   ];
   for (const dir of candidates) {
     if (fs.existsSync(path.join(dir, "NotoSans-Regular.ttf"))) {
