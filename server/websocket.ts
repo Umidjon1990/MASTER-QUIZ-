@@ -571,6 +571,31 @@ function finishPublicGame(roomId: string) {
   const totalQuestions = room.questions.length;
   const maxScore = room.questions.reduce((sum: number, q: any) => sum + (q.type === "poll" ? 0 : (q.points || 100)), 0);
 
+  const isPractice = !!(room.quiz as any).practiceMode || !!(room.quiz as any).practice_mode;
+  if (!isPractice) {
+    const quizId = String(room.quiz.id);
+    (async () => {
+      try {
+        for (const entry of leaderboard) {
+          await storage.saveQuizResult({
+            sessionId: roomId,
+            quizId,
+            participantId: entry.playerId,
+            userId: null,
+            guestName: entry.name,
+            totalScore: entry.score,
+            correctAnswers: entry.correctAnswers,
+            totalQuestions,
+            rank: entry.rank,
+          });
+        }
+        console.log(`[GAME ${roomId}] Saved ${leaderboard.length} results to quiz_results for quiz ${quizId}`);
+      } catch (err: any) {
+        console.error(`[GAME ${roomId}] Failed to save quiz results:`, err?.message || err);
+      }
+    })();
+  }
+
   io.to(`pubroom:${roomId}`).emit("public:game-finished", {
     leaderboard,
     totalQuestions,
