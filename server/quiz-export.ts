@@ -231,8 +231,6 @@ export async function generateQuizDOCX(
 ): Promise<Buffer> {
   const children: (Paragraph | Table)[] = [];
 
-  const titleRtl = isRtlText(quiz.title);
-
   children.push(
     new Paragraph({
       children: [
@@ -240,18 +238,15 @@ export async function generateQuizDOCX(
           text: quiz.title,
           bold: true,
           size: 36,
-          font: titleRtl ? "Arial" : "Arial",
-          rightToLeft: titleRtl,
+          font: "Arial",
         }),
       ],
       alignment: AlignmentType.CENTER,
-      bidirectional: titleRtl,
       spacing: { after: 100 },
     })
   );
 
   if (quiz.description) {
-    const descRtl = isRtlText(quiz.description);
     children.push(
       new Paragraph({
         children: [
@@ -259,11 +254,9 @@ export async function generateQuizDOCX(
             text: quiz.description,
             size: 22,
             font: "Arial",
-            rightToLeft: descRtl,
           }),
         ],
         alignment: AlignmentType.CENTER,
-        bidirectional: descRtl,
         spacing: { after: 100 },
       })
     );
@@ -288,19 +281,29 @@ export async function generateQuizDOCX(
     const questionText = q.questionText;
     const rtl = isRtlText(questionText);
 
+    const questionRuns: TextRun[] = [];
+    questionRuns.push(
+      new TextRun({
+        text: `${idx + 1}. `,
+        bold: true,
+        size: 24,
+        font: "Arial",
+      })
+    );
+    questionRuns.push(
+      new TextRun({
+        text: questionText,
+        bold: true,
+        size: 24,
+        font: "Arial",
+        rightToLeft: rtl,
+      })
+    );
+
     children.push(
       new Paragraph({
-        children: [
-          new TextRun({
-            text: `${idx + 1}. ${questionText}`,
-            bold: true,
-            size: 24,
-            font: "Arial",
-            rightToLeft: rtl,
-          }),
-        ],
-        alignment: rtl ? AlignmentType.RIGHT : AlignmentType.LEFT,
-        bidirectional: rtl,
+        children: questionRuns,
+        alignment: AlignmentType.LEFT,
         spacing: { before: 200, after: 100 },
       })
     );
@@ -310,18 +313,27 @@ export async function generateQuizDOCX(
         const letter = getLetterForIndex(optIdx);
         const optRtl = isRtlText(opt);
 
+        const optRuns: TextRun[] = [];
+        optRuns.push(
+          new TextRun({
+            text: `${letter}) `,
+            size: 22,
+            font: "Arial",
+          })
+        );
+        optRuns.push(
+          new TextRun({
+            text: opt,
+            size: 22,
+            font: "Arial",
+            rightToLeft: optRtl,
+          })
+        );
+
         children.push(
           new Paragraph({
-            children: [
-              new TextRun({
-                text: `${letter}) ${opt}`,
-                size: 22,
-                font: "Arial",
-                rightToLeft: optRtl,
-              }),
-            ],
-            alignment: optRtl ? AlignmentType.RIGHT : AlignmentType.LEFT,
-            bidirectional: optRtl,
+            children: optRuns,
+            alignment: AlignmentType.LEFT,
             indent: { left: 400 },
             spacing: { after: 40 },
           })
