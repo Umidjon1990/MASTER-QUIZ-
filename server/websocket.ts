@@ -762,20 +762,70 @@ async function autoSendQuizToTelegram(quiz: any) {
 
   const profile = await storage.getUserProfile(quiz.creatorId);
   if (!profile?.telegramBotToken) {
-    console.log("Auto-send quiz: No Telegram bot token for quiz creator", quiz.creatorId);
+    console.log("[TG-Auto] No Telegram bot token for quiz creator", quiz.creatorId);
     return;
   }
 
   const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const truncate = (s: string, max: number) => s.length > max ? s.slice(0, max - 1) + "…" : s;
+  const trimOpts = (opts: string[]) => opts.map(o => truncate(o, 98));
   const TelegramBot = (await import("node-telegram-bot-api")).default;
   const bot = new TelegramBot(profile.telegramBotToken);
   const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
 
   const questionsList = await storage.getQuestionsByQuiz(quiz.id);
   if (questionsList.length === 0) {
-    console.log("Auto-send quiz: No questions, skipping for", quiz.title);
+    console.log("[TG-Auto] No questions, skipping for", quiz.title);
     return;
   }
+
+  const shouldShuffle = quiz.shuffleOptions === true || quiz.shuffleOptions === "true" as any;
+  const shuffleArray = <T>(arr: T[]): T[] => {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+
+  let baseDelay = questionsList.length > 20 ? 4000 : questionsList.length > 10 ? 3000 : 2000;
+  const BATCH_SIZE = 10;
+
+  const sendWithRetry = async (fn: () => Promise<any>, questionNum: number, maxRetries = 5) => {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        await fn();
+        return true;
+      } catch (err: any) {
+        const retryAfter = err?.response?.body?.parameters?.retry_after
+          || err?.response?.body?.retry_after;
+        if (retryAfter && attempt < maxRetries) {
+          const waitSec = Math.max(Number(retryAfter), 5) + 3;
+          console.log(`[TG-Auto] Q${questionNum} rate limit (retry_after=${retryAfter}), waiting ${waitSec}s (attempt ${attempt + 1}/${maxRetries})...`);
+          baseDelay = Math.min(Math.max(baseDelay + 500, 4500), 6000);
+          await new Promise(r => setTimeout(r, waitSec * 1000));
+          continue;
+        }
+        const is429 = err?.response?.statusCode === 429
+          || err?.statusCode === 429
+          || err?.message?.includes("429")
+          || err?.message?.includes("Too Many Requests")
+          || err?.message?.includes("ETELEGRAM");
+        if (is429 && attempt < maxRetries) {
+          const wait = Math.pow(2, attempt + 1) * 1000 + 5000;
+          console.log(`[TG-Auto] Q${questionNum} 429 detected, retry after ${wait}ms (attempt ${attempt + 1}/${maxRetries})...`);
+          baseDelay = Math.min(Math.max(baseDelay + 500, 4500), 6000);
+          await new Promise(r => setTimeout(r, wait));
+          continue;
+        }
+        console.error(`[TG-Auto] Q${questionNum} send failed (attempt ${attempt + 1}/${maxRetries}):`, err?.message);
+        if (attempt >= maxRetries) return false;
+        await new Promise(r => setTimeout(r, 5000));
+      }
+    }
+    return false;
+  };
 
   const hasRtl = (s: string) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
   const titleDir = hasRtl(quiz.title) ? "\u200F" : "";
@@ -783,50 +833,73 @@ async function autoSendQuizToTelegram(quiz: any) {
   const header = `📝 ${titleDir}*${quiz.title}*${categoryText}\n📊 ${questionsList.length} ta savol\n\n_Test yakunlangandan so'ng savollar avtomatik yuborildi_`;
 
   await bot.sendMessage(targetChat, header, { parse_mode: "Markdown" });
+  await new Promise(r => setTimeout(r, 2000));
+
+  console.log(`[TG-Auto] Sending ${questionsList.length} questions for "${quiz.title}", shuffle=${shouldShuffle}, baseDelay=${baseDelay}ms, batchSize=${BATCH_SIZE}`);
 
   let sent = 0;
   for (let i = 0; i < questionsList.length; i++) {
     const q = questionsList[i];
+    let success = false;
+    const qNum = i + 1;
+    const qText = truncate(q.questionText, 295);
+
     if (q.type === "open_ended") {
-      await bot.sendMessage(targetChat, `<b>${i + 1}. ${escHtml(q.questionText)}</b>\n\n<i>Yozma javob talab qilinadi</i>\nTo'g'ri javob: <tg-spoiler>${escHtml(q.correctAnswer || "")}</tg-spoiler>`, { parse_mode: "HTML" });
-      sent++;
+      success = await sendWithRetry(() => bot.sendMessage(targetChat, `<b>${qNum}. ${escHtml(qText)}</b>\n\n<i>Yozma javob talab qilinadi</i>\nTo'g'ri javob: <tg-spoiler>${escHtml(q.correctAnswer || "")}</tg-spoiler>`, { parse_mode: "HTML" }), qNum);
     } else if (q.type === "true_false") {
       const tfOptions = ["To'g'ri", "Noto'g'ri"];
       const correctIndex = q.correctAnswer === "true" ? 0 : 1;
-      await bot.sendPoll(targetChat, q.questionText, tfOptions, {
+      success = await sendWithRetry(() => bot.sendPoll(targetChat, qText, tfOptions, {
         type: "quiz",
         correct_option_id: correctIndex,
         is_anonymous: true,
-      } as any);
-      sent++;
+      } as any), qNum);
     } else if (q.type === "poll" && q.options && q.options.length >= 2) {
-      await bot.sendPoll(targetChat, q.questionText, q.options, {
+      const opts = trimOpts(shouldShuffle ? shuffleArray(q.options) : q.options);
+      success = await sendWithRetry(() => bot.sendPoll(targetChat, qText, opts, {
         type: "regular",
         is_anonymous: true,
-      } as any);
-      sent++;
+      } as any), qNum);
     } else if (q.type === "multiple_select" && q.options && q.options.length >= 2) {
-      await bot.sendPoll(targetChat, q.questionText, q.options, {
+      const opts = trimOpts(shouldShuffle ? shuffleArray(q.options) : q.options);
+      success = await sendWithRetry(() => bot.sendPoll(targetChat, qText, opts, {
         type: "regular",
         allows_multiple_answers: true,
         is_anonymous: true,
-      } as any);
-      sent++;
+      } as any), qNum);
     } else if (q.options && q.options.length >= 2) {
-      const correctIndex = q.options.indexOf(q.correctAnswer);
-      await bot.sendPoll(targetChat, q.questionText, q.options, {
+      let opts = trimOpts([...q.options]);
+      const trimmedCorrect = truncate(q.correctAnswer || "", 98);
+      let correctIdx = opts.indexOf(trimmedCorrect);
+      if (correctIdx < 0) correctIdx = q.options.indexOf(q.correctAnswer);
+      if (shouldShuffle) {
+        opts = shuffleArray(opts);
+        correctIdx = opts.indexOf(trimmedCorrect);
+        if (correctIdx < 0) correctIdx = 0;
+      }
+      success = await sendWithRetry(() => bot.sendPoll(targetChat, qText, opts, {
         type: "quiz",
-        correct_option_id: correctIndex >= 0 ? correctIndex : 0,
+        correct_option_id: correctIdx >= 0 ? correctIdx : 0,
         is_anonymous: true,
-      } as any);
-      sent++;
+      } as any), qNum);
+    } else {
+      console.log(`[TG-Auto] Q${qNum} skipped: type=${q.type}, options=${q.options?.length || 0}`);
     }
+
+    if (success) sent++;
+    console.log(`[TG-Auto] Q${qNum}/${questionsList.length} ${success ? "✓" : "✗"} (sent: ${sent}, delay=${baseDelay}ms)`);
     if (i < questionsList.length - 1) {
-      await new Promise(r => setTimeout(r, 500));
+      if ((i + 1) % BATCH_SIZE === 0) {
+        const batchPause = questionsList.length > 20 ? 12000 : 8000;
+        console.log(`[TG-Auto] Batch pause after ${i + 1} messages, waiting ${batchPause / 1000}s...`);
+        await new Promise(r => setTimeout(r, batchPause));
+      } else {
+        await new Promise(r => setTimeout(r, baseDelay));
+      }
     }
   }
 
-  console.log(`Auto-sent ${sent} quiz questions to Telegram chat ${chatId} for quiz "${quiz.title}"`);
+  console.log(`[TG-Auto] Send complete: ${sent}/${questionsList.length} questions sent for "${quiz.title}", finalDelay=${baseDelay}ms`);
 }
 
 async function checkScheduledQuizzes() {
