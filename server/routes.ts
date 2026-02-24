@@ -1406,9 +1406,10 @@ export async function registerRoutes(
 
       const truncate = (s: string, max: number) => s.length > max ? s.slice(0, max - 1) + "…" : s;
 
-      let baseDelay = questionsList.length > 15 ? 3500 : 2000;
+      let baseDelay = questionsList.length > 20 ? 4000 : questionsList.length > 10 ? 3000 : 2000;
+      const BATCH_SIZE = 10;
 
-      const sendWithRetry = async (fn: () => Promise<any>, questionNum: number, maxRetries = 4) => {
+      const sendWithRetry = async (fn: () => Promise<any>, questionNum: number, maxRetries = 5) => {
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
           try {
             await fn();
@@ -1417,9 +1418,9 @@ export async function registerRoutes(
             const retryAfter = err?.response?.body?.parameters?.retry_after
               || err?.response?.body?.retry_after;
             if (retryAfter && attempt < maxRetries) {
-              const waitSec = Math.max(Number(retryAfter), 3) + 2;
-              console.log(`[TG] Q${questionNum} rate limit, waiting ${waitSec}s (attempt ${attempt + 1}/${maxRetries})...`);
-              baseDelay = Math.max(baseDelay, 4000);
+              const waitSec = Math.max(Number(retryAfter), 5) + 3;
+              console.log(`[TG] Q${questionNum} rate limit (retry_after=${retryAfter}), waiting ${waitSec}s (attempt ${attempt + 1}/${maxRetries})...`);
+              baseDelay = Math.min(Math.max(baseDelay + 500, 4500), 6000);
               await new Promise(r => setTimeout(r, waitSec * 1000));
               continue;
             }
@@ -1429,21 +1430,21 @@ export async function registerRoutes(
               || err?.message?.includes("Too Many Requests")
               || err?.message?.includes("ETELEGRAM");
             if (is429 && attempt < maxRetries) {
-              const wait = Math.pow(2, attempt + 1) * 1000 + 3000;
-              console.log(`[TG] Q${questionNum} 429, retry after ${wait}ms (attempt ${attempt + 1}/${maxRetries})...`);
-              baseDelay = Math.max(baseDelay, 4000);
+              const wait = Math.pow(2, attempt + 1) * 1000 + 5000;
+              console.log(`[TG] Q${questionNum} 429 detected, retry after ${wait}ms (attempt ${attempt + 1}/${maxRetries})...`);
+              baseDelay = Math.min(Math.max(baseDelay + 500, 4500), 6000);
               await new Promise(r => setTimeout(r, wait));
               continue;
             }
             console.error(`[TG] Q${questionNum} send failed (attempt ${attempt + 1}/${maxRetries}):`, err?.message);
             if (attempt >= maxRetries) return false;
-            await new Promise(r => setTimeout(r, 4000));
+            await new Promise(r => setTimeout(r, 5000));
           }
         }
         return false;
       };
 
-      console.log(`[TG] Sending ${questionsList.length} questions, shuffle=${shouldShuffle}, baseDelay=${baseDelay}ms`);
+      console.log(`[TG] Sending ${questionsList.length} questions, shuffle=${shouldShuffle}, baseDelay=${baseDelay}ms, batchSize=${BATCH_SIZE}`);
 
       for (let i = 0; i < questionsList.length; i++) {
         const q = questionsList[i];
@@ -1500,16 +1501,17 @@ export async function registerRoutes(
         if (success) sent++;
         console.log(`[TG] Q${qNum}/${questionsList.length} ${success ? "✓" : "✗"} (sent: ${sent}, delay=${baseDelay}ms)`);
         if (i < questionsList.length - 1) {
-          if ((i + 1) % 20 === 0) {
-            console.log(`[TG] Batch pause after ${i + 1} messages, waiting 10s...`);
-            await new Promise(r => setTimeout(r, 10000));
+          if ((i + 1) % BATCH_SIZE === 0) {
+            const batchPause = questionsList.length > 20 ? 12000 : 8000;
+            console.log(`[TG] Batch pause after ${i + 1} messages, waiting ${batchPause / 1000}s...`);
+            await new Promise(r => setTimeout(r, batchPause));
           } else {
             await new Promise(r => setTimeout(r, baseDelay));
           }
         }
       }
 
-      console.log(`Telegram send complete: ${sent}/${questionsList.length} questions sent successfully`);
+      console.log(`[TG] Send complete: ${sent}/${questionsList.length} questions sent, finalDelay=${baseDelay}ms`);
       res.json({ success: true, sent, total: questionsList.length });
     } catch (error: any) {
       console.error("Telegram error:", error?.message || error);
