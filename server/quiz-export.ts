@@ -1,6 +1,10 @@
 import PDFDocument from "pdfkit";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
+
+const __filename_esm = fileURLToPath(import.meta.url);
+const __dirname_esm = path.dirname(__filename_esm);
 import {
   Document,
   Paragraph,
@@ -38,9 +42,26 @@ interface QuizData {
   category?: string | null;
 }
 
-const FONT_DIR = process.env.NODE_ENV === "production"
-  ? path.join(process.cwd(), "dist", "fonts")
-  : path.join(process.cwd(), "server", "fonts");
+function findFontDir(): string {
+  const candidates = [
+    path.join(process.cwd(), "server", "fonts"),
+    path.join(process.cwd(), "dist", "fonts"),
+    path.join(process.cwd(), "fonts"),
+    path.join(__dirname_esm, "fonts"),
+    path.join(__dirname_esm, "..", "server", "fonts"),
+    path.join(__dirname_esm, "..", "fonts"),
+  ];
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, "NotoSans-Regular.ttf"))) {
+      console.log(`[Export] Found fonts at: ${dir}`);
+      return dir;
+    }
+  }
+  console.log(`[Export] No fonts found, checked: ${candidates.join(", ")}`);
+  return candidates[0];
+}
+
+const FONT_DIR = findFontDir();
 const ARABIC_FONT = path.join(FONT_DIR, "NotoSansArabic-Regular.ttf");
 const REGULAR_FONT = path.join(FONT_DIR, "NotoSans-Regular.ttf");
 
