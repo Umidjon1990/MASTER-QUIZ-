@@ -410,12 +410,6 @@ export default function FolderDetail() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">
-                              <DropdownMenuItem onClick={() => handleExport(quiz.id, "pdf", false)} data-testid={`download-pdf-no-answers-${quiz.id}`}>
-                                <FileText className="w-3.5 h-3.5 mr-1.5" /> PDF (javoblarsiz)
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleExport(quiz.id, "pdf", true)} data-testid={`download-pdf-with-answers-${quiz.id}`}>
-                                <FileText className="w-3.5 h-3.5 mr-1.5" /> PDF (javoblari bilan)
-                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleExport(quiz.id, "docx", false)} data-testid={`download-docx-no-answers-${quiz.id}`}>
                                 <FileType className="w-3.5 h-3.5 mr-1.5" /> Word (javoblarsiz)
                               </DropdownMenuItem>

@@ -166,12 +166,6 @@ function QuizRow({ quiz, qIdx, totalInFolder, folderId, folders, hasTelegramBot,
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => onExport("pdf", false)} data-testid={`download-pdf-no-answers-${quiz.id}`}>
-                    <FileText className="w-3.5 h-3.5 mr-1.5" /> PDF (javoblarsiz)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onExport("pdf", true)} data-testid={`download-pdf-with-answers-${quiz.id}`}>
-                    <FileText className="w-3.5 h-3.5 mr-1.5" /> PDF (javoblari bilan)
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => onExport("docx", false)} data-testid={`download-docx-no-answers-${quiz.id}`}>
                     <FileType className="w-3.5 h-3.5 mr-1.5" /> Word (javoblarsiz)
                   </DropdownMenuItem>
