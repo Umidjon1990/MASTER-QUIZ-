@@ -97,23 +97,54 @@ export async function generateQuizPDF(
 
     const pageWidth = 595.28 - 100;
 
-    const pickFont = (text: string) => {
-      if (isRtlText(text) && hasArabicFont) return "NotoArabic";
-      if (hasRegularFont) return "NotoSans";
-      return "Helvetica";
+    const defaultFont = hasRegularFont ? "NotoSans" : "Helvetica";
+
+    const writeMixedLine = (text: string, fontSize: number, options: any = {}) => {
+      const arabicPattern = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED]+/g;
+      const hasMixedContent = arabicPattern.test(text) && hasArabicFont;
+      arabicPattern.lastIndex = 0;
+
+      if (!hasMixedContent) {
+        doc.fontSize(fontSize).font(defaultFont);
+        doc.text(text, options);
+        return;
+      }
+
+      const segments: { text: string; isArabic: boolean }[] = [];
+      let lastIndex = 0;
+      let match;
+      while ((match = arabicPattern.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+          segments.push({ text: text.slice(lastIndex, match.index), isArabic: false });
+        }
+        segments.push({ text: match[0], isArabic: true });
+        lastIndex = arabicPattern.lastIndex;
+      }
+      if (lastIndex < text.length) {
+        segments.push({ text: text.slice(lastIndex), isArabic: false });
+      }
+
+      segments.forEach((seg, i) => {
+        const isLast = i === segments.length - 1;
+        const font = seg.isArabic ? "NotoArabic" : defaultFont;
+        doc.fontSize(fontSize).font(font);
+        if (isLast) {
+          doc.text(seg.text, { ...options, continued: false });
+        } else {
+          doc.text(seg.text, { ...options, continued: true });
+        }
+      });
     };
 
-    doc.fontSize(20).font(pickFont(quiz.title));
-    doc.text(quiz.title, { align: "center" });
+    writeMixedLine(quiz.title, 20, { align: "center" });
     doc.moveDown(0.3);
 
     if (quiz.description) {
-      doc.fontSize(11).font(pickFont(quiz.description));
-      doc.text(quiz.description, { align: "center" });
+      writeMixedLine(quiz.description, 11, { align: "center" });
     }
 
     doc.moveDown(0.3);
-    doc.fontSize(10).font("NotoSans").fillColor("#666666");
+    doc.fontSize(10).font(defaultFont).fillColor("#666666");
     doc.text(`${questions.length} ta savol`, { align: "center" });
     doc.fillColor("#000000");
 
@@ -126,14 +157,14 @@ export async function generateQuizPDF(
         doc.addPage();
       }
 
-      const questionText = q.questionText;
-      const rtl = isRtlText(questionText);
+      const questionText = `${idx + 1}. ${q.questionText}`;
+      const qRtl = isRtlText(q.questionText);
 
-      doc.fontSize(12).font(pickFont(questionText));
-      if (rtl) {
-        doc.text(`${idx + 1}. ${questionText}`, { align: "right" });
+      if (qRtl && hasArabicFont) {
+        doc.fontSize(12).font("NotoArabic");
+        doc.text(questionText, { align: "right" });
       } else {
-        doc.text(`${idx + 1}. ${questionText}`, { align: "left" });
+        writeMixedLine(questionText, 12, { align: "left" });
       }
 
       doc.moveDown(0.3);
@@ -143,12 +174,11 @@ export async function generateQuizPDF(
           const letter = getLetterForIndex(optIdx);
           const optRtl = isRtlText(opt);
 
-          doc.fontSize(11).font(pickFont(opt));
-
-          if (optRtl) {
+          if (optRtl && hasArabicFont) {
+            doc.fontSize(11).font("NotoArabic");
             doc.text(`${letter}) ${opt}`, { align: "right", indent: 15 });
           } else {
-            doc.text(`   ${letter}) ${opt}`, { align: "left", indent: 15 });
+            writeMixedLine(`   ${letter}) ${opt}`, 11, { align: "left", indent: 15 });
           }
         });
       }
@@ -158,7 +188,7 @@ export async function generateQuizPDF(
 
     if (includeAnswers) {
       doc.addPage();
-      doc.fontSize(18).font(pickFont("Javoblar jadvali"));
+      doc.fontSize(18).font(defaultFont);
       doc.text("Javoblar jadvali", { align: "center" });
       doc.moveDown(0.8);
 
@@ -173,7 +203,7 @@ export async function generateQuizPDF(
           doc.rect(x, y, colWidth, rowHeight).fill("#7c3aed");
           doc.fillColor("#ffffff");
           doc.rect(x, y, colWidth, rowHeight).stroke("#dddddd");
-          doc.fontSize(10).font(pickFont(cell));
+          doc.fontSize(10).font(defaultFont);
           doc.text(cell, x + 5, y + 8, { width: colWidth - 10, align: "center" });
         });
         doc.fillColor("#000000");
@@ -217,7 +247,7 @@ export async function generateQuizPDF(
           doc.rect(x, y, colWidth, rowHeight).fill(rowIdx % 2 === 0 ? "#f5f3ff" : "#ffffff");
           doc.fillColor("#000000");
           doc.rect(x, y, colWidth, rowHeight).stroke("#dddddd");
-          doc.fontSize(10).font(pickFont(cell));
+          doc.fontSize(10).font(defaultFont);
           doc.text(cell, x + 5, y + 8, { width: colWidth - 10, align: "center" });
         });
 
