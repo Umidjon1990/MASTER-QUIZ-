@@ -286,7 +286,7 @@ export default function FolderDetail() {
               <p className="text-muted-foreground text-sm">{folderQuizzes.length} ta quiz</p>
             </div>
           </div>
-          <Button className="gradient-purple border-0" onClick={() => navigate("/teacher/quizzes/new")} data-testid="button-new-quiz">
+          <Button className="gradient-purple border-0" onClick={() => navigate(`/teacher/quizzes/new?folderId=${id}`)} data-testid="button-new-quiz">
             <Plus className="w-4 h-4 mr-1" /> Yangi Quiz
           </Button>
         </div>
