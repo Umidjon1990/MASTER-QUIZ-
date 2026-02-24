@@ -1401,8 +1401,9 @@ export async function registerRoutes(
       };
 
       await bot.sendMessage(targetChat, `📝 *${quiz.title}*\n${quiz.description || ""}\n\n_${questionsList.length} ta savol_`, { parse_mode: "Markdown" });
+      await new Promise(r => setTimeout(r, 2000));
 
-      const sendWithRetry = async (fn: () => Promise<any>, maxRetries = 3) => {
+      const sendWithRetry = async (fn: () => Promise<any>, questionNum: number, maxRetries = 3) => {
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
           try {
             await fn();
@@ -1410,18 +1411,18 @@ export async function registerRoutes(
           } catch (err: any) {
             const retryAfter = err?.response?.body?.parameters?.retry_after;
             if (retryAfter && attempt < maxRetries) {
-              console.log(`Telegram rate limit, waiting ${retryAfter}s...`);
+              console.log(`Telegram rate limit on Q${questionNum}, waiting ${retryAfter}s (attempt ${attempt + 1}/${maxRetries})...`);
               await new Promise(r => setTimeout(r, (retryAfter + 1) * 1000));
               continue;
             }
-            if (err?.message?.includes("429") && attempt < maxRetries) {
+            if ((err?.response?.statusCode === 429 || err?.message?.includes("429")) && attempt < maxRetries) {
               const wait = Math.pow(2, attempt + 1) * 1000;
-              console.log(`Telegram 429, retry after ${wait}ms...`);
+              console.log(`Telegram 429 on Q${questionNum}, retry after ${wait}ms (attempt ${attempt + 1}/${maxRetries})...`);
               await new Promise(r => setTimeout(r, wait));
               continue;
             }
-            console.error(`Telegram send failed for question ${attempt}:`, err?.message);
-            return false;
+            console.error(`Telegram send failed for Q${questionNum} (attempt ${attempt + 1}/${maxRetries}):`, err?.message);
+            if (attempt >= maxRetries) return false;
           }
         }
         return false;
@@ -1432,8 +1433,9 @@ export async function registerRoutes(
       for (let i = 0; i < questionsList.length; i++) {
         const q = questionsList[i];
         let success = false;
+        const qNum = i + 1;
         if (q.type === "open_ended") {
-          success = await sendWithRetry(() => bot.sendMessage(targetChat, `<b>${i + 1}. ${escHtml(q.questionText)}</b>\n\n<i>Yozma javob talab qilinadi</i>\nTo'g'ri javob: <tg-spoiler>${escHtml(q.correctAnswer)}</tg-spoiler>`, { parse_mode: "HTML" }));
+          success = await sendWithRetry(() => bot.sendMessage(targetChat, `<b>${qNum}. ${escHtml(q.questionText)}</b>\n\n<i>Yozma javob talab qilinadi</i>\nTo'g'ri javob: <tg-spoiler>${escHtml(q.correctAnswer)}</tg-spoiler>`, { parse_mode: "HTML" }), qNum);
         } else if (q.type === "true_false") {
           const tfOptions = ["To'g'ri", "Noto'g'ri"];
           const correctIndex = q.correctAnswer === "true" ? 0 : 1;
@@ -1441,39 +1443,47 @@ export async function registerRoutes(
             type: "quiz",
             correct_option_id: correctIndex,
             is_anonymous: true,
-          } as any));
+          } as any), qNum);
         } else if (q.type === "poll" && q.options && q.options.length >= 2) {
           const opts = shouldShuffle ? shuffleArray(q.options) : q.options;
+          if (shouldShuffle) console.log(`Q${qNum} poll shuffled: [${opts.join(", ")}]`);
           success = await sendWithRetry(() => bot.sendPoll(targetChat, q.questionText, opts, {
             type: "regular",
             is_anonymous: true,
-          } as any));
+          } as any), qNum);
         } else if (q.type === "multiple_select" && q.options && q.options.length >= 2) {
           const opts = shouldShuffle ? shuffleArray(q.options) : q.options;
+          if (shouldShuffle) console.log(`Q${qNum} multiple_select shuffled: [${opts.join(", ")}]`);
           success = await sendWithRetry(() => bot.sendPoll(targetChat, q.questionText, opts, {
             type: "regular",
             allows_multiple_answers: true,
             is_anonymous: true,
-          } as any));
+          } as any), qNum);
         } else if (q.options && q.options.length >= 2) {
           let opts = [...q.options];
           let correctIdx = opts.indexOf(q.correctAnswer);
           if (shouldShuffle) {
+            const originalOpts = opts.join(", ");
             opts = shuffleArray(opts);
             correctIdx = opts.indexOf(q.correctAnswer);
+            console.log(`Q${qNum} shuffled: [${originalOpts}] -> [${opts.join(", ")}], correct="${q.correctAnswer}" at idx=${correctIdx}`);
           }
           success = await sendWithRetry(() => bot.sendPoll(targetChat, q.questionText, opts, {
             type: "quiz",
             correct_option_id: correctIdx >= 0 ? correctIdx : 0,
             is_anonymous: true,
-          } as any));
+          } as any), qNum);
+        } else {
+          console.log(`Q${qNum} skipped: type=${q.type}, options=${q.options?.length || 0}`);
         }
         if (success) sent++;
+        console.log(`Q${qNum}/${questionsList.length} ${success ? "sent" : "skipped/failed"} (total sent: ${sent})`);
         if (i < questionsList.length - 1) {
           await new Promise(r => setTimeout(r, 1500));
         }
       }
 
+      console.log(`Telegram send complete: ${sent}/${questionsList.length} questions sent successfully`);
       res.json({ success: true, sent, total: questionsList.length });
     } catch (error: any) {
       console.error("Telegram error:", error?.message || error);
