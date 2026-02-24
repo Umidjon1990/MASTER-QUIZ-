@@ -10,6 +10,7 @@ const allowlist = [
   "connect-pg-simple",
   "cors",
   "date-fns",
+  "docx",
   "drizzle-orm",
   "drizzle-zod",
   "express",
@@ -23,6 +24,7 @@ const allowlist = [
   "openai",
   "passport",
   "passport-local",
+  "pdfkit",
   "pg",
   "stripe",
   "uuid",
@@ -62,6 +64,9 @@ async function buildAll() {
 
   console.log("copying migrations...");
   await cp("migrations", "dist/migrations", { recursive: true });
+
+  console.log("copying fonts...");
+  await cp("server/fonts", "dist/fonts", { recursive: true });
 }
 
 buildAll().catch((err) => {

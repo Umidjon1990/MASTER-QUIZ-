@@ -1,5 +1,6 @@
 import PDFDocument from "pdfkit";
 import path from "path";
+import fs from "fs";
 import {
   Document,
   Paragraph,
@@ -37,7 +38,9 @@ interface QuizData {
   category?: string | null;
 }
 
-const FONT_DIR = path.join(process.cwd(), "server", "fonts");
+const FONT_DIR = process.env.NODE_ENV === "production"
+  ? path.join(process.cwd(), "dist", "fonts")
+  : path.join(process.cwd(), "server", "fonts");
 const ARABIC_FONT = path.join(FONT_DIR, "NotoSansArabic-Regular.ttf");
 const REGULAR_FONT = path.join(FONT_DIR, "NotoSans-Regular.ttf");
 
@@ -58,12 +61,18 @@ export async function generateQuizPDF(
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    doc.registerFont("NotoArabic", ARABIC_FONT);
-    doc.registerFont("NotoSans", REGULAR_FONT);
+    const hasArabicFont = fs.existsSync(ARABIC_FONT);
+    const hasRegularFont = fs.existsSync(REGULAR_FONT);
+    if (hasRegularFont) doc.registerFont("NotoSans", REGULAR_FONT);
+    if (hasArabicFont) doc.registerFont("NotoArabic", ARABIC_FONT);
 
     const pageWidth = 595.28 - 100;
 
-    const pickFont = (text: string) => isRtlText(text) ? "NotoArabic" : "NotoSans";
+    const pickFont = (text: string) => {
+      if (isRtlText(text) && hasArabicFont) return "NotoArabic";
+      if (hasRegularFont) return "NotoSans";
+      return "Helvetica";
+    };
 
     doc.fontSize(20).font(pickFont(quiz.title));
     doc.text(quiz.title, { align: "center" });
@@ -120,7 +129,7 @@ export async function generateQuizPDF(
 
     if (includeAnswers) {
       doc.addPage();
-      doc.fontSize(18).font("NotoSans");
+      doc.fontSize(18).font(pickFont("Javoblar jadvali"));
       doc.text("Javoblar jadvali", { align: "center" });
       doc.moveDown(0.8);
 
@@ -135,7 +144,7 @@ export async function generateQuizPDF(
           doc.rect(x, y, colWidth, rowHeight).fill("#7c3aed");
           doc.fillColor("#ffffff");
           doc.rect(x, y, colWidth, rowHeight).stroke("#dddddd");
-          doc.fontSize(10).font("NotoSans");
+          doc.fontSize(10).font(pickFont(cell));
           doc.text(cell, x + 5, y + 8, { width: colWidth - 10, align: "center" });
         });
         doc.fillColor("#000000");
@@ -179,7 +188,7 @@ export async function generateQuizPDF(
           doc.rect(x, y, colWidth, rowHeight).fill(rowIdx % 2 === 0 ? "#f5f3ff" : "#ffffff");
           doc.fillColor("#000000");
           doc.rect(x, y, colWidth, rowHeight).stroke("#dddddd");
-          doc.fontSize(10).font("NotoSans");
+          doc.fontSize(10).font(pickFont(cell));
           doc.text(cell, x + 5, y + 8, { width: colWidth - 10, align: "center" });
         });
 
