@@ -316,15 +316,28 @@ export async function generateQuizDOCX(
   );
 
   const splitArabicLatin = (text: string): { text: string; rtl: boolean }[] => {
-    const arabicRe = /([\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED\u0640\u06A9\u06AF\u067E\u0686\u0698\u06CC]+[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED\u0640\u06A9\u06AF\u067E\u0686\u0698\u06CC\s\u060C\u061B\u061F\u0021-\u002F\u003A-\u0040\u005B-\u0060\u007B-\u007E]*[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED\u0640\u06A9\u06AF\u067E\u0686\u0698\u06CC]*)/g;
+    const ARAB = "\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED\u0640\u06A9\u06AF\u067E\u0686\u0698\u06CC";
+    const arabicRe = new RegExp(`([${ARAB}]+[${ARAB}\\s_\u060C\u061B\u061F\\x21-\\x2F\\x3A-\\x40\\x5B-\\x60\\x7B-\\x7E]*[${ARAB}]*)`, "g");
     const parts: { text: string; rtl: boolean }[] = [];
     let lastIdx = 0;
     let m;
     while ((m = arabicRe.exec(text)) !== null) {
-      if (m.index > lastIdx) {
-        parts.push({ text: text.slice(lastIdx, m.index), rtl: false });
+      const matchStart = m.index;
+      let extendedStart = matchStart;
+      while (extendedStart > lastIdx && (text[extendedStart - 1] === '_' || text[extendedStart - 1] === ' ')) {
+        extendedStart--;
       }
-      parts.push({ text: m[0], rtl: true });
+      if (text.slice(extendedStart, matchStart).includes('_')) {
+        if (extendedStart > lastIdx) {
+          parts.push({ text: text.slice(lastIdx, extendedStart), rtl: false });
+        }
+        parts.push({ text: text.slice(extendedStart, arabicRe.lastIndex), rtl: true });
+      } else {
+        if (matchStart > lastIdx) {
+          parts.push({ text: text.slice(lastIdx, matchStart), rtl: false });
+        }
+        parts.push({ text: m[0], rtl: true });
+      }
       lastIdx = arabicRe.lastIndex;
     }
     if (lastIdx < text.length) {
