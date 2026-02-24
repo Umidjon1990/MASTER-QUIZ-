@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation, useParams } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock, School, Repeat, FolderInput, ChevronUp, ChevronDown, BookOpen, Share2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Edit, Play, Eye, Upload, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Link, Clock, CheckCircle, Lock, Unlock, Repeat, FolderInput, ChevronUp, ChevronDown, BookOpen, Share2, Download, FileText, FileType } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import type { Quiz, UserProfile, TelegramChat, QuizCategory, QuizFolder } from "@shared/schema";
@@ -81,6 +81,37 @@ export default function FolderDetail() {
       toast({ title: "Xatolik", description: err.message || "Link yaratib bo'lmadi", variant: "destructive" });
     } finally {
       setShareLoading(false);
+    }
+  };
+
+  const handleExport = async (quizId: string, format: "pdf" | "docx", withAnswers: boolean) => {
+    try {
+      toast({ title: "Yuklab olinmoqda..." });
+      const response = await fetch(`/api/quizzes/${quizId}/export/${format}?answers=${withAnswers}`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Xatolik");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const disposition = response.headers.get("Content-Disposition");
+      let filename = `quiz.${format}`;
+      if (disposition) {
+        const match = disposition.match(/filename="?(.+?)"?$/);
+        if (match) filename = decodeURIComponent(match[1]);
+      }
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: "Muvaffaqiyatli yuklandi!" });
+    } catch (error: any) {
+      toast({ title: "Xatolik", description: error.message, variant: "destructive" });
     }
   };
 
@@ -356,11 +387,6 @@ export default function FolderDetail() {
                             <Play className="w-3 h-3 mr-1" /> Jonli
                           </Button>
                         )}
-                        {quiz.status === "published" && (
-                          <Button size="sm" variant="outline" onClick={() => navigate(`/classroom/${quiz.id}`)} data-testid={`button-classroom-${quiz.id}`}>
-                            <School className="w-3 h-3 mr-1" /> Sinf Xona
-                          </Button>
-                        )}
                         {quiz.status === "published" && quiz.scheduledStatus !== "pending" && (
                           <Button variant="outline" size="sm" onClick={() => { const defs = getUzbekistanDefaults(); setScheduleDate(defs.date); setScheduleTime(defs.time); setScheduleQuiz(quiz); }} data-testid={`button-schedule-${quiz.id}`}>
                             <CalendarClock className="w-3 h-3 mr-1" /> Rejalashtirish
@@ -375,6 +401,29 @@ export default function FolderDetail() {
                           <Button variant="outline" size="sm" onClick={() => handleShare(quiz)} data-testid={`button-share-${quiz.id}`}>
                             <Share2 className="w-3 h-3 mr-1" /> Mustaqil test
                           </Button>
+                        )}
+                        {quiz.totalQuestions > 0 && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="sm" data-testid={`button-download-${quiz.id}`}>
+                                <Download className="w-3 h-3 mr-1" /> Yuklab olish
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start">
+                              <DropdownMenuItem onClick={() => handleExport(quiz.id, "pdf", false)} data-testid={`download-pdf-no-answers-${quiz.id}`}>
+                                <FileText className="w-3.5 h-3.5 mr-1.5" /> PDF (javoblarsiz)
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleExport(quiz.id, "pdf", true)} data-testid={`download-pdf-with-answers-${quiz.id}`}>
+                                <FileText className="w-3.5 h-3.5 mr-1.5" /> PDF (javoblari bilan)
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleExport(quiz.id, "docx", false)} data-testid={`download-docx-no-answers-${quiz.id}`}>
+                                <FileType className="w-3.5 h-3.5 mr-1.5" /> Word (javoblarsiz)
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleExport(quiz.id, "docx", true)} data-testid={`download-docx-with-answers-${quiz.id}`}>
+                                <FileType className="w-3.5 h-3.5 mr-1.5" /> Word (javoblari bilan)
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         )}
                         <Button variant="ghost" size="sm" onClick={() => setMoveQuiz(quiz)} data-testid={`button-move-folder-${quiz.id}`}>
                           <FolderInput className="w-3 h-3" />

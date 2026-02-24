@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit, Play, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Clock, CheckCircle, Lock, Unlock, School, Repeat, FolderPlus, FolderInput, ChevronUp, ChevronDown, BookOpen, Share2 } from "lucide-react";
+import { Plus, Trash2, Edit, Play, Send, Users, Megaphone, Loader2, Bot, CalendarClock, X, Copy, Clock, CheckCircle, Lock, Unlock, Repeat, FolderPlus, FolderInput, ChevronUp, ChevronDown, BookOpen, Share2, Download, FileText, FileType } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import type { Quiz, UserProfile, TelegramChat, QuizCategory, QuizFolder } from "@shared/schema";
@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FolderOpen, MoreVertical } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
-function QuizRow({ quiz, qIdx, totalInFolder, folderId, folders, hasTelegramBot, onEdit, onLive, onClassroom, onSchedule, onTelegram, onMove, onDelete, onMoveUp, onMoveDown, onCancelSchedule, onCopyLink, onShare, formatCountdown, toast }: {
+function QuizRow({ quiz, qIdx, totalInFolder, folderId, folders, hasTelegramBot, onEdit, onLive, onSchedule, onTelegram, onMove, onDelete, onMoveUp, onMoveDown, onCancelSchedule, onCopyLink, onShare, onExport, formatCountdown, toast }: {
   quiz: Quiz;
   qIdx: number;
   totalInFolder: number;
@@ -27,7 +27,6 @@ function QuizRow({ quiz, qIdx, totalInFolder, folderId, folders, hasTelegramBot,
   hasTelegramBot: boolean;
   onEdit: () => void;
   onLive: () => void;
-  onClassroom: () => void;
   onSchedule: () => void;
   onTelegram: () => void;
   onMove: () => void;
@@ -37,6 +36,7 @@ function QuizRow({ quiz, qIdx, totalInFolder, folderId, folders, hasTelegramBot,
   onCancelSchedule: () => void;
   onCopyLink: (code: string) => void;
   onShare: () => void;
+  onExport: (format: "pdf" | "docx", withAnswers: boolean) => void;
   formatCountdown: (scheduledAt: string | Date) => string;
   toast: (opts: any) => void;
 }) {
@@ -143,11 +143,6 @@ function QuizRow({ quiz, qIdx, totalInFolder, folderId, folders, hasTelegramBot,
                 <Play className="w-3 h-3 mr-1" /> Jonli
               </Button>
             )}
-            {quiz.status === "published" && (
-              <Button size="sm" variant="outline" onClick={onClassroom} data-testid={`button-classroom-${quiz.id}`}>
-                <School className="w-3 h-3 mr-1" /> Sinf Xona
-              </Button>
-            )}
             {quiz.status === "published" && quiz.scheduledStatus !== "pending" && (
               <Button variant="outline" size="sm" onClick={onSchedule} data-testid={`button-schedule-${quiz.id}`}>
                 <CalendarClock className="w-3 h-3 mr-1" /> Rejalashtirish
@@ -162,6 +157,29 @@ function QuizRow({ quiz, qIdx, totalInFolder, folderId, folders, hasTelegramBot,
               <Button variant="outline" size="sm" onClick={onShare} data-testid={`button-share-${quiz.id}`}>
                 <Share2 className="w-3 h-3 mr-1" /> Mustaqil test
               </Button>
+            )}
+            {quiz.totalQuestions > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" data-testid={`button-download-${quiz.id}`}>
+                    <Download className="w-3 h-3 mr-1" /> Yuklab olish
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => onExport("pdf", false)} data-testid={`download-pdf-no-answers-${quiz.id}`}>
+                    <FileText className="w-3.5 h-3.5 mr-1.5" /> PDF (javoblarsiz)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onExport("pdf", true)} data-testid={`download-pdf-with-answers-${quiz.id}`}>
+                    <FileText className="w-3.5 h-3.5 mr-1.5" /> PDF (javoblari bilan)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onExport("docx", false)} data-testid={`download-docx-no-answers-${quiz.id}`}>
+                    <FileType className="w-3.5 h-3.5 mr-1.5" /> Word (javoblarsiz)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onExport("docx", true)} data-testid={`download-docx-with-answers-${quiz.id}`}>
+                    <FileType className="w-3.5 h-3.5 mr-1.5" /> Word (javoblari bilan)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             {folders && folders.length > 0 && (
               <Button variant="ghost" size="sm" onClick={onMove} data-testid={`button-move-folder-${quiz.id}`}>
@@ -238,6 +256,37 @@ export default function TeacherQuizzes() {
   const copyShareLink = () => {
     navigator.clipboard.writeText(shareLink);
     toast({ title: "Link nusxalandi!" });
+  };
+
+  const handleExport = async (quizId: string, format: "pdf" | "docx", withAnswers: boolean) => {
+    try {
+      toast({ title: "Yuklab olinmoqda..." });
+      const response = await fetch(`/api/quizzes/${quizId}/export/${format}?answers=${withAnswers}`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Xatolik");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const disposition = response.headers.get("Content-Disposition");
+      let filename = `quiz.${format}`;
+      if (disposition) {
+        const match = disposition.match(/filename="?(.+?)"?$/);
+        if (match) filename = decodeURIComponent(match[1]);
+      }
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: "Muvaffaqiyatli yuklandi!" });
+    } catch (error: any) {
+      toast({ title: "Xatolik", description: error.message, variant: "destructive" });
+    }
   };
 
   const { data: quizzes, isLoading } = useQuery<Quiz[]>({
@@ -558,7 +607,7 @@ export default function TeacherQuizzes() {
               </div>
             ) : (
               <Button variant="outline" size="sm" onClick={() => setShowNewFolderInput(true)} data-testid="button-new-folder">
-                <FolderPlus className="w-4 h-4 mr-1" /> Yangi dars qo'shish
+                <FolderPlus className="w-4 h-4 mr-1" /> Yangi bo'lim yaratish
               </Button>
             )}
           </div>
@@ -623,7 +672,7 @@ export default function TeacherQuizzes() {
                         hasTelegramBot={hasTelegramBot}
                         onEdit={() => navigate(`/teacher/quizzes/${quiz.id}`)}
                         onLive={() => navigate(`/teacher/live?quizId=${quiz.id}`)}
-                        onClassroom={() => navigate(`/classroom/${quiz.id}`)}
+                        onExport={(format, withAnswers) => handleExport(quiz.id, format, withAnswers)}
                         onSchedule={() => { const defs = getUzbekistanDefaults(); setScheduleDate(defs.date); setScheduleTime(defs.time); setScheduleQuiz(quiz); }}
                         onTelegram={() => setTelegramQuiz(quiz)}
                         onMove={() => setMoveQuiz(quiz)}

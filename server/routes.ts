@@ -10,6 +10,7 @@ import multer from "multer";
 import * as XLSX from "xlsx";
 import bcrypt from "bcryptjs";
 import { fisherYatesShuffle, balancedShuffleOptions } from "./shuffle";
+import { generateQuizPDF, generateQuizDOCX } from "./quiz-export";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -2511,6 +2512,58 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/quizzes/:quizId/export/:format", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { quizId, format } = req.params;
+      const includeAnswers = req.query.answers === "true";
+
+      if (!["pdf", "docx"].includes(format)) {
+        return res.status(400).json({ message: "Format faqat pdf yoki docx bo'lishi mumkin" });
+      }
+
+      const quiz = await storage.getQuiz(quizId);
+      if (!quiz) {
+        return res.status(404).json({ message: "Quiz topilmadi" });
+      }
+
+      const questions = await storage.getQuestionsByQuiz(quizId);
+      if (!questions || questions.length === 0) {
+        return res.status(400).json({ message: "Quizda savollar mavjud emas" });
+      }
+
+      const quizData = {
+        title: quiz.title,
+        description: quiz.description,
+        category: quiz.category,
+      };
+
+      const questionData = questions.map((q: any) => ({
+        questionText: q.questionText,
+        options: q.options,
+        correctAnswer: q.correctAnswer,
+        type: q.type,
+        points: q.points,
+      }));
+
+      if (format === "pdf") {
+        const pdfBuffer = await generateQuizPDF(quizData, questionData, includeAnswers);
+        const filename = `${quiz.title.replace(/[^a-zA-Z0-9\u0400-\u04FF\u0600-\u06FF ]/g, "").trim()}.pdf`;
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+        res.send(pdfBuffer);
+      } else {
+        const docxBuffer = await generateQuizDOCX(quizData, questionData, includeAnswers);
+        const filename = `${quiz.title.replace(/[^a-zA-Z0-9\u0400-\u04FF\u0600-\u06FF ]/g, "").trim()}.docx`;
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+        res.send(docxBuffer);
+      }
+    } catch (error) {
+      console.error("Export error:", error);
+      res.status(500).json({ message: "Eksport xatosi" });
     }
   });
 
