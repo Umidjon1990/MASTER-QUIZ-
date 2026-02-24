@@ -55,6 +55,7 @@ export default function QuizEditor() {
   const [shuffleQuestions, setShuffleQuestions] = useState(false);
   const [shuffleOptions, setShuffleOptions] = useState(false);
   const [showCorrectAnswers, setShowCorrectAnswers] = useState(true);
+  const [practiceMode, setPracticeMode] = useState(false);
   const [timePerQuestion, setTimePerQuestion] = useState(30);
   const [initialized, setInitialized] = useState(false);
   const [textImportOpen, setTextImportOpen] = useState(false);
@@ -114,6 +115,7 @@ export default function QuizEditor() {
     setShuffleQuestions(quiz.shuffleQuestions ?? false);
     setShuffleOptions(quiz.shuffleOptions ?? false);
     setShowCorrectAnswers(quiz.showCorrectAnswers ?? true);
+    setPracticeMode(quiz.practiceMode ?? false);
     setTimePerQuestion(quiz.timePerQuestion);
     setInitialized(true);
   }
@@ -123,7 +125,7 @@ export default function QuizEditor() {
       const res = await fetch("/api/quizzes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, category: category === "__none" ? "" : category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, showCorrectAnswers, timePerQuestion, status: "draft" }),
+        body: JSON.stringify({ title, description, category: category === "__none" ? "" : category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, showCorrectAnswers, practiceMode, timePerQuestion, status: "draft" }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed");
@@ -148,7 +150,7 @@ export default function QuizEditor() {
       const res = await fetch(`/api/quizzes/${quizId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, category: category === "__none" ? "" : category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, showCorrectAnswers, timePerQuestion }),
+        body: JSON.stringify({ title, description, category: category === "__none" ? "" : category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, showCorrectAnswers, practiceMode, timePerQuestion }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed");
@@ -612,6 +614,10 @@ export default function QuizEditor() {
         <div className="flex items-center gap-3">
           <Switch checked={showCorrectAnswers} onCheckedChange={setShowCorrectAnswers} data-testid="switch-show-correct-answers" />
           <Label>To'g'ri javobni ko'rsatish</Label>
+        </div>
+        <div className="flex items-center gap-3">
+          <Switch checked={practiceMode} onCheckedChange={setPracticeMode} data-testid="switch-practice-mode" />
+          <Label>Mashq rejimi (natija saqlanmaydi)</Label>
         </div>
         <Button
           onClick={() => isNew ? createQuiz.mutate() : handleSaveQuiz()}

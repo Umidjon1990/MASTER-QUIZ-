@@ -91,6 +91,7 @@ function QuizRow({ quiz, qIdx, totalInFolder, folderId, folders, hasTelegramBot,
           <div className="flex gap-1.5 items-center mb-2 flex-wrap">
             {quiz.category && <Badge variant="secondary" className="text-xs">{quiz.category}</Badge>}
             {quiz.allowReplay && <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-600 dark:text-blue-400"><Repeat className="w-3 h-3 mr-0.5" />Qayta yechish</Badge>}
+            {quiz.practiceMode && <Badge variant="outline" className="text-xs border-orange-500/30 text-orange-600 dark:text-orange-400">Mashq rejimi</Badge>}
             <span className="text-sm text-muted-foreground">{quiz.totalQuestions} savol | {quiz.totalPlays} marta o'ynalgan</span>
           </div>
 

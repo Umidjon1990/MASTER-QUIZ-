@@ -62,6 +62,7 @@ export const quizzes = pgTable("quizzes", {
   scheduledRequireCode: boolean("scheduled_require_code").notNull().default(true),
   scheduledTelegramChatId: varchar("scheduled_telegram_chat_id", { length: 100 }),
   scheduledTelegramQuizChatId: varchar("scheduled_telegram_quiz_chat_id", { length: 100 }),
+  practiceMode: boolean("practice_mode").notNull().default(false),
   allowReplay: boolean("allow_replay").notNull().default(false),
   folderId: varchar("folder_id"),
   orderInFolder: integer("order_in_folder").notNull().default(0),

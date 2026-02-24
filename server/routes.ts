@@ -2343,7 +2343,7 @@ export async function registerRoutes(
       }));
 
       res.json({
-        quiz: { id: quiz.id, title: quiz.title, description: quiz.description, category: quiz.category, totalQuestions: quiz.totalQuestions },
+        quiz: { id: quiz.id, title: quiz.title, description: quiz.description, category: quiz.category, totalQuestions: quiz.totalQuestions, practiceMode: quiz.practiceMode ?? false },
         questions: safeQuestions,
       });
     } catch (error) {
@@ -2389,7 +2389,9 @@ export async function registerRoutes(
         results[q.id] = { answer: userAnswer || "", isCorrect, correctAnswer: q.correctAnswer || "", points: isCorrect ? (q.points || 10) : 0 };
       }
 
-      await storage.incrementQuizPlays(req.params.id);
+      if (!quiz.practiceMode) {
+        await storage.incrementQuizPlays(req.params.id);
+      }
 
       const showCorrect = quiz.showCorrectAnswers !== false;
       const safeResults = showCorrect ? results : Object.fromEntries(
@@ -2403,6 +2405,7 @@ export async function registerRoutes(
         playerName,
         results: safeResults,
         showCorrectAnswers: showCorrect,
+        practiceMode: quiz.practiceMode ?? false,
       });
     } catch (error) {
       res.status(500).json({ message: "Server error" });

@@ -96,6 +96,7 @@ interface QuizData {
     description: string | null;
     category: string | null;
     totalQuestions: number;
+    practiceMode?: boolean;
   };
   questions: QuizQuestion[];
 }
@@ -107,6 +108,7 @@ interface SubmitResult {
   playerName: string;
   results: Record<string, { answer: string | string[]; isCorrect: boolean; correctAnswer: string; points: number }>;
   showCorrectAnswers?: boolean;
+  practiceMode?: boolean;
 }
 
 interface LeaderboardEntry {
@@ -788,6 +790,7 @@ export default function QuizPlayPage() {
               <div className="flex gap-2 justify-center flex-wrap">
                 {data.quiz.category && <Badge variant="secondary">{data.quiz.category}</Badge>}
                 <Badge variant="outline">{data.quiz.totalQuestions} savol</Badge>
+                {data.quiz.practiceMode && <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">Mashq rejimi</Badge>}
               </div>
             </div>
 
@@ -1353,6 +1356,12 @@ export default function QuizPlayPage() {
               <Trophy className="w-16 h-16 mx-auto text-yellow-500" />
               <h1 className="text-2xl font-bold" data-testid="text-result-title">Natijalar</h1>
               <p className="text-muted-foreground">{submitResult.playerName}</p>
+              {submitResult.practiceMode && (
+                <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-sm font-medium" data-testid="badge-practice-mode">
+                  <RotateCcw className="w-3 h-3" />
+                  Mashq rejimi — natija saqlanmadi
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
