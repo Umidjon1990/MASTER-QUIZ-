@@ -21,13 +21,67 @@ function convertToMp3(inputPath: string): string {
   }
 }
 
+export function extractAudioSample(inputPath: string): string {
+  const outputPath = inputPath.replace(/\.[^.]+$/, "_sample.mp3");
+  try {
+    const durationStr = execSync(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${inputPath}" 2>/dev/null`,
+      { timeout: 10000 }
+    ).toString().trim();
+    const duration = parseFloat(durationStr);
+
+    if (duration <= 35) {
+      console.log(`[AI-SERVICE] Audio short (${duration}s), using full file`);
+      return convertToMp3(inputPath);
+    }
+
+    const segmentLength = 10;
+    const maxStart = Math.max(0, duration - segmentLength);
+    const starts: number[] = [];
+    while (starts.length < 3) {
+      const s = Math.floor(Math.random() * maxStart);
+      if (starts.every(existing => Math.abs(existing - s) >= segmentLength)) {
+        starts.push(s);
+      }
+    }
+    starts.sort((a, b) => a - b);
+
+    const tmpDir = os.tmpdir();
+    const segFiles: string[] = [];
+    for (let i = 0; i < starts.length; i++) {
+      const segFile = path.join(tmpDir, `seg_${Date.now()}_${i}.mp3`);
+      execSync(
+        `ffmpeg -y -ss ${starts[i]} -i "${inputPath}" -t ${segmentLength} -vn -ar 16000 -ac 1 -b:a 64k "${segFile}" 2>/dev/null`,
+        { timeout: 15000 }
+      );
+      segFiles.push(segFile);
+    }
+
+    const listFile = path.join(tmpDir, `concat_${Date.now()}.txt`);
+    fs.writeFileSync(listFile, segFiles.map(f => `file '${f}'`).join("\n"));
+    execSync(
+      `ffmpeg -y -f concat -safe 0 -i "${listFile}" -c copy "${outputPath}" 2>/dev/null`,
+      { timeout: 15000 }
+    );
+
+    for (const f of segFiles) { try { fs.unlinkSync(f); } catch {} }
+    try { fs.unlinkSync(listFile); } catch {}
+
+    console.log(`[AI-SERVICE] Audio sampled: ${duration.toFixed(0)}s -> 30s (3x10s from ${starts.map(s => s.toFixed(0) + "s").join(", ")})`);
+    return outputPath;
+  } catch (e) {
+    console.log(`[AI-SERVICE] Audio sampling failed, converting full file`);
+    return convertToMp3(inputPath);
+  }
+}
+
 export async function transcribeAudio(audioBuffer: Buffer, filename: string = "audio.ogg"): Promise<string> {
   const ext = filename.split(".").pop()?.toLowerCase() || "ogg";
   const tmpInput = path.join(os.tmpdir(), `whisper_${Date.now()}.${ext}`);
   fs.writeFileSync(tmpInput, audioBuffer);
   console.log(`[AI-SERVICE] Temp file written: ${tmpInput}, size=${audioBuffer.length}, ext=${ext}`);
 
-  const tmpFile = convertToMp3(tmpInput);
+  const tmpFile = extractAudioSample(tmpInput);
 
   try {
     const response = await openai.audio.transcriptions.create({
@@ -46,23 +100,55 @@ export async function transcribeAudio(audioBuffer: Buffer, filename: string = "a
   }
 }
 
+export function ocrImage(imageBuffer: Buffer): string {
+  const tmpInput = path.join(os.tmpdir(), `ocr_${Date.now()}.jpg`);
+  const tmpOutput = path.join(os.tmpdir(), `ocr_${Date.now()}_out`);
+  fs.writeFileSync(tmpInput, imageBuffer);
+
+  try {
+    execSync(
+      `tesseract "${tmpInput}" "${tmpOutput}" -l uzb+eng+rus 2>/dev/null`,
+      { timeout: 30000 }
+    );
+    const text = fs.readFileSync(`${tmpOutput}.txt`, "utf-8").trim();
+    console.log(`[AI-SERVICE] OCR result (${text.length} chars): ${text.substring(0, 80)}...`);
+    return text;
+  } catch (e) {
+    console.log(`[AI-SERVICE] OCR failed:`, e);
+    return "";
+  } finally {
+    try { fs.unlinkSync(tmpInput); } catch {}
+    try { fs.unlinkSync(`${tmpOutput}.txt`); } catch {}
+  }
+}
+
 export async function evaluateSubmission({
   prompt,
   referenceText,
   studentAnswer,
   instructions,
+  submissionType,
 }: {
   prompt?: string;
   referenceText?: string;
   studentAnswer: string;
   instructions?: string;
+  submissionType?: string;
 }): Promise<{ score: number; feedback: string }> {
+  let typeContext = "";
+  if (submissionType === "audio_sample") {
+    typeContext = "\nBu audio yozuvning 30 sekundlik namunasi (sample). O'quvchi to'liq matnni o'qiganmi yoki yo'qmi, shu namuna asosida professional xulosa ber.";
+  } else if (submissionType === "image") {
+    typeContext = "\nBu o'quvchining daftardagi yozuvi (OCR orqali o'qilgan). Yozuv sifatini ham hisobga ol.";
+  }
+
   const systemMessage = `Sen tajribali arab tili o'qituvchisissan. O'quvchining javobini baholab, 1 dan 10 gacha baho ber va qisqa feedback yoz.
 
 MUHIM QOIDALAR:
 - Izohni faqat o'zbek tilida (lotin yozuvida) yoz
 - Arab so'zlarini va iboralarini arab alifbosida (عربي) keltir
 - Masalan: "O'quvchi «الكتابُ» so'zini to'g'ri talaffuz qildi"
+${typeContext}
 ${instructions ? `\nQo'shimcha ko'rsatma: ${instructions}` : ""}
 ${prompt ? `\nVazifa ko'rsatmasi: ${prompt}` : ""}
 

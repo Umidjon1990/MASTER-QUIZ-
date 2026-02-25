@@ -89,7 +89,7 @@ Preferred communication style: Simple, everyday language.
   - `ai_classes` — AI nazorat sinflari (name, teacherId, telegramBotToken, instructions, status)
   - `ai_class_tasks` — AI sinf vazifalari (title, orderIndex, prompt, referenceText, type: audio/text)
   - `ai_students` — AI sinf o'quvchilari (name, phone, telegramChatId — bot orqali ulanadi)
-  - `ai_submissions` — O'quvchi topshiriqlari (audioFileId, transcription via Whisper, aiResponse via GPT-4, score 1-10, status)
+  - `ai_submissions` — O'quvchi topshiriqlari (submissionType: audio/image/text, audioFileId, imageFileId, ocrText, transcription via Whisper, aiResponse via GPT-4o-mini, score 1-10, status)
 
 ### Storage Layer
 - `server/storage.ts` defines an `IStorage` interface with a concrete implementation using Drizzle queries
