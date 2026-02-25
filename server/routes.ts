@@ -2643,15 +2643,22 @@ export async function registerRoutes(
       if (!assistant) return res.status(404).json({ message: "Noto'g'ri invite kod" });
       if (assistant.status === "revoked") return res.status(403).json({ message: "Bu taklif bekor qilingan" });
       const cls = await storage.getClass(assistant.classId);
-      const teacherUser = cls ? await storage.getUser(cls.teacherId) : null;
+      let teacherName = "—";
+      if (cls) {
+        try {
+          const teacherUser = await authStorage.getUser(cls.teacherId);
+          teacherName = teacherUser?.name || teacherUser?.email || "—";
+        } catch {}
+      }
       res.json({
         hasPassword: !!assistant.password,
         className: cls?.name || "Sinf",
-        teacherName: teacherUser?.name || teacherUser?.email || "—",
+        teacherName,
         status: assistant.status,
         alreadyClaimed: !!assistant.userId,
       });
     } catch (error) {
+      console.error("Invite info error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -2691,7 +2698,7 @@ export async function registerRoutes(
         if (!cls) return null;
         let teacherName = "—";
         try {
-          const teacherUser = await storage.getUser(cls.teacherId);
+          const teacherUser = await authStorage.getUser(cls.teacherId);
           teacherName = teacherUser?.name || teacherUser?.email || "—";
         } catch {}
         return { ...a, className: cls.name, teacherName };
