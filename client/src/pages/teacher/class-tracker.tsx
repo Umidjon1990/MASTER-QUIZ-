@@ -14,7 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ArrowLeft, Users, BookOpen, CheckCircle2, Clock, XCircle, RotateCcw, AlertTriangle, Send, CalendarCheck, FileText, BarChart3, ChevronRight, Calendar } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ArrowLeft, Users, BookOpen, CheckCircle2, Clock, XCircle, RotateCcw, AlertTriangle, Send, CalendarCheck, FileText, BarChart3, ChevronRight, Calendar, MoreVertical, Plus, Pencil, Copy, Trash2 } from "lucide-react";
 import { Link } from "wouter";
 import type { Class, ClassLesson, TaskColumn, LessonTask, TaskSubmission, UserProfile, TelegramChat } from "@shared/schema";
 
@@ -77,6 +78,15 @@ export default function ClassTracker() {
   const [telegramType, setTelegramType] = useState<"today_task" | "debtors" | "weekly_report">("today_task");
   const [selectedChatId, setSelectedChatId] = useState("");
 
+  const [lessonDialogOpen, setLessonDialogOpen] = useState(false);
+  const [lessonDialogMode, setLessonDialogMode] = useState<"add" | "edit" | "duplicate">("add");
+  const [lessonEditId, setLessonEditId] = useState<string | null>(null);
+  const [lessonFormTitle, setLessonFormTitle] = useState("");
+  const [lessonFormDate, setLessonFormDate] = useState("");
+  const [lessonFormNo, setLessonFormNo] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteLessonId, setDeleteLessonId] = useState<string | null>(null);
+
   const { data: classInfo } = useQuery<Class>({
     queryKey: ["/api/classes", classId],
     enabled: !!classId,
@@ -125,6 +135,65 @@ export default function ClassTracker() {
     onError: () => {
       toast({ title: "Xatolik yuz berdi", variant: "destructive" });
     },
+  });
+
+  const invalidateTracker = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/classes", classId, "tracker"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/classes", classId, "debtors"] });
+  };
+
+  const addLessonMutation = useMutation({
+    mutationFn: async (data: { lessonNo: number; date: string; title: string }) => {
+      const res = await apiRequest("POST", `/api/classes/${classId}/lessons`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateTracker();
+      toast({ title: "Dars qo'shildi" });
+      setLessonDialogOpen(false);
+    },
+    onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
+  });
+
+  const updateLessonMutation = useMutation({
+    mutationFn: async (data: { id: string; title?: string; date?: string; lessonNo?: number }) => {
+      const { id, ...body } = data;
+      const res = await apiRequest("PATCH", `/api/class-lessons/${id}`, body);
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateTracker();
+      toast({ title: "Dars yangilandi" });
+      setLessonDialogOpen(false);
+    },
+    onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
+  });
+
+  const duplicateLessonMutation = useMutation({
+    mutationFn: async (data: { id: string; date: string; lessonNo?: number }) => {
+      const { id, ...body } = data;
+      const res = await apiRequest("POST", `/api/class-lessons/${id}/duplicate`, body);
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateTracker();
+      toast({ title: "Dars nusxalandi" });
+      setLessonDialogOpen(false);
+    },
+    onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
+  });
+
+  const deleteLessonMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/class-lessons/${id}`);
+    },
+    onSuccess: () => {
+      invalidateTracker();
+      toast({ title: "Dars o'chirildi" });
+      setDeleteConfirmOpen(false);
+      if (selectedLessonId === deleteLessonId) setSelectedLessonId(null);
+    },
+    onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
   });
 
   const members = tracker?.students || [];
@@ -242,6 +311,52 @@ export default function ClassTracker() {
     });
   };
 
+  const openAddLesson = () => {
+    const nextNo = sortedLessons.length > 0 ? Math.max(...sortedLessons.map(l => l.lessonNo)) + 1 : 1;
+    setLessonDialogMode("add");
+    setLessonEditId(null);
+    setLessonFormTitle(`Dars ${nextNo}`);
+    setLessonFormDate(new Date().toISOString().split("T")[0]);
+    setLessonFormNo(String(nextNo));
+    setLessonDialogOpen(true);
+  };
+
+  const openEditLesson = (lesson: ClassLesson) => {
+    setLessonDialogMode("edit");
+    setLessonEditId(lesson.id);
+    setLessonFormTitle(lesson.title || "");
+    setLessonFormDate(lesson.date ? new Date(lesson.date).toISOString().split("T")[0] : "");
+    setLessonFormNo(String(lesson.lessonNo));
+    setLessonDialogOpen(true);
+  };
+
+  const openDuplicateLesson = (lesson: ClassLesson) => {
+    const nextNo = sortedLessons.length > 0 ? Math.max(...sortedLessons.map(l => l.lessonNo)) + 1 : 1;
+    setLessonDialogMode("duplicate");
+    setLessonEditId(lesson.id);
+    setLessonFormTitle(lesson.title || "");
+    setLessonFormDate("");
+    setLessonFormNo(String(nextNo));
+    setLessonDialogOpen(true);
+  };
+
+  const openDeleteLesson = (lessonId: string) => {
+    setDeleteLessonId(lessonId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleLessonSubmit = () => {
+    if (lessonDialogMode === "add") {
+      addLessonMutation.mutate({ lessonNo: Number(lessonFormNo), date: lessonFormDate, title: lessonFormTitle });
+    } else if (lessonDialogMode === "edit" && lessonEditId) {
+      updateLessonMutation.mutate({ id: lessonEditId, title: lessonFormTitle, date: lessonFormDate, lessonNo: Number(lessonFormNo) });
+    } else if (lessonDialogMode === "duplicate" && lessonEditId) {
+      duplicateLessonMutation.mutate({ id: lessonEditId, date: lessonFormDate, lessonNo: Number(lessonFormNo) });
+    }
+  };
+
+  const lessonMutationPending = addLessonMutation.isPending || updateLessonMutation.isPending || duplicateLessonMutation.isPending;
+
   const groupedDebtors = useMemo(() => {
     if (!debtors || debtors.length === 0) return [];
     const map = new Map<string, { studentName: string; tasks: { taskTitle: string; lessonNo: number }[]; count: number }>();
@@ -358,12 +473,21 @@ export default function ClassTracker() {
         <TabsContent value="tracker" className="mt-4 space-y-4">
           {sortedLessons.length === 0 ? (
             <Card className="p-12 text-center">
-              <p className="text-muted-foreground" data-testid="text-no-data">
+              <p className="text-muted-foreground mb-4" data-testid="text-no-data">
                 Darslar topilmadi. Avval darslar va vazifa ustunlarini yarating.
               </p>
+              <Button onClick={openAddLesson} data-testid="button-add-first-lesson">
+                <Plus className="w-4 h-4 mr-1.5" /> Birinchi darsni qo'shish
+              </Button>
             </Card>
           ) : (
             <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">{sortedLessons.length} ta dars</p>
+                <Button variant="outline" size="sm" onClick={openAddLesson} data-testid="button-add-lesson">
+                  <Plus className="w-4 h-4 mr-1.5" /> Dars qo'shish
+                </Button>
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2" data-testid="lesson-grid">
                 {sortedLessons.map((lesson) => {
                   const prog = getLessonProgress(lesson.id);
@@ -371,7 +495,7 @@ export default function ClassTracker() {
                   return (
                     <Card
                       key={lesson.id}
-                      className={`p-3 cursor-pointer transition-all hover:shadow-md ${isActive ? "ring-2 ring-primary bg-primary/5 dark:bg-primary/10" : "hover:bg-muted/50"}`}
+                      className={`p-3 cursor-pointer transition-all hover:shadow-md relative group ${isActive ? "ring-2 ring-primary bg-primary/5 dark:bg-primary/10" : "hover:bg-muted/50"}`}
                       onClick={() => setSelectedLessonId(isActive ? null : lesson.id)}
                       data-testid={`card-lesson-${lesson.lessonNo}`}
                     >
@@ -379,7 +503,24 @@ export default function ClassTracker() {
                         <span className={`text-sm font-semibold ${isActive ? "text-primary" : ""}`}>
                           Dars {lesson.lessonNo}
                         </span>
-                        <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isActive ? "rotate-90" : ""}`} />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" data-testid={`button-lesson-menu-${lesson.lessonNo}`}>
+                              <MoreVertical className="w-3.5 h-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                            <DropdownMenuItem onClick={() => openEditLesson(lesson)} data-testid={`menu-edit-lesson-${lesson.lessonNo}`}>
+                              <Pencil className="w-3.5 h-3.5 mr-2" /> Tahrirlash
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openDuplicateLesson(lesson)} data-testid={`menu-duplicate-lesson-${lesson.lessonNo}`}>
+                              <Copy className="w-3.5 h-3.5 mr-2" /> Takrorlash
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive" onClick={() => openDeleteLesson(lesson.id)} data-testid={`menu-delete-lesson-${lesson.lessonNo}`}>
+                              <Trash2 className="w-3.5 h-3.5 mr-2" /> O'chirish
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                       {lesson.date && (
                         <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
@@ -664,6 +805,91 @@ export default function ClassTracker() {
                 data-testid="button-edit-save"
               >
                 {submitMutation.isPending ? "Saqlanmoqda..." : "Saqlash"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={lessonDialogOpen} onOpenChange={setLessonDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle data-testid="text-lesson-dialog-title">
+              {lessonDialogMode === "add" && "Yangi dars qo'shish"}
+              {lessonDialogMode === "edit" && "Darsni tahrirlash"}
+              {lessonDialogMode === "duplicate" && "Darsni takrorlash"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Dars raqami</Label>
+              <Input
+                type="number"
+                min={1}
+                value={lessonFormNo}
+                onChange={(e) => setLessonFormNo(e.target.value)}
+                data-testid="input-lesson-no"
+              />
+            </div>
+            <div>
+              <Label>Nomi</Label>
+              <Input
+                value={lessonFormTitle}
+                onChange={(e) => setLessonFormTitle(e.target.value)}
+                placeholder="Dars nomi..."
+                data-testid="input-lesson-title"
+              />
+            </div>
+            <div>
+              <Label>{lessonDialogMode === "duplicate" ? "Yangi sana" : "Sana"}</Label>
+              <Input
+                type="date"
+                value={lessonFormDate}
+                onChange={(e) => setLessonFormDate(e.target.value)}
+                data-testid="input-lesson-date"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setLessonDialogOpen(false)} data-testid="button-lesson-cancel">
+                Bekor qilish
+              </Button>
+              <Button
+                className="gradient-purple border-0"
+                onClick={handleLessonSubmit}
+                disabled={lessonMutationPending || !lessonFormDate || !lessonFormNo}
+                data-testid="button-lesson-save"
+              >
+                {lessonMutationPending ? "Saqlanmoqda..." : (
+                  lessonDialogMode === "add" ? "Qo'shish" :
+                  lessonDialogMode === "edit" ? "Saqlash" : "Nusxalash"
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle data-testid="text-delete-lesson-title">Darsni o'chirish</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Bu dars va unga bog'liq barcha vazifalar hamda baholashlar o'chiriladi. Bu amalni qaytarib bo'lmaydi.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)} data-testid="button-delete-cancel">
+                Bekor qilish
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => deleteLessonId && deleteLessonMutation.mutate(deleteLessonId)}
+                disabled={deleteLessonMutation.isPending}
+                data-testid="button-delete-confirm"
+              >
+                <Trash2 className="w-4 h-4 mr-1.5" />
+                {deleteLessonMutation.isPending ? "O'chirilmoqda..." : "O'chirish"}
               </Button>
             </div>
           </div>

@@ -137,7 +137,9 @@ export interface IStorage {
   deleteSharedQuizAttempt(id: string): Promise<void>;
 
   createClassLesson(data: InsertClassLesson): Promise<ClassLesson>;
+  getClassLesson(id: string): Promise<ClassLesson | undefined>;
   getLessonsByClass(classId: string): Promise<ClassLesson[]>;
+  updateClassLesson(id: string, data: Partial<InsertClassLesson>): Promise<ClassLesson | undefined>;
   deleteClassLesson(id: string): Promise<void>;
   generateLessonsForClass(classId: string, startDate: Date, scheduleType: string, scheduleDays: string[], totalLessons: number): Promise<ClassLesson[]>;
 
@@ -601,11 +603,24 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
+  async getClassLesson(id: string): Promise<ClassLesson | undefined> {
+    const [lesson] = await db.select().from(classLessons).where(eq(classLessons.id, id));
+    return lesson;
+  }
+
   async getLessonsByClass(classId: string): Promise<ClassLesson[]> {
     return db.select().from(classLessons).where(eq(classLessons.classId, classId)).orderBy(classLessons.lessonNo);
   }
 
+  async updateClassLesson(id: string, data: Partial<InsertClassLesson>): Promise<ClassLesson | undefined> {
+    const [updated] = await db.update(classLessons).set(data as any).where(eq(classLessons.id, id)).returning();
+    return updated;
+  }
+
   async deleteClassLesson(id: string): Promise<void> {
+    await db.delete(taskSubmissions).where(
+      inArray(taskSubmissions.lessonTaskId, db.select({ id: lessonTasks.id }).from(lessonTasks).where(eq(lessonTasks.lessonId, id)))
+    );
     await db.delete(lessonTasks).where(eq(lessonTasks.lessonId, id));
     await db.delete(classLessons).where(eq(classLessons.id, id));
   }

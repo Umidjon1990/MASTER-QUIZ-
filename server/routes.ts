@@ -2319,6 +2319,112 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/classes/:id/lessons", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const cls = await storage.getClass(req.params.id);
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      if (cls.teacherId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const { lessonNo, date, title } = req.body;
+      if (!lessonNo || !date) return res.status(400).json({ message: "lessonNo va date kerak" });
+
+      const lesson = await storage.createClassLesson({
+        classId: req.params.id,
+        lessonNo: Number(lessonNo),
+        date: new Date(date),
+        title: title || `Dars ${lessonNo}`,
+      } as any);
+
+      const taskCols = await storage.getTaskColumnsByClass(req.params.id);
+      for (const col of taskCols) {
+        await storage.createLessonTask({
+          lessonId: lesson.id,
+          taskColumnId: col.id,
+          dueDate: new Date(date),
+        } as any);
+      }
+
+      res.json(lesson);
+    } catch (error) {
+      console.error("Add lesson error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.patch("/api/class-lessons/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const lesson = await storage.getClassLesson(req.params.id);
+      if (!lesson) return res.status(404).json({ message: "Lesson not found" });
+      const cls = await storage.getClass(lesson.classId);
+      if (!cls || (cls.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const updates: any = {};
+      if (req.body.title !== undefined) updates.title = req.body.title;
+      if (req.body.date !== undefined) updates.date = new Date(req.body.date);
+      if (req.body.lessonNo !== undefined) updates.lessonNo = Number(req.body.lessonNo);
+
+      const updated = await storage.updateClassLesson(req.params.id, updates);
+      res.json(updated);
+    } catch (error) {
+      console.error("Update lesson error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/class-lessons/:id/duplicate", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const original = await storage.getClassLesson(req.params.id);
+      if (!original) return res.status(404).json({ message: "Lesson not found" });
+      const cls = await storage.getClass(original.classId);
+      if (!cls || (cls.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const { date, lessonNo } = req.body;
+      const allLessons = await storage.getLessonsByClass(original.classId);
+      const newLessonNo = lessonNo ? Number(lessonNo) : (allLessons.length > 0 ? Math.max(...allLessons.map(l => l.lessonNo)) + 1 : 1);
+
+      const newLesson = await storage.createClassLesson({
+        classId: original.classId,
+        lessonNo: newLessonNo,
+        date: date ? new Date(date) : original.date,
+        title: original.title ? `${original.title} (nusxa)` : `Dars ${newLessonNo}`,
+      } as any);
+
+      const originalTasks = (await storage.getLessonTasksByClass(original.classId)).filter(lt => lt.lessonId === original.id);
+      for (const task of originalTasks) {
+        await storage.createLessonTask({
+          lessonId: newLesson.id,
+          taskColumnId: task.taskColumnId,
+          dueDate: date ? new Date(date) : task.dueDate,
+        } as any);
+      }
+
+      res.json(newLesson);
+    } catch (error) {
+      console.error("Duplicate lesson error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/class-lessons/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const lesson = await storage.getClassLesson(req.params.id);
+      if (!lesson) return res.status(404).json({ message: "Lesson not found" });
+      const cls = await storage.getClass(lesson.classId);
+      if (!cls || (cls.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.deleteClassLesson(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete lesson error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.post("/api/classes/:id/task-columns", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const cls = await storage.getClass(req.params.id);
