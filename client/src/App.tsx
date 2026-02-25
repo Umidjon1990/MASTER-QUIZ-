@@ -210,13 +210,7 @@ function App() {
             <Route path="/play/scheduled-open/:quizId">{() => <ScheduledQuizLobby mode="open" />}</Route>
             <Route path="/quiz/replay/:id" component={QuizReplay} />
             <Route path="/shared/:code" component={SharedQuizPage} />
-            <Route path="/classes/join-assistant/:code">
-              {() => (
-                <AuthGuard>
-                  <JoinAssistant />
-                </AuthGuard>
-              )}
-            </Route>
+            <Route path="/classes/join-assistant/:code" component={JoinAssistant} />
 
             <Route component={NotFound} />
           </Switch>

@@ -2637,6 +2637,25 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/invite-info/:code", async (req, res) => {
+    try {
+      const assistant = await storage.getClassAssistantByCode(req.params.code);
+      if (!assistant) return res.status(404).json({ message: "Noto'g'ri invite kod" });
+      if (assistant.status === "revoked") return res.status(403).json({ message: "Bu taklif bekor qilingan" });
+      const cls = await storage.getClass(assistant.classId);
+      const teacherUser = cls ? await storage.getUser(cls.teacherId) : null;
+      res.json({
+        hasPassword: !!assistant.password,
+        className: cls?.name || "Sinf",
+        teacherName: teacherUser?.name || teacherUser?.email || "—",
+        status: assistant.status,
+        alreadyClaimed: !!assistant.userId,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.post("/api/classes/join-assistant", requireAuth, async (req: any, res) => {
     try {
       const { inviteCode, password } = req.body;
