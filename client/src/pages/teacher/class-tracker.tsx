@@ -87,6 +87,8 @@ export default function ClassTracker() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteLessonId, setDeleteLessonId] = useState<string | null>(null);
   const [taskEditOpen, setTaskEditOpen] = useState(false);
+  const [editingColId, setEditingColId] = useState<string | null>(null);
+  const [editingColTitle, setEditingColTitle] = useState("");
 
   const { data: classInfo } = useQuery<Class>({
     queryKey: ["/api/classes", classId],
@@ -227,6 +229,29 @@ export default function ClassTracker() {
     onSuccess: () => {
       invalidateTracker();
       toast({ title: "Vazifa o'chirildi" });
+    },
+    onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
+  });
+
+  const renameColumnMutation = useMutation({
+    mutationFn: async (data: { colId: string; title: string }) => {
+      await apiRequest("PATCH", `/api/classes/${classId}/task-columns/${data.colId}`, { title: data.title });
+    },
+    onSuccess: () => {
+      invalidateTracker();
+      setEditingColId(null);
+      toast({ title: "Vazifa nomi o'zgartirildi" });
+    },
+    onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
+  });
+
+  const deleteColumnMutation = useMutation({
+    mutationFn: async (colId: string) => {
+      await apiRequest("DELETE", `/api/classes/${classId}/task-columns/${colId}`);
+    },
+    onSuccess: () => {
+      invalidateTracker();
+      toast({ title: "Vazifa turi o'chirildi" });
     },
     onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
   });
@@ -1001,7 +1026,7 @@ export default function ClassTracker() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={taskEditOpen} onOpenChange={setTaskEditOpen}>
+      <Dialog open={taskEditOpen} onOpenChange={(open) => { setTaskEditOpen(open); if (!open) setEditingColId(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle data-testid="text-task-edit-title">
@@ -1021,18 +1046,63 @@ export default function ClassTracker() {
               ) : (
                 <div className="space-y-1.5">
                   {selectedLessonColumns.map((col) => (
-                    <div key={col.lessonTaskId} className="flex items-center justify-between p-2.5 rounded-lg border bg-muted/20" data-testid={`task-item-${col.lessonTaskId}`}>
-                      <span className="text-sm font-medium">{col.colTitle}</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => removeLessonTaskMutation.mutate(col.lessonTaskId)}
-                        disabled={removeLessonTaskMutation.isPending}
-                        data-testid={`btn-remove-task-${col.lessonTaskId}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                    <div key={col.lessonTaskId} className="flex items-center justify-between p-2.5 rounded-lg border bg-muted/20 gap-2" data-testid={`task-item-${col.lessonTaskId}`}>
+                      {editingColId === col.taskColumnId ? (
+                        <form
+                          className="flex items-center gap-1.5 flex-1"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (editingColTitle.trim()) {
+                              renameColumnMutation.mutate({ colId: col.taskColumnId, title: editingColTitle.trim() });
+                            }
+                          }}
+                        >
+                          <Input
+                            value={editingColTitle}
+                            onChange={(e) => setEditingColTitle(e.target.value)}
+                            className="h-7 text-sm"
+                            autoFocus
+                            data-testid={`input-rename-col-${col.taskColumnId}`}
+                          />
+                          <Button type="submit" size="sm" className="h-7 px-2" disabled={renameColumnMutation.isPending} data-testid={`btn-save-rename-${col.taskColumnId}`}>
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={() => setEditingColId(null)} data-testid={`btn-cancel-rename-${col.taskColumnId}`}>
+                            <XCircle className="h-3.5 w-3.5" />
+                          </Button>
+                        </form>
+                      ) : (
+                        <span
+                          className="text-sm font-medium cursor-pointer hover:text-primary transition-colors flex-1"
+                          onClick={() => { setEditingColId(col.taskColumnId); setEditingColTitle(col.colTitle); }}
+                          title="Nomini o'zgartirish uchun bosing"
+                          data-testid={`text-col-title-${col.taskColumnId}`}
+                        >
+                          {col.colTitle}
+                        </span>
+                      )}
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
+                          onClick={() => { setEditingColId(col.taskColumnId); setEditingColTitle(col.colTitle); }}
+                          data-testid={`btn-edit-col-${col.taskColumnId}`}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => removeLessonTaskMutation.mutate(col.lessonTaskId)}
+                          disabled={removeLessonTaskMutation.isPending}
+                          title="Bu darsdan olib tashlash"
+                          data-testid={`btn-remove-task-${col.lessonTaskId}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>

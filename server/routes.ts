@@ -2504,6 +2504,22 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/classes/:id/task-columns/:colId", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const cls = await storage.getClass(req.params.id);
+      if (!cls || (cls.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const updates: any = {};
+      if (req.body.title !== undefined) updates.title = req.body.title;
+      if (req.body.sortOrder !== undefined) updates.sortOrder = req.body.sortOrder;
+      const updated = await storage.updateTaskColumn(req.params.colId, updates);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.delete("/api/classes/:id/task-columns/:colId", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       await storage.deleteTaskColumn(req.params.colId);
