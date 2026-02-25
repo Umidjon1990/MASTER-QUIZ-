@@ -2,15 +2,32 @@ import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { execSync } from "child_process";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+function convertToMp3(inputPath: string): string {
+  const outputPath = inputPath.replace(/\.[^.]+$/, "_converted.mp3");
+  try {
+    execSync(
+      `ffmpeg -y -i "${inputPath}" -vn -ar 16000 -ac 1 -b:a 64k "${outputPath}" 2>/dev/null`,
+      { timeout: 30000 }
+    );
+    console.log(`[AI-SERVICE] ffmpeg converted: ${fs.statSync(inputPath).size} -> ${fs.statSync(outputPath).size} bytes`);
+    return outputPath;
+  } catch (e) {
+    console.log(`[AI-SERVICE] ffmpeg conversion failed, using original file`);
+    return inputPath;
+  }
+}
+
 export async function transcribeAudio(audioBuffer: Buffer, filename: string = "audio.ogg"): Promise<string> {
   const ext = filename.split(".").pop()?.toLowerCase() || "ogg";
+  const tmpInput = path.join(os.tmpdir(), `whisper_${Date.now()}.${ext}`);
+  fs.writeFileSync(tmpInput, audioBuffer);
+  console.log(`[AI-SERVICE] Temp file written: ${tmpInput}, size=${audioBuffer.length}, ext=${ext}`);
 
-  const tmpFile = path.join(os.tmpdir(), `whisper_${Date.now()}.${ext}`);
-  fs.writeFileSync(tmpFile, audioBuffer);
-  console.log(`[AI-SERVICE] Temp file written: ${tmpFile}, size=${audioBuffer.length}, ext=${ext}`);
+  const tmpFile = convertToMp3(tmpInput);
 
   try {
     const response = await openai.audio.transcriptions.create({
@@ -21,7 +38,10 @@ export async function transcribeAudio(audioBuffer: Buffer, filename: string = "a
     console.log(`[AI-SERVICE] Whisper transcription success: ${response.text?.substring(0, 80)}...`);
     return response.text;
   } finally {
-    try { fs.unlinkSync(tmpFile); } catch {}
+    try { fs.unlinkSync(tmpInput); } catch {}
+    if (tmpFile !== tmpInput) {
+      try { fs.unlinkSync(tmpFile); } catch {}
+    }
   }
 }
 
