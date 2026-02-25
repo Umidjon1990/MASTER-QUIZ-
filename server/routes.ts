@@ -2425,6 +2425,58 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/class-lessons/:id/tasks", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const lesson = await storage.getClassLesson(req.params.id);
+      if (!lesson) return res.status(404).json({ message: "Lesson not found" });
+      const cls = await storage.getClass(lesson.classId);
+      if (!cls || (cls.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const { taskColumnId, dueDate } = req.body;
+      if (!taskColumnId) return res.status(400).json({ message: "taskColumnId kerak" });
+
+      const existing = (await storage.getLessonTasksByClass(lesson.classId)).filter(
+        lt => lt.lessonId === lesson.id && lt.taskColumnId === taskColumnId
+      );
+      if (existing.length > 0) {
+        return res.status(400).json({ message: "Bu vazifa allaqachon qo'shilgan" });
+      }
+
+      const task = await storage.createLessonTask({
+        lessonId: lesson.id,
+        taskColumnId,
+        dueDate: dueDate ? new Date(dueDate) : lesson.date,
+      } as any);
+      res.json(task);
+    } catch (error) {
+      console.error("Add lesson task error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/lesson-tasks/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const allClasses = await storage.getClassesByTeacher(req.userId);
+      let found = false;
+      for (const cls of allClasses) {
+        const tasks = await storage.getLessonTasksByClass(cls.id);
+        if (tasks.some(t => t.id === req.params.id)) {
+          found = true;
+          break;
+        }
+      }
+      if (!found && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.deleteLessonTask(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete lesson task error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.post("/api/classes/:id/task-columns", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const cls = await storage.getClass(req.params.id);

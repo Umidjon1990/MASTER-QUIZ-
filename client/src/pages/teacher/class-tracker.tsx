@@ -86,6 +86,7 @@ export default function ClassTracker() {
   const [lessonFormNo, setLessonFormNo] = useState("");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteLessonId, setDeleteLessonId] = useState<string | null>(null);
+  const [taskEditOpen, setTaskEditOpen] = useState(false);
 
   const { data: classInfo } = useQuery<Class>({
     queryKey: ["/api/classes", classId],
@@ -208,6 +209,28 @@ export default function ClassTracker() {
     onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
   });
 
+  const addLessonTaskMutation = useMutation({
+    mutationFn: async (data: { lessonId: string; taskColumnId: string }) => {
+      await apiRequest("POST", `/api/class-lessons/${data.lessonId}/tasks`, { taskColumnId: data.taskColumnId });
+    },
+    onSuccess: () => {
+      invalidateTracker();
+      toast({ title: "Vazifa qo'shildi" });
+    },
+    onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
+  });
+
+  const removeLessonTaskMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/lesson-tasks/${id}`);
+    },
+    onSuccess: () => {
+      invalidateTracker();
+      toast({ title: "Vazifa o'chirildi" });
+    },
+    onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
+  });
+
   const members = tracker?.students || [];
   const lessons = tracker?.lessons || [];
   const taskColumnsData = tracker?.taskColumns || [];
@@ -258,8 +281,13 @@ export default function ClassTracker() {
   const selectedLessonColumns = useMemo(() => {
     return selectedLessonTasks.map(task => {
       const col = taskColumnsData.find(c => c.id === task.taskColumnId);
-      return { lessonTaskId: task.id, colTitle: col?.title || "?" };
+      return { lessonTaskId: task.id, taskColumnId: task.taskColumnId, colTitle: col?.title || "?" };
     });
+  }, [selectedLessonTasks, taskColumnsData]);
+
+  const availableColumnsForLesson = useMemo(() => {
+    const assignedColIds = new Set(selectedLessonTasks.map(t => t.taskColumnId));
+    return taskColumnsData.filter(c => !assignedColIds.has(c.id));
   }, [selectedLessonTasks, taskColumnsData]);
 
   const filteredMembers = useMemo(() => {
@@ -603,18 +631,29 @@ export default function ClassTracker() {
                           </p>
                         )}
                       </div>
-                      <Select value={filterStatus} onValueChange={setFilterStatus}>
-                        <SelectTrigger className="w-[160px]" data-testid="select-filter-status">
-                          <SelectValue placeholder="Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Barchasi</SelectItem>
-                          <SelectItem value="submitted">Topshirildi</SelectItem>
-                          <SelectItem value="pending">Kutilmoqda</SelectItem>
-                          <SelectItem value="missing">Topshirilmadi</SelectItem>
-                          <SelectItem value="rework">Qayta ishlash</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setTaskEditOpen(true)}
+                          data-testid="btn-edit-lesson-tasks"
+                        >
+                          <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                          Vazifalar
+                        </Button>
+                        <Select value={filterStatus} onValueChange={setFilterStatus}>
+                          <SelectTrigger className="w-[160px]" data-testid="select-filter-status">
+                            <SelectValue placeholder="Status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Barchasi</SelectItem>
+                            <SelectItem value="submitted">Topshirildi</SelectItem>
+                            <SelectItem value="pending">Kutilmoqda</SelectItem>
+                            <SelectItem value="missing">Topshirilmadi</SelectItem>
+                            <SelectItem value="rework">Qayta ishlash</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                     <p className="text-[11px] text-muted-foreground mt-2">
                       1 marta bosish = status almashtirish &nbsp;|&nbsp; 2 marta bosish = ball va izoh kiritish
@@ -688,7 +727,13 @@ export default function ClassTracker() {
                 </Card>
               ) : selectedLesson && selectedLessonColumns.length === 0 ? (
                 <Card className="p-8 text-center">
-                  <p className="text-muted-foreground">Bu darsda vazifa ustunlari topilmadi.</p>
+                  <p className="text-muted-foreground mb-3">Bu darsda vazifa ustunlari topilmadi.</p>
+                  {taskColumnsData.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={() => setTaskEditOpen(true)} data-testid="btn-add-tasks-empty">
+                      <Plus className="h-3.5 w-3.5 mr-1.5" />
+                      Vazifa qo'shish
+                    </Button>
+                  )}
                 </Card>
               ) : (
                 <Card className="p-8 text-center border-dashed">
@@ -950,6 +995,79 @@ export default function ClassTracker() {
               >
                 <Trash2 className="w-4 h-4 mr-1.5" />
                 {deleteLessonMutation.isPending ? "O'chirilmoqda..." : "O'chirish"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={taskEditOpen} onOpenChange={setTaskEditOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle data-testid="text-task-edit-title">
+              Dars vazifalarini tahrirlash
+              {selectedLesson && (
+                <span className="text-sm font-normal text-muted-foreground ml-2">
+                  — Dars {selectedLesson.lessonNo}{selectedLesson.title ? `: ${selectedLesson.title}` : ""}
+                </span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-xs text-muted-foreground mb-2 block">Hozirgi vazifalar</Label>
+              {selectedLessonColumns.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-3 text-center">Vazifalar yo'q</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {selectedLessonColumns.map((col) => (
+                    <div key={col.lessonTaskId} className="flex items-center justify-between p-2.5 rounded-lg border bg-muted/20" data-testid={`task-item-${col.lessonTaskId}`}>
+                      <span className="text-sm font-medium">{col.colTitle}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => removeLessonTaskMutation.mutate(col.lessonTaskId)}
+                        disabled={removeLessonTaskMutation.isPending}
+                        data-testid={`btn-remove-task-${col.lessonTaskId}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {availableColumnsForLesson.length > 0 && selectedLesson && (
+              <div>
+                <Label className="text-xs text-muted-foreground mb-2 block">Vazifa qo'shish</Label>
+                <div className="flex flex-wrap gap-2">
+                  {availableColumnsForLesson.map((col) => (
+                    <Button
+                      key={col.id}
+                      variant="outline"
+                      size="sm"
+                      className="h-8"
+                      onClick={() => addLessonTaskMutation.mutate({ lessonId: selectedLesson.id, taskColumnId: col.id })}
+                      disabled={addLessonTaskMutation.isPending}
+                      data-testid={`btn-add-task-col-${col.id}`}
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1" />
+                      {col.title}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {availableColumnsForLesson.length === 0 && selectedLessonColumns.length > 0 && (
+              <p className="text-xs text-muted-foreground text-center py-1">Barcha vazifa turlari allaqachon qo'shilgan</p>
+            )}
+
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={() => setTaskEditOpen(false)} data-testid="btn-close-task-edit">
+                Yopish
               </Button>
             </div>
           </div>
