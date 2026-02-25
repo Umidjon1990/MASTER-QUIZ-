@@ -1,56 +1,25 @@
 import OpenAI from "openai";
-import FormData from "form-data";
-import axios from "axios";
 import fs from "fs";
 import path from "path";
 import os from "os";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const MIME_MAP: Record<string, string> = {
-  oga: "audio/ogg",
-  ogg: "audio/ogg",
-  m4a: "audio/mp4",
-  mp3: "audio/mpeg",
-  mp4: "audio/mp4",
-  wav: "audio/wav",
-  webm: "audio/webm",
-  flac: "audio/flac",
-  mpeg: "audio/mpeg",
-  mpga: "audio/mpeg",
-};
-
 export async function transcribeAudio(audioBuffer: Buffer, filename: string = "audio.ogg"): Promise<string> {
   const ext = filename.split(".").pop()?.toLowerCase() || "ogg";
-  const mimeType = MIME_MAP[ext] || "audio/ogg";
 
   const tmpFile = path.join(os.tmpdir(), `whisper_${Date.now()}.${ext}`);
   fs.writeFileSync(tmpFile, audioBuffer);
-  console.log(`[AI-SERVICE] Temp file written: ${tmpFile}, size=${audioBuffer.length}, ext=${ext}, mime=${mimeType}`);
+  console.log(`[AI-SERVICE] Temp file written: ${tmpFile}, size=${audioBuffer.length}, ext=${ext}`);
 
   try {
-    const form = new FormData();
-    form.append("file", fs.createReadStream(tmpFile), {
-      filename,
-      contentType: mimeType,
+    const response = await openai.audio.transcriptions.create({
+      file: fs.createReadStream(tmpFile),
+      model: "whisper-1",
     });
-    form.append("model", "whisper-1");
 
-    const { data } = await axios.post(
-      "https://api.openai.com/v1/audio/transcriptions",
-      form,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          ...form.getHeaders(),
-        },
-        maxBodyLength: 50 * 1024 * 1024,
-        maxContentLength: 50 * 1024 * 1024,
-      }
-    );
-
-    console.log(`[AI-SERVICE] Whisper transcription success: ${data.text?.substring(0, 80)}...`);
-    return data.text;
+    console.log(`[AI-SERVICE] Whisper transcription success: ${response.text?.substring(0, 80)}...`);
+    return response.text;
   } finally {
     try { fs.unlinkSync(tmpFile); } catch {}
   }
