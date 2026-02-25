@@ -71,7 +71,7 @@ const STATUS_CONFIG: Record<SubmissionStatus, { icon: typeof CheckCircle2; label
 function StatusIcon({ status, className }: { status: SubmissionStatus; className?: string }) {
   const config = STATUS_CONFIG[status];
   const Icon = config.icon;
-  return <Icon className={`w-4 h-4 ${config.className} ${className || ""}`} />;
+  return <Icon className={`w-5 h-5 sm:w-4 sm:h-4 ${config.className} ${className || ""}`} />;
 }
 
 export default function ClassTracker() {
@@ -568,7 +568,7 @@ export default function ClassTracker() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex items-center gap-3 flex-wrap">
         <Link href="/teacher/classes">
           <Button variant="ghost" size="icon" data-testid="button-back-classes">
@@ -731,7 +731,7 @@ export default function ClassTracker() {
 
               {selectedLesson && selectedLessonColumns.length > 0 ? (
                 <Card className="overflow-hidden" data-testid="selected-lesson-card">
-                  <div className="p-4 border-b bg-muted/30">
+                  <div className="p-3 sm:p-4 border-b bg-muted/30">
                     <div className="flex items-center justify-between flex-wrap gap-2">
                       <div>
                         <h3 className="font-semibold" data-testid="text-selected-lesson-title">
@@ -757,7 +757,7 @@ export default function ClassTracker() {
                           </Button>
                         )}
                         <Select value={filterStatus} onValueChange={setFilterStatus}>
-                          <SelectTrigger className="w-[160px]" data-testid="select-filter-status">
+                          <SelectTrigger className="w-[120px] sm:w-[160px]" data-testid="select-filter-status">
                             <SelectValue placeholder="Status" />
                           </SelectTrigger>
                           <SelectContent>
@@ -770,24 +770,25 @@ export default function ClassTracker() {
                         </Select>
                       </div>
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-2">
-                      1 marta bosish = status almashtirish &nbsp;|&nbsp; 2 marta bosish = ball va izoh kiritish
+                    <p className="text-[10px] sm:text-[11px] text-muted-foreground mt-1.5 sm:mt-2">
+                      <span className="hidden sm:inline">1 marta bosish = status almashtirish &nbsp;|&nbsp; 2 marta bosish = ball va izoh kiritish</span>
+                      <span className="sm:hidden">1x bosish = status &nbsp;|&nbsp; 2x bosish = ball</span>
                     </p>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm" data-testid="tracker-table">
+                  <div className="overflow-x-auto -mx-2 sm:mx-0">
+                    <table className="w-full text-xs sm:text-sm" data-testid="tracker-table">
                       <thead>
                         <tr className="border-b bg-muted/20">
-                          <th className="text-center p-2 font-medium w-[40px] sticky left-0 bg-muted/20 z-20" data-testid="th-student-no">
+                          <th className="text-center p-1.5 sm:p-2 font-medium w-[32px] sm:w-[40px] sticky left-0 bg-muted/20 z-20" data-testid="th-student-no">
                             №
                           </th>
-                          <th className="text-left p-3 font-medium min-w-[160px] sticky left-[40px] bg-muted/20 z-10" data-testid="th-student-name">
+                          <th className="text-left p-2 sm:p-3 font-medium min-w-[100px] sm:min-w-[160px] sticky left-[32px] sm:left-[40px] bg-muted/20 z-10" data-testid="th-student-name">
                             O'quvchi
                           </th>
                           {selectedLessonColumns.map((col, idx) => (
-                            <th key={idx} className="text-center p-2.5 font-medium border-l min-w-[90px]" data-testid={`th-task-col-${idx}`}>
-                              {col.colTitle}
+                            <th key={idx} className="text-center p-1.5 sm:p-2.5 font-medium border-l min-w-[56px] sm:min-w-[90px]" data-testid={`th-task-col-${idx}`}>
+                              <span className="block truncate max-w-[52px] sm:max-w-none">{col.colTitle}</span>
                             </th>
                           ))}
                         </tr>
@@ -802,11 +803,11 @@ export default function ClassTracker() {
                         ) : (
                           filteredMembers.map((member, mIdx) => (
                             <tr key={member.id} className={`border-b ${mIdx % 2 === 0 ? "" : "bg-muted/10"}`} data-testid={`row-student-${member.userId}`}>
-                              <td className={`text-center p-2 text-xs text-muted-foreground w-[40px] sticky left-0 z-20 ${mIdx % 2 === 0 ? "bg-background" : "bg-muted/10"}`}>
+                              <td className={`text-center p-1.5 sm:p-2 text-[10px] sm:text-xs text-muted-foreground w-[32px] sm:w-[40px] sticky left-0 z-20 ${mIdx % 2 === 0 ? "bg-background" : "bg-muted/10"}`}>
                                 {mIdx + 1}
                               </td>
-                              <td className={`p-3 font-medium sticky left-[40px] z-10 ${mIdx % 2 === 0 ? "bg-background" : "bg-muted/10"}`} data-testid={`cell-student-name-${member.userId}`}>
-                                <span className="truncate block max-w-[160px]">{member.userName || "Foydalanuvchi"}</span>
+                              <td className={`p-2 sm:p-3 font-medium sticky left-[32px] sm:left-[40px] z-10 ${mIdx % 2 === 0 ? "bg-background" : "bg-muted/10"}`} data-testid={`cell-student-name-${member.userId}`}>
+                                <span className="truncate block max-w-[90px] sm:max-w-[160px] text-[11px] sm:text-sm">{member.userName || "Foydalanuvchi"}</span>
                               </td>
                               {selectedLessonColumns.map((col, cIdx) => {
                                 const sub = getSubmission(member.userId, col.lessonTaskId);
@@ -818,14 +819,14 @@ export default function ClassTracker() {
                                 return (
                                   <td
                                     key={cIdx}
-                                    className={`text-center p-2 border-l cursor-pointer hover:opacity-80 transition-all select-none ${cellBg}`}
+                                    className={`text-center p-1 sm:p-2 border-l cursor-pointer hover:opacity-80 active:scale-95 transition-all select-none ${cellBg}`}
                                     onClick={() => handleCellClick(member.userId, col.lessonTaskId)}
                                     data-testid={`cell-${member.userId}-${col.lessonTaskId}`}
                                   >
-                                    <div className="flex flex-col items-center gap-0.5">
+                                    <div className="flex flex-col items-center justify-center gap-0.5 min-h-[28px] sm:min-h-0">
                                       <StatusIcon status={status} />
                                       {sub?.score != null && (
-                                        <span className="text-xs font-medium" data-testid={`score-${member.userId}-${col.lessonTaskId}`}>
+                                        <span className="text-[10px] sm:text-xs font-medium" data-testid={`score-${member.userId}-${col.lessonTaskId}`}>
                                           {sub.score}
                                         </span>
                                       )}

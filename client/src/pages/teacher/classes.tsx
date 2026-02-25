@@ -538,7 +538,7 @@ export default function TeacherClasses() {
             </motion.div>
           ))}
         </motion.div>
-      ) : (
+      ) : assistantClasses.length === 0 ? (
         <Card className="p-12 text-center">
           <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
             <GraduationCap className="w-8 h-8 text-muted-foreground" />
@@ -549,7 +549,7 @@ export default function TeacherClasses() {
             <Plus className="w-4 h-4 mr-1" /> Yangi Sinf
           </Button>
         </Card>
-      )}
+      ) : null}
 
       {assistantClasses.length > 0 && (
         <div className="mt-8">
