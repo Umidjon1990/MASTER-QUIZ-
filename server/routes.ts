@@ -3000,15 +3000,57 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Avval Telegram bot tokenini saqlang" });
       }
 
-      const { chatId, type } = req.body;
+      const { chatId, type, lessonId } = req.body;
       if (!chatId) return res.status(400).json({ message: "Chat ID kerak" });
-      if (!type || !["today_task", "debtors", "weekly_report"].includes(type)) {
-        return res.status(400).json({ message: "type: today_task | debtors | weekly_report" });
+      const validTypes = ["today_task", "debtors", "weekly_report", "monthly_report", "lesson_report"];
+      if (!type || !validTypes.includes(type)) {
+        return res.status(400).json({ message: `type: ${validTypes.join(" | ")}` });
       }
 
       const TelegramBot = (await import("node-telegram-bot-api")).default;
       const bot = new TelegramBot(profile.telegramBotToken);
       const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
+
+      const sendLongMessage = async (text: string) => {
+        const MAX_LEN = 4000;
+        if (text.length <= MAX_LEN) {
+          await bot.sendMessage(targetChat, text, { parse_mode: "Markdown" });
+          return;
+        }
+        const lines = text.split("\n");
+        let chunk = "";
+        for (const line of lines) {
+          if ((chunk + line + "\n").length > MAX_LEN && chunk.length > 0) {
+            await bot.sendMessage(targetChat, chunk.trim(), { parse_mode: "Markdown" });
+            chunk = "";
+          }
+          chunk += line + "\n";
+        }
+        if (chunk.trim()) {
+          await bot.sendMessage(targetChat, chunk.trim(), { parse_mode: "Markdown" });
+        }
+      };
+
+      const getProfileMap = async (classId: string) => {
+        const members = await storage.getClassMembers(classId);
+        const profileMap = new Map<string, string>();
+        for (const m of members) {
+          const user = await authStorage.getUser(m.userId);
+          const p = await storage.getUserProfile(m.userId);
+          profileMap.set(m.userId, p?.displayName || user?.username || user?.email || "Noma'lum");
+        }
+        return { members, profileMap };
+      };
+
+      const escMd = (s: string) => s.replace(/([_*`\[])/g, "\\$1");
+
+      const statusEmoji = (status: string) => {
+        if (status === "submitted") return "✅";
+        if (status === "missing") return "❌";
+        if (status === "pending") return "⏳";
+        if (status === "rework") return "🔄";
+        return "➖";
+      };
 
       if (type === "today_task") {
         const lessons = await storage.getLessonsByClass(req.params.id);
@@ -3016,113 +3058,221 @@ export async function registerRoutes(
         today.setHours(0, 0, 0, 0);
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
-
         const todayLesson = lessons.find(l => {
           const d = new Date(l.date);
           return d >= today && d < tomorrow;
         });
-
         if (!todayLesson) {
           return res.status(400).json({ message: "Bugun dars topilmadi" });
         }
-
         const lessonTasksData = await storage.getLessonTasksByClass(req.params.id);
         const taskColumnsData = await storage.getTaskColumnsByClass(req.params.id);
         const columnMap = new Map(taskColumnsData.map(c => [c.id, c.title]));
         const todayTasks = lessonTasksData.filter(lt => lt.lessonId === todayLesson.id);
         const taskNames = todayTasks.map(t => columnMap.get(t.taskColumnId) || "Vazifa").join(", ");
-
-        const message = `📚 *${cls.name} — Dars ${todayLesson.lessonNo}*\n${todayLesson.title || ""}\n\n📝 Vazifalar: ${taskNames || "Vazifa yo'q"}`;
+        const message = `📚 *${escMd(cls.name)} — Dars ${todayLesson.lessonNo}*\n${escMd(todayLesson.title || "")}\n\n📝 Vazifalar: ${escMd(taskNames || "Vazifa yo'q")}`;
         await bot.sendMessage(targetChat, message, { parse_mode: "Markdown" });
         res.json({ success: true, message: "Bugungi vazifa yuborildi" });
+
+      } else if (type === "lesson_report") {
+        if (!lessonId) return res.status(400).json({ message: "lessonId kerak" });
+        const lesson = await storage.getClassLesson(lessonId);
+        if (!lesson) return res.status(404).json({ message: "Dars topilmadi" });
+
+        const lessonTasksData = await storage.getLessonTasksByClass(req.params.id);
+        const taskColumnsData = await storage.getTaskColumnsByClass(req.params.id);
+        const submissions = await storage.getSubmissionsByClass(req.params.id);
+        const { members, profileMap } = await getProfileMap(req.params.id);
+
+        const columnMap = new Map(taskColumnsData.map(c => [c.id, c.title]));
+        const lessonTasks = lessonTasksData.filter(lt => lt.lessonId === lessonId);
+        const submissionMap = new Map<string, any>();
+        for (const s of submissions) {
+          submissionMap.set(`${s.studentId}_${s.lessonTaskId}`, s);
+        }
+
+        const dateStr = new Date(lesson.date).toLocaleDateString("uz-UZ", { day: "numeric", month: "long", year: "numeric" });
+        let text = `📋 *${escMd(cls.name)}*\n`;
+        text += `📖 *Dars ${lesson.lessonNo}* — ${escMd(dateStr)}\n`;
+        if (lesson.title) text += `${escMd(lesson.title)}\n`;
+        text += `\n`;
+
+        const colHeaders = lessonTasks.map(lt => columnMap.get(lt.taskColumnId) || "?");
+        text += `📝 Vazifalar: ${escMd(colHeaders.join(" | "))}\n\n`;
+
+        let allDone = 0;
+        let hasDebt = 0;
+        for (const m of members) {
+          const name = profileMap.get(m.userId) || "Noma'lum";
+          const statuses: string[] = [];
+          let studentDone = 0;
+          for (const lt of lessonTasks) {
+            const sub = submissionMap.get(`${m.userId}_${lt.id}`);
+            const status = sub?.status || "missing";
+            statuses.push(statusEmoji(status));
+            if (status === "submitted") studentDone++;
+          }
+          const scoreStr = lessonTasks.length > 0 ? ` (${studentDone}/${lessonTasks.length})` : "";
+          const line = `${statuses.join(" ")} — ${escMd(name)}${scoreStr}\n`;
+          text += line;
+          if (studentDone === lessonTasks.length) allDone++;
+          else hasDebt++;
+        }
+
+        text += `\n📊 Jami: ${members.length} ta o'quvchi\n`;
+        text += `✅ Barchasi bajarilgan: ${allDone}\n`;
+        text += `❌ Qarzdor: ${hasDebt}\n`;
+
+        await sendLongMessage(text);
+        res.json({ success: true, message: "Dars hisoboti yuborildi" });
 
       } else if (type === "debtors") {
         const debtors = await storage.getDebtors(req.params.id);
         if (debtors.length === 0) {
-          const message = `✅ *${cls.name}*\n\nBarcha vazifalar bajarilgan! Qarzdorlar yo'q.`;
+          const message = `✅ *${escMd(cls.name)}*\n\nBarcha vazifalar bajarilgan! Qarzdorlar yo'q.`;
           await bot.sendMessage(targetChat, message, { parse_mode: "Markdown" });
           return res.json({ success: true, message: "Qarzdorlar yo'q" });
         }
 
-        const members = await storage.getClassMembers(req.params.id);
-        const profileMap = new Map<string, string>();
-        for (const m of members) {
-          const p = await storage.getUserProfile(m.userId);
-          profileMap.set(m.userId, p?.displayName || "Unknown");
-        }
+        const { profileMap } = await getProfileMap(req.params.id);
 
         const grouped = new Map<string, { tasks: string[]; count: number }>();
         for (const d of debtors) {
-          const name = profileMap.get(d.studentId) || "Unknown";
-          if (!grouped.has(name)) grouped.set(name, { tasks: [], count: 0 });
-          const g = grouped.get(name)!;
+          const name = profileMap.get(d.studentId) || "Noma'lum";
+          if (!grouped.has(d.studentId)) grouped.set(d.studentId, { tasks: [], count: 0 });
+          const g = grouped.get(d.studentId)!;
           g.tasks.push(`Dars ${d.lessonNo}: ${d.taskTitle}`);
           g.count++;
         }
 
-        let text = `⚠️ *${cls.name} — Qarzdorlar*\n\n`;
-        for (const [name, data] of Array.from(grouped.entries())) {
-          text += `👤 *${name}* (${data.count} ta vazifa)\n`;
-          for (const t of data.tasks.slice(0, 5)) {
-            text += `  — ${t}\n`;
+        const sortedDebtors = Array.from(grouped.entries())
+          .map(([id, data]) => ({ name: profileMap.get(id) || "Noma'lum", ...data }))
+          .sort((a, b) => b.count - a.count);
+
+        let text = `⚠️ *${escMd(cls.name)} — Qarzdorlar*\n`;
+        text += `📅 ${new Date().toLocaleDateString("uz-UZ", { day: "numeric", month: "long", year: "numeric" })}\n\n`;
+
+        for (let i = 0; i < sortedDebtors.length; i++) {
+          const d = sortedDebtors[i];
+          text += `${i + 1}. ${escMd(d.name)} — ${d.count} ta ❌\n`;
+          for (const t of d.tasks.slice(0, 3)) {
+            text += `   └ ${escMd(t)}\n`;
           }
-          if (data.tasks.length > 5) text += `  ... va yana ${data.tasks.length - 5} ta\n`;
-          text += "\n";
+          if (d.tasks.length > 3) text += `   └ ... va yana ${d.tasks.length - 3} ta\n`;
         }
 
-        await bot.sendMessage(targetChat, text, { parse_mode: "Markdown" });
+        text += `\n📊 Jami qarzdor: ${sortedDebtors.length} ta o'quvchi, ${debtors.length} ta vazifa`;
+
+        await sendLongMessage(text);
         res.json({ success: true, message: "Qarzdorlar ro'yxati yuborildi" });
 
-      } else if (type === "weekly_report") {
+      } else if (type === "weekly_report" || type === "monthly_report") {
+        const isMonthly = type === "monthly_report";
+        const periodLabel = isMonthly ? "Oylik" : "Haftalik";
+
+        const lessons = await storage.getLessonsByClass(req.params.id);
         const submissions = await storage.getSubmissionsByClass(req.params.id);
-        const members = await storage.getClassMembers(req.params.id);
         const lessonTasksData = await storage.getLessonTasksByClass(req.params.id);
+        const taskColumnsData = await storage.getTaskColumnsByClass(req.params.id);
+        const { members, profileMap } = await getProfileMap(req.params.id);
 
-        const profileMap = new Map<string, string>();
-        for (const m of members) {
-          const p = await storage.getUserProfile(m.userId);
-          profileMap.set(m.userId, p?.displayName || "Unknown");
+        const now = new Date();
+        const periodStart = new Date(now);
+        if (isMonthly) {
+          periodStart.setDate(1);
+        } else {
+          const dayOfWeek = periodStart.getDay();
+          periodStart.setDate(periodStart.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
         }
+        periodStart.setHours(0, 0, 0, 0);
 
-        const studentStats = new Map<string, { submitted: number; total: number; totalScore: number; scoredCount: number }>();
-        for (const m of members) {
-          studentStats.set(m.userId, { submitted: 0, total: lessonTasksData.length, totalScore: 0, scoredCount: 0 });
-        }
+        const periodEnd = new Date(now);
+        periodEnd.setHours(23, 59, 59, 999);
 
+        const periodLessons = lessons.filter(l => {
+          const d = new Date(l.date);
+          return d >= periodStart && d <= periodEnd;
+        }).sort((a, b) => a.lessonNo - b.lessonNo);
+
+        const periodLessonIds = new Set(periodLessons.map(l => l.id));
+        const periodLessonTasks = lessonTasksData.filter(lt => periodLessonIds.has(lt.lessonId));
+        const periodLtIds = new Set(periodLessonTasks.map(lt => lt.id));
+
+        const submissionMap = new Map<string, any>();
         for (const s of submissions) {
-          const stat = studentStats.get(s.studentId);
-          if (stat && s.status === "submitted") {
-            stat.submitted++;
-            if (s.score !== null) {
-              stat.totalScore += s.score;
-              stat.scoredCount++;
-            }
+          if (periodLtIds.has(s.lessonTaskId)) {
+            submissionMap.set(`${s.studentId}_${s.lessonTaskId}`, s);
           }
         }
 
-        const ranked = Array.from(studentStats.entries()).map(([id, stat]) => ({
-          name: profileMap.get(id) || "Unknown",
-          submitted: stat.submitted,
-          total: stat.total,
-          avg: stat.scoredCount > 0 ? Math.round(stat.totalScore / stat.scoredCount) : 0,
-          pct: stat.total > 0 ? Math.round((stat.submitted / stat.total) * 100) : 0,
-        })).sort((a, b) => b.pct - a.pct || b.avg - a.avg);
+        const columnMap = new Map(taskColumnsData.map(c => [c.id, c.title]));
 
-        let text = `📊 *${cls.name} — Haftalik hisobot*\n\n`;
+        const studentStats = members.map(m => {
+          let submitted = 0;
+          let missing = 0;
+          let totalScore = 0;
+          let scoredCount = 0;
+          for (const lt of periodLessonTasks) {
+            const sub = submissionMap.get(`${m.userId}_${lt.id}`);
+            const status = sub?.status || "missing";
+            if (status === "submitted") {
+              submitted++;
+              if (sub?.score != null) {
+                totalScore += sub.score;
+                scoredCount++;
+              }
+            } else {
+              missing++;
+            }
+          }
+          return {
+            name: profileMap.get(m.userId) || "Noma'lum",
+            submitted,
+            missing,
+            total: periodLessonTasks.length,
+            avg: scoredCount > 0 ? Math.round(totalScore / scoredCount) : 0,
+            pct: periodLessonTasks.length > 0 ? Math.round((submitted / periodLessonTasks.length) * 100) : 0,
+          };
+        }).sort((a, b) => b.pct - a.pct || b.avg - a.avg);
 
-        text += `🏆 *Top 5 eng yaxshi:*\n`;
-        for (const s of ranked.slice(0, 5)) {
-          text += `  ${s.name} — ${s.pct}% (o'rtacha: ${s.avg})\n`;
+        const startStr = periodStart.toLocaleDateString("uz-UZ", { day: "numeric", month: "short" });
+        const endStr = periodEnd.toLocaleDateString("uz-UZ", { day: "numeric", month: "short", year: "numeric" });
+
+        let text = `📊 *${escMd(cls.name)} — ${periodLabel} hisobot*\n`;
+        text += `📅 ${escMd(startStr)} — ${escMd(endStr)}\n`;
+        text += `📖 Darslar: ${periodLessons.length} ta | Vazifalar: ${periodLessonTasks.length} ta\n\n`;
+
+        if (studentStats.length === 0) {
+          text += `O'quvchilar topilmadi.\n`;
+        } else {
+          const medals = ["🥇", "🥈", "🥉"];
+
+          text += `*🏆 Reyting:*\n\n`;
+          for (let i = 0; i < studentStats.length; i++) {
+            const s = studentStats[i];
+            const medal = i < 3 ? medals[i] : `${i + 1}.`;
+            const bar = s.pct >= 80 ? "🟢" : s.pct >= 50 ? "🟡" : "🔴";
+            const avgStr = s.avg > 0 ? ` | ball: ${s.avg}` : "";
+            text += `${medal} ${escMd(s.name)}\n`;
+            text += `   ${bar} ${s.submitted}/${s.total} (${s.pct}%)${avgStr}\n`;
+            if (s.missing > 0) text += `   ❌ Qarzdor: ${s.missing} ta\n`;
+            text += `\n`;
+          }
+
+          const totalSubmitted = studentStats.reduce((a, b) => a + b.submitted, 0);
+          const totalPossible = studentStats.reduce((a, b) => a + b.total, 0);
+          const overallPct = totalPossible > 0 ? Math.round((totalSubmitted / totalPossible) * 100) : 0;
+          text += `━━━━━━━━━━━━━━━\n`;
+          text += `📈 Umumiy bajarilish: ${overallPct}%\n`;
+          text += `👥 O'quvchilar: ${members.length} ta\n`;
+          const perfect = studentStats.filter(s => s.pct === 100).length;
+          if (perfect > 0) text += `⭐ 100% bajargan: ${perfect} ta\n`;
+          const zeroStudents = studentStats.filter(s => s.pct === 0).length;
+          if (zeroStudents > 0) text += `⚠️ 0% bajargan: ${zeroStudents} ta\n`;
         }
 
-        text += `\n⚠️ *Top 5 qarzdor:*\n`;
-        const bottom = [...ranked].reverse().slice(0, 5);
-        for (const s of bottom) {
-          text += `  ${s.name} — ${s.pct}% (o'rtacha: ${s.avg})\n`;
-        }
-
-        await bot.sendMessage(targetChat, text, { parse_mode: "Markdown" });
-        res.json({ success: true, message: "Haftalik hisobot yuborildi" });
+        await sendLongMessage(text);
+        res.json({ success: true, message: `${periodLabel} hisobot yuborildi` });
       }
     } catch (error) {
       console.error("Telegram notify error:", error);

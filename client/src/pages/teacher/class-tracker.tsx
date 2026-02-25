@@ -75,7 +75,7 @@ export default function ClassTracker() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [activeTab, setActiveTab] = useState("tracker");
   const [telegramOpen, setTelegramOpen] = useState(false);
-  const [telegramType, setTelegramType] = useState<"today_task" | "debtors" | "weekly_report">("today_task");
+  const [telegramType, setTelegramType] = useState<"today_task" | "debtors" | "weekly_report" | "monthly_report" | "lesson_report">("today_task");
   const [selectedChatId, setSelectedChatId] = useState("");
 
   const [lessonDialogOpen, setLessonDialogOpen] = useState(false);
@@ -411,7 +411,7 @@ export default function ClassTracker() {
   const totalDebtorTasks = debtors?.length || 0;
   const uniqueDebtorStudents = groupedDebtors.length;
 
-  const openTelegramDialog = (type: "today_task" | "debtors" | "weekly_report") => {
+  const openTelegramDialog = (type: "today_task" | "debtors" | "weekly_report" | "monthly_report" | "lesson_report") => {
     setTelegramType(type);
     setSelectedChatId("");
     setTelegramOpen(true);
@@ -422,7 +422,11 @@ export default function ClassTracker() {
       toast({ title: "Chat tanlang", variant: "destructive" });
       return;
     }
-    telegramNotifyMutation.mutate({ chatId: selectedChatId, type: telegramType });
+    const payload: any = { chatId: selectedChatId, type: telegramType };
+    if (telegramType === "lesson_report" && selectedLesson) {
+      payload.lessonId = selectedLesson.id;
+    }
+    telegramNotifyMutation.mutate(payload);
   };
 
   const editStudentName = members.find((m) => m.userId === editStudentId)?.userName || "O'quvchi";
@@ -493,15 +497,25 @@ export default function ClassTracker() {
             <div className="flex items-center gap-2 flex-wrap">
               <Button variant="outline" size="sm" onClick={() => openTelegramDialog("today_task")} data-testid="button-telegram-today">
                 <CalendarCheck className="w-4 h-4 mr-1.5" />
-                Bugungi vazifa
+                Bugungi
               </Button>
+              {selectedLesson && (
+                <Button variant="outline" size="sm" onClick={() => openTelegramDialog("lesson_report")} data-testid="button-telegram-lesson">
+                  <FileText className="w-4 h-4 mr-1.5" />
+                  Dars {selectedLesson.lessonNo}
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={() => openTelegramDialog("debtors")} data-testid="button-telegram-debtors">
-                <FileText className="w-4 h-4 mr-1.5" />
+                <AlertTriangle className="w-4 h-4 mr-1.5" />
                 Qarzdorlar
               </Button>
               <Button variant="outline" size="sm" onClick={() => openTelegramDialog("weekly_report")} data-testid="button-telegram-weekly">
                 <BarChart3 className="w-4 h-4 mr-1.5" />
-                Haftalik hisobot
+                Haftalik
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => openTelegramDialog("monthly_report")} data-testid="button-telegram-monthly">
+                <BarChart3 className="w-4 h-4 mr-1.5" />
+                Oylik
               </Button>
             </div>
           )}
@@ -751,8 +765,10 @@ export default function ClassTracker() {
               <div className="flex items-center gap-2">
                 <Send className="w-5 h-5" />
                 {telegramType === "today_task" && "Bugungi vazifani yuborish"}
+                {telegramType === "lesson_report" && `Dars ${selectedLesson?.lessonNo || ""} hisobotini yuborish`}
                 {telegramType === "debtors" && "Qarzdorlar ro'yxatini yuborish"}
                 {telegramType === "weekly_report" && "Haftalik hisobotni yuborish"}
+                {telegramType === "monthly_report" && "Oylik hisobotni yuborish"}
               </div>
             </DialogTitle>
           </DialogHeader>
