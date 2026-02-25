@@ -1,14 +1,22 @@
-import OpenAI, { toFile } from "openai";
+import OpenAI from "openai";
+import fs from "fs";
+import path from "path";
+import os from "os";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function transcribeAudio(audioBuffer: Buffer, filename: string = "audio.oga"): Promise<string> {
-  const file = await toFile(audioBuffer, filename);
-  const transcription = await openai.audio.transcriptions.create({
-    file,
-    model: "whisper-1",
-  });
-  return transcription.text;
+  const tmpPath = path.join(os.tmpdir(), `whisper_${Date.now()}_${filename}`);
+  fs.writeFileSync(tmpPath, audioBuffer);
+  try {
+    const transcription = await openai.audio.transcriptions.create({
+      file: fs.createReadStream(tmpPath),
+      model: "whisper-1",
+    });
+    return transcription.text;
+  } finally {
+    fs.unlinkSync(tmpPath);
+  }
 }
 
 export async function evaluateSubmission({
