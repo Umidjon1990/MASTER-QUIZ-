@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import FormData from "form-data";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -19,20 +20,22 @@ export async function transcribeAudio(audioBuffer: Buffer, filename: string = "a
   const ext = filename.split(".").pop()?.toLowerCase() || "ogg";
   const mimeType = MIME_MAP[ext] || "audio/ogg";
 
-  const formData = new FormData();
-  const blob = new Blob([audioBuffer], { type: mimeType });
-  formData.append("file", blob, filename);
-  formData.append("model", "whisper-1");
+  const form = new FormData();
+  form.append("file", audioBuffer, {
+    filename,
+    contentType: mimeType,
+  });
+  form.append("model", "whisper-1");
 
   const apiKey = process.env.OPENAI_API_KEY;
-  const baseUrl = openai.baseURL || "https://api.openai.com/v1";
 
-  const response = await fetch(`${baseUrl}/audio/transcriptions`, {
+  const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
+      ...form.getHeaders(),
     },
-    body: formData,
+    body: form.getBuffer(),
   });
 
   if (!response.ok) {
@@ -42,6 +45,7 @@ export async function transcribeAudio(audioBuffer: Buffer, filename: string = "a
   }
 
   const result = await response.json() as { text: string };
+  console.log(`[AI-SERVICE] Whisper transcription success: ${result.text.substring(0, 80)}...`);
   return result.text;
 }
 
