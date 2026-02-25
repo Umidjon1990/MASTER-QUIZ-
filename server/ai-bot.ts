@@ -140,13 +140,7 @@ async function sendNextTask(bot: TelegramBot, chatId: string, session: any, stor
 
   const task = tasks[session.currentTaskIndex];
   let message = `📝 ${session.currentTaskIndex + 1}-vazifa: ${task.title}\n\n`;
-  if (task.referenceText) {
-    message += `📖 Matn:\n${task.referenceText}\n\n`;
-  }
-  if (task.prompt) {
-    message += `💡 Ko'rsatma: ${task.prompt}\n\n`;
-  }
-  message += `🎤 Javobingizni audio (voice message) shaklida yuboring.`;
+  message += `🎤 Shu bo'lim bo'yicha vazifani audio (voice message) shaklida yuboring.`;
 
   await bot.sendMessage(Number(chatId), message);
 }
