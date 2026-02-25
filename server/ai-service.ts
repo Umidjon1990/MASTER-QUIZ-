@@ -33,6 +33,7 @@ export async function transcribeAudio(audioBuffer: Buffer, filename: string = "a
     const response = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tmpFile),
       model: "whisper-1",
+      language: "ar",
     });
 
     console.log(`[AI-SERVICE] Whisper transcription success: ${response.text?.substring(0, 80)}...`);
@@ -57,6 +58,11 @@ export async function evaluateSubmission({
   instructions?: string;
 }): Promise<{ score: number; feedback: string }> {
   const systemMessage = `Sen tajribali arab tili o'qituvchisissan. O'quvchining javobini baholab, 1 dan 10 gacha baho ber va qisqa feedback yoz.
+
+MUHIM QOIDALAR:
+- Izohni faqat o'zbek tilida (lotin yozuvida) yoz
+- Arab so'zlarini va iboralarini arab alifbosida (عربي) keltir
+- Masalan: "O'quvchi «الكتابُ» so'zini to'g'ri talaffuz qildi"
 ${instructions ? `\nQo'shimcha ko'rsatma: ${instructions}` : ""}
 ${prompt ? `\nVazifa ko'rsatmasi: ${prompt}` : ""}
 
