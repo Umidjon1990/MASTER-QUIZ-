@@ -11,6 +11,7 @@ import * as XLSX from "xlsx";
 import bcrypt from "bcryptjs";
 import { fisherYatesShuffle, balancedShuffleOptions } from "./shuffle";
 import { generateQuizPDF, generateQuizDOCX } from "./quiz-export";
+import { startAiBot, stopAiBot, activeBots } from "./ai-bot";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -3750,6 +3751,284 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Telegram notify error:", error);
       res.status(500).json({ message: "Telegram xabar yuborishda xatolik" });
+    }
+  });
+
+  // ===================== AI SINF ENDPOINTLARI =====================
+
+  app.post("/api/ai-classes", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { name, telegramBotToken, instructions, tasks, students } = req.body;
+      if (!name) return res.status(400).json({ message: "Sinf nomi kerak" });
+
+      if (telegramBotToken) {
+        try {
+          const TelegramBot = (await import("node-telegram-bot-api")).default;
+          const testBot = new TelegramBot(telegramBotToken);
+          await testBot.getMe();
+        } catch {
+          return res.status(400).json({ message: "Telegram bot token noto'g'ri" });
+        }
+      }
+
+      const aiClass = await storage.createAiClass({
+        name,
+        teacherId: req.userId,
+        telegramBotToken: telegramBotToken || null,
+        instructions: instructions || null,
+        status: "active",
+      });
+
+      if (tasks && Array.isArray(tasks)) {
+        for (let i = 0; i < tasks.length; i++) {
+          await storage.createAiTask({
+            aiClassId: aiClass.id,
+            title: tasks[i].title,
+            orderIndex: i,
+            prompt: tasks[i].prompt || null,
+            referenceText: tasks[i].referenceText || null,
+            type: tasks[i].type || "audio",
+          });
+        }
+      }
+
+      if (students && Array.isArray(students)) {
+        for (const s of students) {
+          if (s.name && s.phone) {
+            await storage.createAiStudent({
+              aiClassId: aiClass.id,
+              name: s.name,
+              phone: s.phone.replace(/\D/g, ""),
+              status: "active",
+            });
+          }
+        }
+      }
+
+      res.json(aiClass);
+    } catch (error) {
+      console.error("Create AI class error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/ai-classes", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const classes = await storage.getAiClasses(req.userId);
+      const result = await Promise.all(classes.map(async (c) => {
+        const students = await storage.getAiStudents(c.id);
+        const tasks = await storage.getAiTasks(c.id);
+        return { ...c, studentCount: students.length, taskCount: tasks.length };
+      }));
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/ai-classes/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const aiClass = await storage.getAiClass(req.params.id);
+      if (!aiClass) return res.status(404).json({ message: "AI sinf topilmadi" });
+      if (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const tasks = await storage.getAiTasks(aiClass.id);
+      const students = await storage.getAiStudents(aiClass.id);
+      const submissions = await storage.getAiSubmissionsByClass(aiClass.id);
+      const botActive = activeBots.has(aiClass.id);
+      res.json({ ...aiClass, tasks, students, submissions, botActive });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.patch("/api/ai-classes/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const aiClass = await storage.getAiClass(req.params.id);
+      if (!aiClass) return res.status(404).json({ message: "AI sinf topilmadi" });
+      if (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const updated = await storage.updateAiClass(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/ai-classes/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const aiClass = await storage.getAiClass(req.params.id);
+      if (!aiClass) return res.status(404).json({ message: "AI sinf topilmadi" });
+      if (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      stopAiBot(aiClass.id);
+      await storage.deleteAiClass(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/ai-classes/:id/tasks", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const aiClass = await storage.getAiClass(req.params.id);
+      if (!aiClass || (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const { title, prompt, referenceText, type } = req.body;
+      const existingTasks = await storage.getAiTasks(req.params.id);
+      const task = await storage.createAiTask({
+        aiClassId: req.params.id,
+        title: title || "Vazifa",
+        orderIndex: existingTasks.length,
+        prompt: prompt || null,
+        referenceText: referenceText || null,
+        type: type || "audio",
+      });
+      res.json(task);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.patch("/api/ai-tasks/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const updated = await storage.updateAiTask(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/ai-tasks/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      await storage.deleteAiTask(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/ai-classes/:id/students", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const aiClass = await storage.getAiClass(req.params.id);
+      if (!aiClass || (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const { name, phone } = req.body;
+      if (!name || !phone) return res.status(400).json({ message: "Ism va telefon kerak" });
+      const cleanPhone = phone.replace(/\D/g, "");
+      const existing = await storage.getAiStudentByPhone(req.params.id, cleanPhone);
+      if (existing) return res.status(400).json({ message: "Bu telefon raqam allaqachon qo'shilgan" });
+      const student = await storage.createAiStudent({
+        aiClassId: req.params.id,
+        name,
+        phone: cleanPhone,
+        status: "active",
+      });
+      res.json(student);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/ai-classes/:id/students/bulk", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const aiClass = await storage.getAiClass(req.params.id);
+      if (!aiClass || (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const { students } = req.body;
+      if (!Array.isArray(students)) return res.status(400).json({ message: "students massiv kerak" });
+      const created = [];
+      for (const s of students) {
+        if (s.name && s.phone) {
+          const cleanPhone = s.phone.replace(/\D/g, "");
+          const existing = await storage.getAiStudentByPhone(req.params.id, cleanPhone);
+          if (!existing) {
+            const student = await storage.createAiStudent({
+              aiClassId: req.params.id,
+              name: s.name,
+              phone: cleanPhone,
+              status: "active",
+            });
+            created.push(student);
+          }
+        }
+      }
+      res.json({ created: created.length });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/ai-students/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      await storage.deleteAiStudent(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/ai-classes/:id/results", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const aiClass = await storage.getAiClass(req.params.id);
+      if (!aiClass || (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const students = await storage.getAiStudents(req.params.id);
+      const tasks = await storage.getAiTasks(req.params.id);
+      const submissions = await storage.getAiSubmissionsByClass(req.params.id);
+
+      const results = students.map(student => {
+        const studentSubs = submissions.filter(s => s.aiStudentId === student.id);
+        const taskResults = tasks.map(task => {
+          const sub = studentSubs.find(s => s.aiTaskId === task.id);
+          return {
+            taskId: task.id,
+            taskTitle: task.title,
+            score: sub?.score || null,
+            status: sub?.status || "pending",
+            transcription: sub?.transcription || null,
+            aiResponse: sub?.aiResponse || null,
+            submittedAt: sub?.submittedAt || null,
+          };
+        });
+        const avgScore = taskResults.filter(t => t.score).reduce((s, t) => s + (t.score || 0), 0) / (taskResults.filter(t => t.score).length || 1);
+        return { studentId: student.id, studentName: student.name, phone: student.phone, connected: !!student.telegramChatId, taskResults, avgScore: Math.round(avgScore * 10) / 10 };
+      });
+      res.json({ tasks, results });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Bot start/stop
+  app.post("/api/ai-classes/:id/bot/start", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const aiClass = await storage.getAiClass(req.params.id);
+      if (!aiClass || (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      if (!aiClass.telegramBotToken) return res.status(400).json({ message: "Bot token sozlanmagan" });
+      await startAiBot(aiClass.id, aiClass.telegramBotToken, storage);
+      res.json({ success: true, message: "Bot ishga tushdi" });
+    } catch (error: any) {
+      console.error("Bot start error:", error);
+      res.status(500).json({ message: error.message || "Bot ishga tushmadi" });
+    }
+  });
+
+  app.post("/api/ai-classes/:id/bot/stop", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      stopAiBot(req.params.id);
+      res.json({ success: true, message: "Bot to'xtatildi" });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
     }
   });
 

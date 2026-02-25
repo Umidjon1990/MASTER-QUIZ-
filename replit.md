@@ -36,6 +36,8 @@ Preferred communication style: Simple, everyday language.
 - `/teacher/assignments` — Assignment management (create/delete/view attempts/CSV export)
 - `/teacher/classes` — Class management (create/delete/view members/join codes, 3-step wizard with schedule & task columns)
 - `/teacher/classes/:id/tracker` — Task tracker (student × task grid, status/score editing, debtors panel, Telegram notifications)
+- `/teacher/ai-classes` — AI nazorat sinflari (yaratish wizard, ro'yxat, boshqaruv)
+- `/teacher/ai-classes/:id` — AI sinf detail (natijalar jadvali, o'quvchilar, vazifalar, bot start/stop)
 - `/teacher/question-bank` — Question bank (add/copy from quiz/copy to quiz)
 - `/student/*` — Student pages (join quiz, view results, assignments, classes)
 - `/student/assignments` — Student assignment list and self-paced quiz solving
@@ -84,6 +86,10 @@ Preferred communication style: Simple, everyday language.
   - `question_bank` — Reusable question bank with category/tags
   - `quiz_likes` — Quiz like tracking (quizId, userId)
   - `live_lessons` — Live lesson sessions with lessonType (pdf/voice), title, pdfUrl (nullable for voice), teacher, status, code, requireCode
+  - `ai_classes` — AI nazorat sinflari (name, teacherId, telegramBotToken, instructions, status)
+  - `ai_class_tasks` — AI sinf vazifalari (title, orderIndex, prompt, referenceText, type: audio/text)
+  - `ai_students` — AI sinf o'quvchilari (name, phone, telegramChatId — bot orqali ulanadi)
+  - `ai_submissions` — O'quvchi topshiriqlari (audioFileId, transcription via Whisper, aiResponse via GPT-4, score 1-10, status)
 
 ### Storage Layer
 - `server/storage.ts` defines an `IStorage` interface with a concrete implementation using Drizzle queries

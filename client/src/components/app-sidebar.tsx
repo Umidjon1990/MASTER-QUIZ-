@@ -15,7 +15,7 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Zap, LayoutDashboard, BookOpen, Users, Trophy, Settings, LogOut, Play, Upload, Send, ClipboardList, GraduationCap, Library, Search, Bot, Presentation } from "lucide-react";
+import { Zap, LayoutDashboard, BookOpen, Users, Trophy, Settings, LogOut, Play, Upload, Send, ClipboardList, GraduationCap, Library, Search, Bot, Presentation, BrainCircuit } from "lucide-react";
 import type { UserProfile } from "@shared/schema";
 import siteLogo from "@assets/photo_2024-09-08_23-13-48-removebg-preview_1771243223962.png";
 
@@ -34,6 +34,7 @@ const teacherMenu = [
   { title: "Sinflarim", url: "/teacher/classes", icon: GraduationCap },
   { title: "Savol Banki", url: "/teacher/question-bank", icon: Library },
   { title: "Natijalar", url: "/teacher/results", icon: Trophy },
+  { title: "AI Nazorat", url: "/teacher/ai-classes", icon: BrainCircuit },
   { title: "Telegram Bot", url: "/teacher/telegram", icon: Bot },
   { title: "Discover", url: "/discover", icon: Search },
 ];

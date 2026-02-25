@@ -44,6 +44,8 @@ import ClassroomQuizPage from "@/pages/classroom";
 import QuizReplay from "@/pages/quiz-replay";
 import SharedQuizPage from "@/pages/shared-quiz";
 import JoinAssistant from "@/pages/join-assistant";
+import AiClasses from "@/pages/teacher/ai-classes";
+import AiClassDetail from "@/pages/teacher/ai-class-detail";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -169,6 +171,12 @@ function App() {
             </Route>
             <Route path="/teacher/classes/:id/tracker">
               {() => <ProtectedPage component={ClassTracker} />}
+            </Route>
+            <Route path="/teacher/ai-classes">
+              {() => <ProtectedPage component={AiClasses} />}
+            </Route>
+            <Route path="/teacher/ai-classes/:id">
+              {() => <ProtectedPage component={AiClassDetail} />}
             </Route>
             <Route path="/teacher/question-bank">
               {() => <ProtectedPage component={TeacherQuestionBank} />}

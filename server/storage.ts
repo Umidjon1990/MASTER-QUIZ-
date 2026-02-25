@@ -22,11 +22,16 @@ import {
   type LessonTask, type InsertLessonTask,
   type TaskSubmission, type InsertTaskSubmission,
   type ClassAssistant, type InsertClassAssistant,
+  type AiClass, type InsertAiClass,
+  type AiClassTask, type InsertAiClassTask,
+  type AiStudent, type InsertAiStudent,
+  type AiSubmission, type InsertAiSubmission,
   userProfiles, quizzes, questions, liveSessions,
   sessionParticipants, sessionAnswers, quizResults,
   assignments, assignmentAttempts, classes, classMembers, questionBank, quizLikes,
   liveLessons, quizCategories, quizFolders, sharedQuizzes, sharedQuizAttempts,
   classLessons, taskColumns, lessonTasks, taskSubmissions, classAssistants,
+  aiClasses, aiClassTasks, aiStudents, aiSubmissions,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, ilike, isNull, or, inArray, lte } from "drizzle-orm";
@@ -164,6 +169,29 @@ export interface IStorage {
   updateClassAssistant(id: string, data: Partial<InsertClassAssistant>): Promise<ClassAssistant | undefined>;
   deleteClassAssistant(id: string): Promise<void>;
   getAssistantClasses(userId: string): Promise<ClassAssistant[]>;
+
+  createAiClass(data: InsertAiClass): Promise<AiClass>;
+  getAiClasses(teacherId: string): Promise<AiClass[]>;
+  getAiClass(id: string): Promise<AiClass | undefined>;
+  updateAiClass(id: string, data: Partial<InsertAiClass>): Promise<AiClass | undefined>;
+  deleteAiClass(id: string): Promise<void>;
+
+  createAiTask(data: InsertAiClassTask): Promise<AiClassTask>;
+  getAiTasks(aiClassId: string): Promise<AiClassTask[]>;
+  updateAiTask(id: string, data: Partial<InsertAiClassTask>): Promise<AiClassTask | undefined>;
+  deleteAiTask(id: string): Promise<void>;
+
+  createAiStudent(data: InsertAiStudent): Promise<AiStudent>;
+  getAiStudents(aiClassId: string): Promise<AiStudent[]>;
+  getAiStudentByPhone(aiClassId: string, phone: string): Promise<AiStudent | undefined>;
+  getAiStudentByTelegramChatId(chatId: string): Promise<AiStudent | undefined>;
+  updateAiStudent(id: string, data: Partial<InsertAiStudent>): Promise<AiStudent | undefined>;
+  deleteAiStudent(id: string): Promise<void>;
+
+  createAiSubmission(data: InsertAiSubmission): Promise<AiSubmission>;
+  getAiSubmissions(aiStudentId: string): Promise<AiSubmission[]>;
+  getAiSubmissionsByClass(aiClassId: string): Promise<AiSubmission[]>;
+  updateAiSubmission(id: string, data: Partial<InsertAiSubmission>): Promise<AiSubmission | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -807,6 +835,103 @@ export class DatabaseStorage implements IStorage {
   async getAssistantClasses(userId: string): Promise<ClassAssistant[]> {
     return db.select().from(classAssistants)
       .where(and(eq(classAssistants.userId, userId), eq(classAssistants.status, "active")));
+  }
+
+  async createAiClass(data: InsertAiClass): Promise<AiClass> {
+    const [created] = await db.insert(aiClasses).values(data as any).returning();
+    return created;
+  }
+
+  async getAiClasses(teacherId: string): Promise<AiClass[]> {
+    return db.select().from(aiClasses).where(eq(aiClasses.teacherId, teacherId)).orderBy(desc(aiClasses.createdAt));
+  }
+
+  async getAiClass(id: string): Promise<AiClass | undefined> {
+    const [found] = await db.select().from(aiClasses).where(eq(aiClasses.id, id));
+    return found;
+  }
+
+  async updateAiClass(id: string, data: Partial<InsertAiClass>): Promise<AiClass | undefined> {
+    const [updated] = await db.update(aiClasses).set(data as any).where(eq(aiClasses.id, id)).returning();
+    return updated;
+  }
+
+  async deleteAiClass(id: string): Promise<void> {
+    await db.delete(aiSubmissions).where(
+      inArray(aiSubmissions.aiStudentId, db.select({ id: aiStudents.id }).from(aiStudents).where(eq(aiStudents.aiClassId, id)))
+    );
+    await db.delete(aiStudents).where(eq(aiStudents.aiClassId, id));
+    await db.delete(aiClassTasks).where(eq(aiClassTasks.aiClassId, id));
+    await db.delete(aiClasses).where(eq(aiClasses.id, id));
+  }
+
+  async createAiTask(data: InsertAiClassTask): Promise<AiClassTask> {
+    const [created] = await db.insert(aiClassTasks).values(data as any).returning();
+    return created;
+  }
+
+  async getAiTasks(aiClassId: string): Promise<AiClassTask[]> {
+    return db.select().from(aiClassTasks).where(eq(aiClassTasks.aiClassId, aiClassId)).orderBy(aiClassTasks.orderIndex);
+  }
+
+  async updateAiTask(id: string, data: Partial<InsertAiClassTask>): Promise<AiClassTask | undefined> {
+    const [updated] = await db.update(aiClassTasks).set(data as any).where(eq(aiClassTasks.id, id)).returning();
+    return updated;
+  }
+
+  async deleteAiTask(id: string): Promise<void> {
+    await db.delete(aiSubmissions).where(eq(aiSubmissions.aiTaskId, id));
+    await db.delete(aiClassTasks).where(eq(aiClassTasks.id, id));
+  }
+
+  async createAiStudent(data: InsertAiStudent): Promise<AiStudent> {
+    const [created] = await db.insert(aiStudents).values(data as any).returning();
+    return created;
+  }
+
+  async getAiStudents(aiClassId: string): Promise<AiStudent[]> {
+    return db.select().from(aiStudents).where(eq(aiStudents.aiClassId, aiClassId)).orderBy(aiStudents.createdAt);
+  }
+
+  async getAiStudentByPhone(aiClassId: string, phone: string): Promise<AiStudent | undefined> {
+    const [found] = await db.select().from(aiStudents)
+      .where(and(eq(aiStudents.aiClassId, aiClassId), eq(aiStudents.phone, phone)));
+    return found;
+  }
+
+  async getAiStudentByTelegramChatId(chatId: string): Promise<AiStudent | undefined> {
+    const [found] = await db.select().from(aiStudents).where(eq(aiStudents.telegramChatId, chatId));
+    return found;
+  }
+
+  async updateAiStudent(id: string, data: Partial<InsertAiStudent>): Promise<AiStudent | undefined> {
+    const [updated] = await db.update(aiStudents).set(data as any).where(eq(aiStudents.id, id)).returning();
+    return updated;
+  }
+
+  async deleteAiStudent(id: string): Promise<void> {
+    await db.delete(aiSubmissions).where(eq(aiSubmissions.aiStudentId, id));
+    await db.delete(aiStudents).where(eq(aiStudents.id, id));
+  }
+
+  async createAiSubmission(data: InsertAiSubmission): Promise<AiSubmission> {
+    const [created] = await db.insert(aiSubmissions).values(data as any).returning();
+    return created;
+  }
+
+  async getAiSubmissions(aiStudentId: string): Promise<AiSubmission[]> {
+    return db.select().from(aiSubmissions).where(eq(aiSubmissions.aiStudentId, aiStudentId)).orderBy(desc(aiSubmissions.submittedAt));
+  }
+
+  async getAiSubmissionsByClass(aiClassId: string): Promise<AiSubmission[]> {
+    return db.select().from(aiSubmissions)
+      .where(inArray(aiSubmissions.aiStudentId, db.select({ id: aiStudents.id }).from(aiStudents).where(eq(aiStudents.aiClassId, aiClassId))))
+      .orderBy(desc(aiSubmissions.submittedAt));
+  }
+
+  async updateAiSubmission(id: string, data: Partial<InsertAiSubmission>): Promise<AiSubmission | undefined> {
+    const [updated] = await db.update(aiSubmissions).set(data as any).where(eq(aiSubmissions.id, id)).returning();
+    return updated;
   }
 }
 

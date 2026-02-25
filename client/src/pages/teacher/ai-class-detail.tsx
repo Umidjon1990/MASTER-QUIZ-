@@ -1,0 +1,364 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useRoute, Link } from "wouter";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { ArrowLeft, Plus, Trash2, Power, PowerOff, Users, ListChecks, Settings, BarChart3, X, Phone, Wifi, WifiOff } from "lucide-react";
+import { motion } from "framer-motion";
+
+export default function AiClassDetail() {
+  const [, params] = useRoute("/teacher/ai-classes/:id");
+  const classId = params?.id;
+  const { toast } = useToast();
+
+  const [addStudentOpen, setAddStudentOpen] = useState(false);
+  const [newStudentName, setNewStudentName] = useState("");
+  const [newStudentPhone, setNewStudentPhone] = useState("");
+  const [addTaskOpen, setAddTaskOpen] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskPrompt, setNewTaskPrompt] = useState("");
+  const [newTaskRef, setNewTaskRef] = useState("");
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [selectedDetail, setSelectedDetail] = useState<any>(null);
+
+  const { data: aiClass, isLoading } = useQuery<any>({
+    queryKey: ["/api/ai-classes", classId],
+    enabled: !!classId,
+  });
+
+  const { data: results } = useQuery<any>({
+    queryKey: ["/api/ai-classes", classId, "results"],
+    enabled: !!classId,
+  });
+
+  const botStartMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/ai-classes/${classId}/bot/start`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
+      toast({ title: "Bot ishga tushdi!" });
+    },
+    onError: (err: any) => toast({ title: "Xatolik", description: err.message, variant: "destructive" }),
+  });
+
+  const botStopMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/ai-classes/${classId}/bot/stop`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
+      toast({ title: "Bot to'xtatildi" });
+    },
+  });
+
+  const addStudentMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/ai-classes/${classId}/students`, { name: newStudentName, phone: newStudentPhone });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId, "results"] });
+      setAddStudentOpen(false);
+      setNewStudentName("");
+      setNewStudentPhone("");
+      toast({ title: "O'quvchi qo'shildi" });
+    },
+    onError: (err: any) => toast({ title: "Xatolik", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteStudentMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/ai-students/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId, "results"] });
+    },
+  });
+
+  const addTaskMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/ai-classes/${classId}/tasks`, {
+        title: newTaskTitle,
+        prompt: newTaskPrompt,
+        referenceText: newTaskRef,
+        type: "audio",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId, "results"] });
+      setAddTaskOpen(false);
+      setNewTaskTitle("");
+      setNewTaskPrompt("");
+      setNewTaskRef("");
+      toast({ title: "Vazifa qo'shildi" });
+    },
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/ai-tasks/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId, "results"] });
+    },
+  });
+
+  if (isLoading) return <div className="p-6"><div className="h-8 bg-muted animate-pulse rounded w-48 mb-4" /></div>;
+  if (!aiClass) return <div className="p-6">AI sinf topilmadi</div>;
+
+  const scoreColor = (score: number | null) => {
+    if (!score) return "";
+    if (score >= 7) return "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300";
+    if (score >= 4) return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300";
+    return "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300";
+  };
+
+  return (
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+      <div className="flex items-center gap-3 flex-wrap">
+        <Link href="/teacher/ai-classes">
+          <Button variant="ghost" size="icon" data-testid="button-back-ai"><ArrowLeft className="w-4 h-4" /></Button>
+        </Link>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold truncate">{aiClass.name}</h1>
+          <p className="text-xs text-muted-foreground">AI nazorat sinfi</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {aiClass.botActive ? (
+            <Button variant="outline" size="sm" onClick={() => botStopMutation.mutate()} disabled={botStopMutation.isPending} className="text-red-600" data-testid="button-stop-bot">
+              <PowerOff className="w-3.5 h-3.5 mr-1" /> Bot to'xtatish
+            </Button>
+          ) : (
+            <Button size="sm" onClick={() => botStartMutation.mutate()} disabled={botStartMutation.isPending || !aiClass.telegramBotToken} className="gradient-purple border-0" data-testid="button-start-bot">
+              <Power className="w-3.5 h-3.5 mr-1" /> {botStartMutation.isPending ? "Ishga tushmoqda..." : "Bot ishga tushirish"}
+            </Button>
+          )}
+          <Badge variant={aiClass.botActive ? "default" : "secondary"} className={aiClass.botActive ? "bg-green-500" : ""}>
+            {aiClass.botActive ? "Bot faol" : "Bot o'chiq"}
+          </Badge>
+        </div>
+      </div>
+
+      <Tabs defaultValue="results">
+        <TabsList className="grid w-full grid-cols-4 sm:w-auto sm:inline-grid" data-testid="ai-class-tabs">
+          <TabsTrigger value="results"><BarChart3 className="w-3.5 h-3.5 mr-1 hidden sm:inline" />Natijalar</TabsTrigger>
+          <TabsTrigger value="students"><Users className="w-3.5 h-3.5 mr-1 hidden sm:inline" />O'quvchilar</TabsTrigger>
+          <TabsTrigger value="tasks"><ListChecks className="w-3.5 h-3.5 mr-1 hidden sm:inline" />Vazifalar</TabsTrigger>
+          <TabsTrigger value="settings"><Settings className="w-3.5 h-3.5 mr-1 hidden sm:inline" />Sozlamalar</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="results" className="mt-4">
+          {results?.results?.length > 0 ? (
+            <Card className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs sm:text-sm" data-testid="ai-results-table">
+                  <thead>
+                    <tr className="border-b bg-muted/20">
+                      <th className="text-center p-2 font-medium w-[32px] sticky left-0 bg-muted/20 z-10">№</th>
+                      <th className="text-left p-2 font-medium min-w-[120px] sticky left-[32px] bg-muted/20 z-10">O'quvchi</th>
+                      {results.tasks?.map((t: any, idx: number) => (
+                        <th key={idx} className="text-center p-2 font-medium border-l min-w-[70px]">{t.title}</th>
+                      ))}
+                      <th className="text-center p-2 font-medium border-l min-w-[60px] bg-muted/10">O'rtacha</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.results.map((r: any, idx: number) => (
+                      <tr key={r.studentId} className={`border-b ${idx % 2 ? "bg-muted/10" : ""}`}>
+                        <td className={`text-center p-2 text-xs text-muted-foreground sticky left-0 z-10 ${idx % 2 ? "bg-muted/10" : "bg-background"}`}>{idx + 1}</td>
+                        <td className={`p-2 font-medium sticky left-[32px] z-10 ${idx % 2 ? "bg-muted/10" : "bg-background"}`}>
+                          <div className="flex items-center gap-1">
+                            <span className="truncate max-w-[100px] sm:max-w-[140px]">{r.studentName}</span>
+                            {r.connected ? <Wifi className="w-3 h-3 text-green-500 flex-shrink-0" /> : <WifiOff className="w-3 h-3 text-gray-400 flex-shrink-0" />}
+                          </div>
+                        </td>
+                        {r.taskResults.map((tr: any, tIdx: number) => (
+                          <td
+                            key={tIdx}
+                            className={`text-center p-2 border-l cursor-pointer hover:opacity-80 transition-all ${scoreColor(tr.score)}`}
+                            onClick={() => { setSelectedDetail(tr); setDetailOpen(true); }}
+                            data-testid={`cell-result-${r.studentId}-${tr.taskId}`}
+                          >
+                            {tr.score ? <span className="font-semibold">{tr.score}</span> : <span className="text-muted-foreground">—</span>}
+                          </td>
+                        ))}
+                        <td className={`text-center p-2 border-l font-semibold ${scoreColor(Math.round(r.avgScore))}`}>
+                          {r.avgScore > 0 ? r.avgScore : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          ) : (
+            <Card className="p-8 text-center">
+              <p className="text-muted-foreground">Natijalar hali yo'q. O'quvchilar bot orqali vazifalarni yuborishi kerak.</p>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="students" className="mt-4">
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-sm text-muted-foreground">{aiClass.students?.length || 0} ta o'quvchi</p>
+            <Button size="sm" onClick={() => setAddStudentOpen(true)} data-testid="button-add-ai-student">
+              <Plus className="w-3.5 h-3.5 mr-1" /> O'quvchi qo'shish
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {aiClass.students?.map((s: any, idx: number) => (
+              <Card key={s.id} className="p-3 flex items-center justify-between" data-testid={`card-ai-student-${s.id}`}>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground w-5">{idx + 1}</span>
+                  <div>
+                    <span className="font-medium text-sm">{s.name}</span>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Phone className="w-3 h-3" /> {s.phone}
+                      {s.telegramChatId ? <Badge variant="outline" className="text-[10px] px-1 py-0 text-green-600">Ulangan</Badge> : <Badge variant="outline" className="text-[10px] px-1 py-0">Kutilmoqda</Badge>}
+                    </div>
+                  </div>
+                </div>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => deleteStudentMutation.mutate(s.id)} data-testid={`button-delete-student-${s.id}`}>
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="tasks" className="mt-4">
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-sm text-muted-foreground">{aiClass.tasks?.length || 0} ta vazifa</p>
+            <Button size="sm" onClick={() => setAddTaskOpen(true)} data-testid="button-add-ai-task">
+              <Plus className="w-3.5 h-3.5 mr-1" /> Vazifa qo'shish
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {aiClass.tasks?.map((t: any, idx: number) => (
+              <Card key={t.id} className="p-3" data-testid={`card-ai-task-${t.id}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-medium text-sm">{idx + 1}. {t.title}</span>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => deleteTaskMutation.mutate(t.id)}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+                {t.referenceText && <p className="text-xs text-muted-foreground line-clamp-2">📖 {t.referenceText}</p>}
+                {t.prompt && <p className="text-xs text-muted-foreground mt-1">💡 {t.prompt}</p>}
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="settings" className="mt-4">
+          <Card className="p-4 space-y-4">
+            <div>
+              <Label className="text-sm font-medium">Telegram Bot Token</Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                {aiClass.telegramBotToken ? "****" + aiClass.telegramBotToken.slice(-8) : "Sozlanmagan"}
+              </p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">AI uchun umumiy ko'rsatma</Label>
+              <p className="text-sm text-muted-foreground mt-1">{aiClass.instructions || "Ko'rsatma yo'q"}</p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium">Status</Label>
+              <p className="text-sm mt-1"><Badge variant={aiClass.status === "active" ? "default" : "secondary"}>{aiClass.status === "active" ? "Faol" : "To'xtatilgan"}</Badge></p>
+            </div>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <Dialog open={addStudentOpen} onOpenChange={setAddStudentOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>O'quvchi qo'shish</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Ism</Label>
+              <Input value={newStudentName} onChange={e => setNewStudentName(e.target.value)} placeholder="Ism familiya" data-testid="input-new-student-name" />
+            </div>
+            <div>
+              <Label>Telefon raqam</Label>
+              <Input value={newStudentPhone} onChange={e => setNewStudentPhone(e.target.value)} placeholder="998901234567" data-testid="input-new-student-phone" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => addStudentMutation.mutate()} disabled={!newStudentName || !newStudentPhone || addStudentMutation.isPending} data-testid="button-confirm-add-student">
+              {addStudentMutation.isPending ? "Qo'shilmoqda..." : "Qo'shish"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={addTaskOpen} onOpenChange={setAddTaskOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Vazifa qo'shish</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Vazifa nomi</Label>
+              <Input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Grammatika" data-testid="input-new-task-title" />
+            </div>
+            <div>
+              <Label>Mavzu matni (ixtiyoriy)</Label>
+              <Textarea value={newTaskRef} onChange={e => setNewTaskRef(e.target.value)} placeholder="O'quvchi tarjima qilishi kerak bo'lgan matn" rows={3} />
+            </div>
+            <div>
+              <Label>AI ga ko'rsatma (ixtiyoriy)</Label>
+              <Input value={newTaskPrompt} onChange={e => setNewTaskPrompt(e.target.value)} placeholder="Tarjimani tekshir va baho ber" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => addTaskMutation.mutate()} disabled={!newTaskTitle || addTaskMutation.isPending}>
+              {addTaskMutation.isPending ? "Qo'shilmoqda..." : "Qo'shish"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{selectedDetail?.taskTitle} — natija</DialogTitle></DialogHeader>
+          {selectedDetail && (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">Baho</Label>
+                <p className="text-2xl font-bold">{selectedDetail.score || "—"}<span className="text-sm font-normal text-muted-foreground">/10</span></p>
+              </div>
+              {selectedDetail.transcription && (
+                <div>
+                  <Label className="text-xs text-muted-foreground">O'quvchi javobi (transkripsiya)</Label>
+                  <p className="text-sm bg-muted/50 p-2 rounded mt-1">{selectedDetail.transcription}</p>
+                </div>
+              )}
+              {selectedDetail.aiResponse && (
+                <div>
+                  <Label className="text-xs text-muted-foreground">AI izohi</Label>
+                  <p className="text-sm bg-blue-50 dark:bg-blue-950/30 p-2 rounded mt-1">{selectedDetail.aiResponse}</p>
+                </div>
+              )}
+              {selectedDetail.status === "pending" && (
+                <p className="text-sm text-muted-foreground">Hali topshirilmagan</p>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

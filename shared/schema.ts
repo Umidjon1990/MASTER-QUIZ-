@@ -396,3 +396,63 @@ export const classAssistants = pgTable("class_assistants", {
 export const insertClassAssistantSchema = createInsertSchema(classAssistants).omit({ id: true, createdAt: true });
 export type InsertClassAssistant = z.infer<typeof insertClassAssistantSchema>;
 export type ClassAssistant = typeof classAssistants.$inferSelect;
+
+export const aiClasses = pgTable("ai_classes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  teacherId: varchar("teacher_id").notNull(),
+  telegramBotToken: varchar("telegram_bot_token", { length: 255 }),
+  instructions: text("instructions"),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAiClassSchema = createInsertSchema(aiClasses).omit({ id: true, createdAt: true });
+export type InsertAiClass = z.infer<typeof insertAiClassSchema>;
+export type AiClass = typeof aiClasses.$inferSelect;
+
+export const aiClassTasks = pgTable("ai_class_tasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  aiClassId: varchar("ai_class_id").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  orderIndex: integer("order_index").notNull().default(0),
+  prompt: text("prompt"),
+  referenceText: text("reference_text"),
+  type: varchar("type", { length: 20 }).notNull().default("audio"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAiClassTaskSchema = createInsertSchema(aiClassTasks).omit({ id: true, createdAt: true });
+export type InsertAiClassTask = z.infer<typeof insertAiClassTaskSchema>;
+export type AiClassTask = typeof aiClassTasks.$inferSelect;
+
+export const aiStudents = pgTable("ai_students", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  aiClassId: varchar("ai_class_id").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }).notNull(),
+  telegramChatId: varchar("telegram_chat_id"),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAiStudentSchema = createInsertSchema(aiStudents).omit({ id: true, createdAt: true });
+export type InsertAiStudent = z.infer<typeof insertAiStudentSchema>;
+export type AiStudent = typeof aiStudents.$inferSelect;
+
+export const aiSubmissions = pgTable("ai_submissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  aiStudentId: varchar("ai_student_id").notNull(),
+  aiTaskId: varchar("ai_task_id").notNull(),
+  audioFileId: varchar("audio_file_id"),
+  transcription: text("transcription"),
+  aiResponse: text("ai_response"),
+  score: integer("score"),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  submittedAt: timestamp("submitted_at").defaultNow(),
+  gradedAt: timestamp("graded_at"),
+});
+
+export const insertAiSubmissionSchema = createInsertSchema(aiSubmissions).omit({ id: true, submittedAt: true, gradedAt: true });
+export type InsertAiSubmission = z.infer<typeof insertAiSubmissionSchema>;
+export type AiSubmission = typeof aiSubmissions.$inferSelect;
