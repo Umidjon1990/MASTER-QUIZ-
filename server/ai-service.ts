@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import FormData from "form-data";
+import axios from "axios";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -24,29 +25,25 @@ export async function transcribeAudio(audioBuffer: Buffer, filename: string = "a
   form.append("file", audioBuffer, {
     filename,
     contentType: mimeType,
+    knownLength: audioBuffer.length,
   });
   form.append("model", "whisper-1");
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const { data } = await axios.post(
+    "https://api.openai.com/v1/audio/transcriptions",
+    form,
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        ...form.getHeaders(),
+      },
+      maxBodyLength: 50 * 1024 * 1024,
+      maxContentLength: 50 * 1024 * 1024,
+    }
+  );
 
-  const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      ...form.getHeaders(),
-    },
-    body: form.getBuffer(),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    console.error(`[AI-SERVICE] Whisper error ${response.status}: ${errorBody}`);
-    throw new Error(`Whisper API error: ${response.status} ${errorBody}`);
-  }
-
-  const result = await response.json() as { text: string };
-  console.log(`[AI-SERVICE] Whisper transcription success: ${result.text.substring(0, 80)}...`);
-  return result.text;
+  console.log(`[AI-SERVICE] Whisper transcription success: ${data.text?.substring(0, 80)}...`);
+  return data.text;
 }
 
 export async function evaluateSubmission({
