@@ -3065,7 +3065,7 @@ export async function registerRoutes(
             } else {
               doc.font(mainFont);
             }
-            doc.text(text, x, y, opts);
+            doc.text(text, x, y, { lineBreak: false, ...opts });
           };
 
           const pageW = 841.89 - 60;
@@ -3244,7 +3244,7 @@ export async function registerRoutes(
         text += `✅ Barchasi bajarilgan: ${allDone}\n`;
         text += `❌ Qarzdor: ${hasDebt}\n`;
 
-        const statusLabel = (st: string) => st === "submitted" ? "✓" : st === "missing" ? "✗" : st === "pending" ? "?" : "↻";
+        const statusLabel = (st: string) => st === "submitted" ? "+" : st === "missing" ? "-" : st === "pending" ? "?" : "R";
         const statusColor = (st: string) => st === "submitted" ? "#dcfce7" : st === "missing" ? "#fecaca" : st === "pending" ? "#fef9c3" : "#dbeafe";
 
         const pdfRows = members.map(m => {
