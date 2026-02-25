@@ -1,6 +1,9 @@
 import OpenAI from "openai";
 import FormData from "form-data";
 import axios from "axios";
+import fs from "fs";
+import path from "path";
+import os from "os";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -21,29 +24,36 @@ export async function transcribeAudio(audioBuffer: Buffer, filename: string = "a
   const ext = filename.split(".").pop()?.toLowerCase() || "ogg";
   const mimeType = MIME_MAP[ext] || "audio/ogg";
 
-  const form = new FormData();
-  form.append("file", audioBuffer, {
-    filename,
-    contentType: mimeType,
-    knownLength: audioBuffer.length,
-  });
-  form.append("model", "whisper-1");
+  const tmpFile = path.join(os.tmpdir(), `whisper_${Date.now()}.${ext}`);
+  fs.writeFileSync(tmpFile, audioBuffer);
+  console.log(`[AI-SERVICE] Temp file written: ${tmpFile}, size=${audioBuffer.length}, ext=${ext}, mime=${mimeType}`);
 
-  const { data } = await axios.post(
-    "https://api.openai.com/v1/audio/transcriptions",
-    form,
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        ...form.getHeaders(),
-      },
-      maxBodyLength: 50 * 1024 * 1024,
-      maxContentLength: 50 * 1024 * 1024,
-    }
-  );
+  try {
+    const form = new FormData();
+    form.append("file", fs.createReadStream(tmpFile), {
+      filename,
+      contentType: mimeType,
+    });
+    form.append("model", "whisper-1");
 
-  console.log(`[AI-SERVICE] Whisper transcription success: ${data.text?.substring(0, 80)}...`);
-  return data.text;
+    const { data } = await axios.post(
+      "https://api.openai.com/v1/audio/transcriptions",
+      form,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          ...form.getHeaders(),
+        },
+        maxBodyLength: 50 * 1024 * 1024,
+        maxContentLength: 50 * 1024 * 1024,
+      }
+    );
+
+    console.log(`[AI-SERVICE] Whisper transcription success: ${data.text?.substring(0, 80)}...`);
+    return data.text;
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch {}
+  }
 }
 
 export async function evaluateSubmission({
