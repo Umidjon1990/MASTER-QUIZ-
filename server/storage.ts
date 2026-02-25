@@ -172,6 +172,7 @@ export interface IStorage {
 
   createAiClass(data: InsertAiClass): Promise<AiClass>;
   getAiClasses(teacherId: string): Promise<AiClass[]>;
+  getAllActiveAiClasses(): Promise<AiClass[]>;
   getAiClass(id: string): Promise<AiClass | undefined>;
   updateAiClass(id: string, data: Partial<InsertAiClass>): Promise<AiClass | undefined>;
   deleteAiClass(id: string): Promise<void>;
@@ -844,6 +845,10 @@ export class DatabaseStorage implements IStorage {
 
   async getAiClasses(teacherId: string): Promise<AiClass[]> {
     return db.select().from(aiClasses).where(eq(aiClasses.teacherId, teacherId)).orderBy(desc(aiClasses.createdAt));
+  }
+
+  async getAllActiveAiClasses(): Promise<AiClass[]> {
+    return db.select().from(aiClasses).where(eq(aiClasses.status, "active"));
   }
 
   async getAiClass(id: string): Promise<AiClass | undefined> {

@@ -222,6 +222,27 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
   }
 }
 
+export async function restoreActiveBots(storage: IStorage) {
+  try {
+    const allClasses = await storage.getAllActiveAiClasses();
+    for (const cls of allClasses) {
+      if (cls.telegramBotToken && cls.status === "active") {
+        try {
+          await startAiBot(cls.id, cls.telegramBotToken, storage);
+          console.log(`[AI-BOT] Restored bot for class ${cls.id} (${cls.name})`);
+        } catch (err: any) {
+          console.error(`[AI-BOT] Failed to restore bot for class ${cls.id}:`, err.message);
+        }
+      }
+    }
+    if (allClasses.length > 0) {
+      console.log(`[AI-BOT] Bot restoration complete: ${activeBots.size} bots active`);
+    }
+  } catch (err) {
+    console.error("[AI-BOT] Bot restoration error:", err);
+  }
+}
+
 export function stopAiBot(aiClassId: string) {
   const bot = activeBots.get(aiClassId);
   if (bot) {

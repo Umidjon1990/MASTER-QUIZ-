@@ -77,6 +77,10 @@ process.on("uncaughtException", (err) => {
 
   await registerRoutes(httpServer, app);
 
+  const { restoreActiveBots } = await import("./ai-bot");
+  const { storage } = await import("./storage");
+  restoreActiveBots(storage).catch(err => console.error("[AI-BOT] Restore failed:", err));
+
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
