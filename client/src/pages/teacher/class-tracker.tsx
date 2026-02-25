@@ -26,7 +26,7 @@ interface ClassMemberInfo {
 }
 
 interface TrackerData {
-  members: ClassMemberInfo[];
+  students: ClassMemberInfo[];
   lessons: ClassLesson[];
   taskColumns: TaskColumn[];
   lessonTasks: LessonTask[];
@@ -127,7 +127,7 @@ export default function ClassTracker() {
     },
   });
 
-  const members = tracker?.members || [];
+  const members = tracker?.students || [];
   const lessons = tracker?.lessons || [];
   const taskColumnsData = tracker?.taskColumns || [];
   const lessonTasksData = tracker?.lessonTasks || [];

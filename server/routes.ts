@@ -2183,7 +2183,9 @@ export async function registerRoutes(
       const membersWithProfiles = await Promise.all(
         members.map(async (m) => {
           const profile = await storage.getUserProfile(m.userId);
-          return { ...m, displayName: profile?.displayName || "Unknown" };
+          const user = await authStorage.getUser(m.userId);
+          const name = profile?.displayName || user?.name || "Unknown";
+          return { ...m, displayName: name, userName: name };
         })
       );
       res.json(membersWithProfiles);
@@ -2786,7 +2788,7 @@ export async function registerRoutes(
       const cls = await storage.getClass(req.params.id);
       if (!cls) return res.status(404).json({ message: "Class not found" });
 
-      const [members, lessons, taskColumnsData, lessonTasksData, submissionsData] = await Promise.all([
+      const [members, lessons, taskColumnsData, existingLessonTasks, submissionsData] = await Promise.all([
         storage.getClassMembers(req.params.id),
         storage.getLessonsByClass(req.params.id),
         storage.getTaskColumnsByClass(req.params.id),
@@ -2794,10 +2796,28 @@ export async function registerRoutes(
         storage.getSubmissionsByClass(req.params.id),
       ]);
 
+      let lessonTasksData = existingLessonTasks;
+      if (lessonTasksData.length === 0 && lessons.length > 0 && taskColumnsData.length > 0) {
+        const created: any[] = [];
+        for (const lesson of lessons) {
+          for (const col of taskColumnsData) {
+            const lt = await storage.createLessonTask({
+              lessonId: lesson.id,
+              taskColumnId: col.id,
+              dueDate: lesson.date || null,
+            } as any);
+            created.push(lt);
+          }
+        }
+        lessonTasksData = created;
+      }
+
       const membersWithProfiles = await Promise.all(
         members.map(async (m) => {
           const profile = await storage.getUserProfile(m.userId);
-          return { ...m, displayName: profile?.displayName || "Unknown" };
+          const user = await authStorage.getUser(m.userId);
+          const name = profile?.displayName || user?.name || "Unknown";
+          return { ...m, displayName: name, userName: name };
         })
       );
 

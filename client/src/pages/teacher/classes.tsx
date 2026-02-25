@@ -568,7 +568,7 @@ export default function TeacherClasses() {
                     <Card key={m.id} className="p-3" data-testid={`card-member-${m.id}`}>
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <div>
-                          <p className="font-medium text-sm" data-testid={`text-member-name-${m.id}`}>{m.userName || "Foydalanuvchi"}</p>
+                          <p className="font-medium text-sm" data-testid={`text-member-name-${m.id}`}>{(m as any).displayName || m.userName || "Foydalanuvchi"}</p>
                           {m.joinedAt && (
                             <p className="text-xs text-muted-foreground">
                               {new Date(m.joinedAt).toLocaleDateString("uz-UZ")}
