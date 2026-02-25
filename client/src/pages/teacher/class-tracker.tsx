@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ArrowLeft, Users, BookOpen, CheckCircle2, Clock, XCircle, RotateCcw, Filter, AlertTriangle, Send, CalendarCheck, FileText, BarChart3 } from "lucide-react";
+import { ArrowLeft, Users, BookOpen, CheckCircle2, Clock, XCircle, RotateCcw, AlertTriangle, Send, CalendarCheck, FileText, BarChart3, ChevronRight, Calendar } from "lucide-react";
 import { Link } from "wouter";
 import type { Class, ClassLesson, TaskColumn, LessonTask, TaskSubmission, UserProfile, TelegramChat } from "@shared/schema";
 
@@ -62,6 +62,7 @@ export default function ClassTracker() {
   const classId = params?.id;
   const { toast } = useToast();
 
+  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editStudentId, setEditStudentId] = useState("");
   const [editLessonTaskId, setEditLessonTaskId] = useState("");
@@ -70,7 +71,6 @@ export default function ClassTracker() {
   const [editFeedback, setEditFeedback] = useState("");
   const [editSubmissionId, setEditSubmissionId] = useState<string | null>(null);
 
-  const [filterLesson, setFilterLesson] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [activeTab, setActiveTab] = useState("tracker");
   const [telegramOpen, setTelegramOpen] = useState(false);
@@ -137,11 +137,6 @@ export default function ClassTracker() {
     return [...lessons].sort((a, b) => (a.lessonNo || 0) - (b.lessonNo || 0));
   }, [lessons]);
 
-  const filteredLessons = useMemo(() => {
-    if (filterLesson === "all") return sortedLessons;
-    return sortedLessons.filter((l) => l.id === filterLesson);
-  }, [sortedLessons, filterLesson]);
-
   const lessonTaskMap = useMemo(() => {
     const map: Record<string, LessonTask[]> = {};
     for (const lt of lessonTasksData) {
@@ -170,56 +165,60 @@ export default function ClassTracker() {
     return submissionMap[`${studentId}_${lessonTaskId}`];
   };
 
-  const allLessonTasksForDisplay = useMemo(() => {
-    const result: { lesson: ClassLesson; tasks: LessonTask[] }[] = [];
-    for (const lesson of filteredLessons) {
-      const tasks = lessonTaskMap[lesson.id] || [];
-      if (tasks.length > 0) {
-        result.push({ lesson, tasks });
-      }
-    }
-    return result;
-  }, [filteredLessons, lessonTaskMap]);
+  const selectedLesson = useMemo(() => {
+    return sortedLessons.find(l => l.id === selectedLessonId) || null;
+  }, [sortedLessons, selectedLessonId]);
 
-  const flatColumns = useMemo(() => {
-    const cols: { lessonTaskId: string; lessonNo: number; colTitle: string }[] = [];
-    for (const group of allLessonTasksForDisplay) {
-      for (const task of group.tasks) {
-        const col = taskColumnsData.find((c) => c.id === task.taskColumnId);
-        cols.push({
-          lessonTaskId: task.id,
-          lessonNo: group.lesson.lessonNo,
-          colTitle: col?.title || "?",
-        });
-      }
-    }
-    return cols;
-  }, [allLessonTasksForDisplay, taskColumnsData]);
+  const selectedLessonTasks = useMemo(() => {
+    if (!selectedLessonId) return [];
+    return lessonTaskMap[selectedLessonId] || [];
+  }, [selectedLessonId, lessonTaskMap]);
+
+  const selectedLessonColumns = useMemo(() => {
+    return selectedLessonTasks.map(task => {
+      const col = taskColumnsData.find(c => c.id === task.taskColumnId);
+      return { lessonTaskId: task.id, colTitle: col?.title || "?" };
+    });
+  }, [selectedLessonTasks, taskColumnsData]);
 
   const filteredMembers = useMemo(() => {
     if (filterStatus === "all") return members;
     return members.filter((m) => {
-      return flatColumns.some((col) => {
+      return selectedLessonColumns.some((col) => {
         const sub = getSubmission(m.userId, col.lessonTaskId);
         const status = sub?.status || "pending";
         return status === filterStatus;
       });
     });
-  }, [members, filterStatus, flatColumns, submissionMap]);
+  }, [members, filterStatus, selectedLessonColumns, submissionMap]);
+
+  const getLessonProgress = (lessonId: string) => {
+    const tasks = lessonTaskMap[lessonId] || [];
+    if (tasks.length === 0 || members.length === 0) return { submitted: 0, total: 0, percent: 0 };
+    let submitted = 0;
+    let total = tasks.length * members.length;
+    for (const m of members) {
+      for (const t of tasks) {
+        const sub = getSubmission(m.userId, t.id);
+        if (sub?.status === "submitted") submitted++;
+      }
+    }
+    return { submitted, total, percent: total > 0 ? Math.round((submitted / total) * 100) : 0 };
+  };
 
   const overallProgress = useMemo(() => {
-    if (members.length === 0 || flatColumns.length === 0) return 0;
+    if (members.length === 0 || lessonTasksData.length === 0) return 0;
     let submitted = 0;
     let total = 0;
     for (const m of members) {
-      for (const col of flatColumns) {
+      for (const lt of lessonTasksData) {
         total++;
-        const sub = getSubmission(m.userId, col.lessonTaskId);
+        const sub = getSubmission(m.userId, lt.id);
         if (sub?.status === "submitted") submitted++;
       }
     }
     return total > 0 ? Math.round((submitted / total) * 100) : 0;
-  }, [members, flatColumns, submissionMap]);
+  }, [members, lessonTasksData, submissionMap]);
 
   const openEditModal = (studentId: string, lessonTaskId: string) => {
     const existing = getSubmission(studentId, lessonTaskId);
@@ -357,117 +356,143 @@ export default function ClassTracker() {
         </div>
 
         <TabsContent value="tracker" className="mt-4 space-y-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-muted-foreground" />
-              <Select value={filterLesson} onValueChange={setFilterLesson}>
-                <SelectTrigger className="w-[180px]" data-testid="select-filter-lesson">
-                  <SelectValue placeholder="Dars bo'yicha" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Barcha darslar</SelectItem>
-                  {sortedLessons.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      Dars {l.lessonNo}{l.title ? `: ${l.title}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[180px]" data-testid="select-filter-status">
-                <SelectValue placeholder="Status bo'yicha" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Barcha statuslar</SelectItem>
-                <SelectItem value="submitted">Topshirildi</SelectItem>
-                <SelectItem value="pending">Kutilmoqda</SelectItem>
-                <SelectItem value="missing">Topshirilmadi</SelectItem>
-                <SelectItem value="rework">Qayta ishlash</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {flatColumns.length === 0 ? (
+          {sortedLessons.length === 0 ? (
             <Card className="p-12 text-center">
               <p className="text-muted-foreground" data-testid="text-no-data">
-                Darslar yoki vazifa ustunlari topilmadi. Avval darslar va vazifa ustunlarini yarating.
+                Darslar topilmadi. Avval darslar va vazifa ustunlarini yarating.
               </p>
             </Card>
           ) : (
-            <div className="border rounded-md overflow-x-auto" data-testid="tracker-table-container">
-              <table className="w-full text-sm" data-testid="tracker-table">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="text-left p-3 font-medium sticky left-0 bg-muted/50 z-10 min-w-[140px]" data-testid="th-student-name">
-                      O'quvchi
-                    </th>
-                    {allLessonTasksForDisplay.map((group) => (
-                      <th
-                        key={group.lesson.id}
-                        colSpan={group.tasks.length}
-                        className="text-center p-2 font-medium border-l"
-                        data-testid={`th-lesson-${group.lesson.id}`}
-                      >
-                        <div className="text-xs text-muted-foreground">Dars {group.lesson.lessonNo}</div>
-                        {group.lesson.title && (
-                          <div className="text-xs truncate max-w-[120px]">{group.lesson.title}</div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2" data-testid="lesson-grid">
+                {sortedLessons.map((lesson) => {
+                  const prog = getLessonProgress(lesson.id);
+                  const isActive = selectedLessonId === lesson.id;
+                  return (
+                    <Card
+                      key={lesson.id}
+                      className={`p-3 cursor-pointer transition-all hover:shadow-md ${isActive ? "ring-2 ring-primary bg-primary/5 dark:bg-primary/10" : "hover:bg-muted/50"}`}
+                      onClick={() => setSelectedLessonId(isActive ? null : lesson.id)}
+                      data-testid={`card-lesson-${lesson.lessonNo}`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`text-sm font-semibold ${isActive ? "text-primary" : ""}`}>
+                          Dars {lesson.lessonNo}
+                        </span>
+                        <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isActive ? "rotate-90" : ""}`} />
+                      </div>
+                      {lesson.date && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+                          <Calendar className="w-3 h-3" />
+                          {new Date(lesson.date).toLocaleDateString("uz-UZ", { day: "2-digit", month: "short" })}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1.5">
+                        <Progress value={prog.percent} className="h-1.5 flex-1" />
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">{prog.submitted}/{prog.total}</span>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+
+              {selectedLesson && selectedLessonColumns.length > 0 ? (
+                <Card className="overflow-hidden" data-testid="selected-lesson-card">
+                  <div className="p-4 border-b bg-muted/30">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <h3 className="font-semibold" data-testid="text-selected-lesson-title">
+                          Dars {selectedLesson.lessonNo}
+                          {selectedLesson.title && `: ${selectedLesson.title}`}
+                        </h3>
+                        {selectedLesson.date && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {new Date(selectedLesson.date).toLocaleDateString("uz-UZ", { year: "numeric", month: "long", day: "numeric" })}
+                          </p>
                         )}
-                      </th>
-                    ))}
-                  </tr>
-                  <tr className="border-b bg-muted/30">
-                    <th className="sticky left-0 bg-muted/30 z-10"></th>
-                    {flatColumns.map((col, idx) => (
-                      <th
-                        key={idx}
-                        className="text-center p-1.5 text-xs font-normal text-muted-foreground border-l min-w-[70px]"
-                        data-testid={`th-task-col-${idx}`}
-                      >
-                        {col.colTitle}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredMembers.length === 0 ? (
-                    <tr>
-                      <td colSpan={flatColumns.length + 1} className="text-center p-6 text-muted-foreground">
-                        O'quvchilar topilmadi
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredMembers.map((member, mIdx) => (
-                      <tr key={member.id} className={`border-b ${mIdx % 2 === 0 ? "" : "bg-muted/20"}`} data-testid={`row-student-${member.userId}`}>
-                        <td className={`p-3 font-medium sticky left-0 z-10 ${mIdx % 2 === 0 ? "bg-background" : "bg-muted/20"}`} data-testid={`cell-student-name-${member.userId}`}>
-                          <span className="truncate block max-w-[140px]">{member.userName || "Foydalanuvchi"}</span>
-                        </td>
-                        {flatColumns.map((col, cIdx) => {
-                          const sub = getSubmission(member.userId, col.lessonTaskId);
-                          const status = (sub?.status as SubmissionStatus) || "pending";
-                          return (
-                            <td
-                              key={cIdx}
-                              className="text-center p-1.5 border-l cursor-pointer hover-elevate"
-                              onClick={() => openEditModal(member.userId, col.lessonTaskId)}
-                              data-testid={`cell-${member.userId}-${col.lessonTaskId}`}
-                            >
-                              <div className="flex flex-col items-center gap-0.5">
-                                <StatusIcon status={status} />
-                                {sub?.score != null && (
-                                  <span className="text-xs font-medium" data-testid={`score-${member.userId}-${col.lessonTaskId}`}>
-                                    {sub.score}
-                                  </span>
-                                )}
-                              </div>
+                      </div>
+                      <Select value={filterStatus} onValueChange={setFilterStatus}>
+                        <SelectTrigger className="w-[160px]" data-testid="select-filter-status">
+                          <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Barchasi</SelectItem>
+                          <SelectItem value="submitted">Topshirildi</SelectItem>
+                          <SelectItem value="pending">Kutilmoqda</SelectItem>
+                          <SelectItem value="missing">Topshirilmadi</SelectItem>
+                          <SelectItem value="rework">Qayta ishlash</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm" data-testid="tracker-table">
+                      <thead>
+                        <tr className="border-b bg-muted/20">
+                          <th className="text-left p-3 font-medium min-w-[160px] sticky left-0 bg-muted/20 z-10" data-testid="th-student-name">
+                            O'quvchi
+                          </th>
+                          {selectedLessonColumns.map((col, idx) => (
+                            <th key={idx} className="text-center p-2.5 font-medium border-l min-w-[90px]" data-testid={`th-task-col-${idx}`}>
+                              {col.colTitle}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredMembers.length === 0 ? (
+                          <tr>
+                            <td colSpan={selectedLessonColumns.length + 1} className="text-center p-6 text-muted-foreground">
+                              O'quvchilar topilmadi
                             </td>
-                          );
-                        })}
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                          </tr>
+                        ) : (
+                          filteredMembers.map((member, mIdx) => (
+                            <tr key={member.id} className={`border-b ${mIdx % 2 === 0 ? "" : "bg-muted/10"}`} data-testid={`row-student-${member.userId}`}>
+                              <td className={`p-3 font-medium sticky left-0 z-10 ${mIdx % 2 === 0 ? "bg-background" : "bg-muted/10"}`} data-testid={`cell-student-name-${member.userId}`}>
+                                <span className="truncate block max-w-[160px]">{member.userName || "Foydalanuvchi"}</span>
+                              </td>
+                              {selectedLessonColumns.map((col, cIdx) => {
+                                const sub = getSubmission(member.userId, col.lessonTaskId);
+                                const status = (sub?.status as SubmissionStatus) || "pending";
+                                return (
+                                  <td
+                                    key={cIdx}
+                                    className="text-center p-2 border-l cursor-pointer hover:bg-muted/30 transition-colors"
+                                    onClick={() => openEditModal(member.userId, col.lessonTaskId)}
+                                    data-testid={`cell-${member.userId}-${col.lessonTaskId}`}
+                                  >
+                                    <div className="flex flex-col items-center gap-0.5">
+                                      <StatusIcon status={status} />
+                                      {sub?.score != null && (
+                                        <span className="text-xs font-medium" data-testid={`score-${member.userId}-${col.lessonTaskId}`}>
+                                          {sub.score}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              ) : selectedLesson && selectedLessonColumns.length === 0 ? (
+                <Card className="p-8 text-center">
+                  <p className="text-muted-foreground">Bu darsda vazifa ustunlari topilmadi.</p>
+                </Card>
+              ) : (
+                <Card className="p-8 text-center border-dashed">
+                  <BookOpen className="w-10 h-10 text-muted-foreground/50 mx-auto mb-3" />
+                  <p className="text-muted-foreground" data-testid="text-select-lesson">
+                    Yuqoridagi ro'yxatdan darsni tanlang
+                  </p>
+                </Card>
+              )}
             </div>
           )}
         </TabsContent>
