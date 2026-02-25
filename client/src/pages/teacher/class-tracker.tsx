@@ -384,7 +384,7 @@ export default function ClassTracker() {
                       {lesson.date && (
                         <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
                           <Calendar className="w-3 h-3" />
-                          {new Date(lesson.date).toLocaleDateString("uz-UZ", { day: "2-digit", month: "short" })}
+                          {new Date(lesson.date).toLocaleDateString("uz-UZ", { weekday: "short", day: "2-digit", month: "short" })}
                         </div>
                       )}
                       <div className="flex items-center gap-1.5">
@@ -430,7 +430,10 @@ export default function ClassTracker() {
                     <table className="w-full text-sm" data-testid="tracker-table">
                       <thead>
                         <tr className="border-b bg-muted/20">
-                          <th className="text-left p-3 font-medium min-w-[160px] sticky left-0 bg-muted/20 z-10" data-testid="th-student-name">
+                          <th className="text-center p-2 font-medium w-[40px] sticky left-0 bg-muted/20 z-20" data-testid="th-student-no">
+                            №
+                          </th>
+                          <th className="text-left p-3 font-medium min-w-[160px] sticky left-[40px] bg-muted/20 z-10" data-testid="th-student-name">
                             O'quvchi
                           </th>
                           {selectedLessonColumns.map((col, idx) => (
@@ -443,14 +446,17 @@ export default function ClassTracker() {
                       <tbody>
                         {filteredMembers.length === 0 ? (
                           <tr>
-                            <td colSpan={selectedLessonColumns.length + 1} className="text-center p-6 text-muted-foreground">
+                            <td colSpan={selectedLessonColumns.length + 2} className="text-center p-6 text-muted-foreground">
                               O'quvchilar topilmadi
                             </td>
                           </tr>
                         ) : (
                           filteredMembers.map((member, mIdx) => (
                             <tr key={member.id} className={`border-b ${mIdx % 2 === 0 ? "" : "bg-muted/10"}`} data-testid={`row-student-${member.userId}`}>
-                              <td className={`p-3 font-medium sticky left-0 z-10 ${mIdx % 2 === 0 ? "bg-background" : "bg-muted/10"}`} data-testid={`cell-student-name-${member.userId}`}>
+                              <td className={`text-center p-2 text-xs text-muted-foreground w-[40px] sticky left-0 z-20 ${mIdx % 2 === 0 ? "bg-background" : "bg-muted/10"}`}>
+                                {mIdx + 1}
+                              </td>
+                              <td className={`p-3 font-medium sticky left-[40px] z-10 ${mIdx % 2 === 0 ? "bg-background" : "bg-muted/10"}`} data-testid={`cell-student-name-${member.userId}`}>
                                 <span className="truncate block max-w-[160px]">{member.userName || "Foydalanuvchi"}</span>
                               </td>
                               {selectedLessonColumns.map((col, cIdx) => {
