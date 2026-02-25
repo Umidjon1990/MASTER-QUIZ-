@@ -87,6 +87,17 @@ export async function registerRoutes(
     };
   };
 
+  async function isTeacherOrAssistant(userId: string, cls: any, permission?: string): Promise<{ allowed: boolean; isAssistant: boolean; assistant?: any }> {
+    if (cls.teacherId === userId) return { allowed: true, isAssistant: false };
+    const assistant = await storage.getClassAssistantByUserId(cls.id, userId);
+    if (!assistant || assistant.status !== "active") return { allowed: false, isAssistant: false };
+    if (permission) {
+      const perms = assistant.permissions as any;
+      if (!perms?.[permission]) return { allowed: false, isAssistant: true, assistant };
+    }
+    return { allowed: true, isAssistant: true, assistant };
+  }
+
   app.get("/api/profile", requireAuth, async (req: any, res) => {
     try {
       const userId = req.userId;
@@ -2323,7 +2334,8 @@ export async function registerRoutes(
     try {
       const cls = await storage.getClass(req.params.id);
       if (!cls) return res.status(404).json({ message: "Class not found" });
-      if (cls.teacherId !== req.userId && req.userProfile?.role !== "admin") {
+      const { allowed: lessonAllowed } = await isTeacherOrAssistant(req.userId, cls, "canEditLessons");
+      if (!lessonAllowed && req.userProfile?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
       const { lessonNo, date, title } = req.body;
@@ -2357,7 +2369,9 @@ export async function registerRoutes(
       const lesson = await storage.getClassLesson(req.params.id);
       if (!lesson) return res.status(404).json({ message: "Lesson not found" });
       const cls = await storage.getClass(lesson.classId);
-      if (!cls || (cls.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      const { allowed: editAllowed } = await isTeacherOrAssistant(req.userId, cls, "canEditLessons");
+      if (!editAllowed && req.userProfile?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
       const updates: any = {};
@@ -2378,7 +2392,9 @@ export async function registerRoutes(
       const original = await storage.getClassLesson(req.params.id);
       if (!original) return res.status(404).json({ message: "Lesson not found" });
       const cls = await storage.getClass(original.classId);
-      if (!cls || (cls.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      const { allowed: dupAllowed } = await isTeacherOrAssistant(req.userId, cls, "canEditLessons");
+      if (!dupAllowed && req.userProfile?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
 
@@ -2414,7 +2430,9 @@ export async function registerRoutes(
       const lesson = await storage.getClassLesson(req.params.id);
       if (!lesson) return res.status(404).json({ message: "Lesson not found" });
       const cls = await storage.getClass(lesson.classId);
-      if (!cls || (cls.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      const { allowed: delAllowed } = await isTeacherOrAssistant(req.userId, cls, "canEditLessons");
+      if (!delAllowed && req.userProfile?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
       await storage.deleteClassLesson(req.params.id);
@@ -2430,7 +2448,9 @@ export async function registerRoutes(
       const lesson = await storage.getClassLesson(req.params.id);
       if (!lesson) return res.status(404).json({ message: "Lesson not found" });
       const cls = await storage.getClass(lesson.classId);
-      if (!cls || (cls.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      const { allowed: taskAllowed } = await isTeacherOrAssistant(req.userId, cls, "canEditLessons");
+      if (!taskAllowed && req.userProfile?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
       const { taskColumnId, dueDate } = req.body;
@@ -2481,7 +2501,8 @@ export async function registerRoutes(
     try {
       const cls = await storage.getClass(req.params.id);
       if (!cls) return res.status(404).json({ message: "Class not found" });
-      if (cls.teacherId !== req.userId && req.userProfile?.role !== "admin") {
+      const { allowed: colAllowed } = await isTeacherOrAssistant(req.userId, cls, "canEditLessons");
+      if (!colAllowed && req.userProfile?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
       const col = await storage.createTaskColumn({
@@ -2507,7 +2528,9 @@ export async function registerRoutes(
   app.patch("/api/classes/:id/task-columns/:colId", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const cls = await storage.getClass(req.params.id);
-      if (!cls || (cls.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      const { allowed: colPatchAllowed } = await isTeacherOrAssistant(req.userId, cls, "canEditLessons");
+      if (!colPatchAllowed && req.userProfile?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
       const updates: any = {};
@@ -2524,6 +2547,137 @@ export async function registerRoutes(
     try {
       await storage.deleteTaskColumn(req.params.colId);
       res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // === Class Assistant Routes ===
+  app.post("/api/classes/:id/assistants", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const cls = await storage.getClass(req.params.id);
+      if (!cls || (cls.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+      const { password, permissions } = req.body;
+      let hashedPassword: string | null = null;
+      if (password) {
+        hashedPassword = await bcrypt.hash(password, 10);
+      }
+      const assistant = await storage.createClassAssistant({
+        classId: cls.id,
+        inviteCode,
+        password: hashedPassword,
+        permissions: permissions || { canMarkTasks: true, canSendTelegram: false, canEditLessons: false, canViewTracker: true },
+        invitedBy: req.userId,
+        status: "pending",
+      } as any);
+      res.json(assistant);
+    } catch (error) {
+      console.error("Create assistant error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/classes/:id/assistants", requireAuth, async (req: any, res) => {
+    try {
+      const cls = await storage.getClass(req.params.id);
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      const { allowed } = await isTeacherOrAssistant(req.userId, cls);
+      if (!allowed && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const assistants = await storage.getClassAssistants(req.params.id);
+      const result = await Promise.all(assistants.map(async (a) => {
+        let userName = null;
+        if (a.userId) {
+          const user = await authStorage.getUser(a.userId);
+          userName = user?.name || user?.email || null;
+        }
+        return { ...a, password: a.password ? "***" : null, userName };
+      }));
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.patch("/api/class-assistants/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const assistants = await storage.getClassAssistants(req.body.classId || "");
+      const target = assistants.find(a => a.id === req.params.id);
+      if (!target) {
+        const allClasses = await storage.getClassesByTeacher(req.userId);
+        let found: any = null;
+        for (const c of allClasses) {
+          const classAssists = await storage.getClassAssistants(c.id);
+          found = classAssists.find(a => a.id === req.params.id);
+          if (found) break;
+        }
+        if (!found) return res.status(404).json({ message: "Not found" });
+      }
+      const updates: any = {};
+      if (req.body.permissions !== undefined) updates.permissions = req.body.permissions;
+      if (req.body.status !== undefined) updates.status = req.body.status;
+      const updated = await storage.updateClassAssistant(req.params.id, updates);
+      res.json(updated);
+    } catch (error) {
+      console.error("Update assistant error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/class-assistants/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      await storage.deleteClassAssistant(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/classes/join-assistant", requireAuth, async (req: any, res) => {
+    try {
+      const { inviteCode, password } = req.body;
+      if (!inviteCode) return res.status(400).json({ message: "Invite kodi kerak" });
+      const assistant = await storage.getClassAssistantByCode(inviteCode);
+      if (!assistant) return res.status(404).json({ message: "Noto'g'ri invite kod" });
+      if (assistant.status === "revoked") return res.status(403).json({ message: "Bu taklif bekor qilingan" });
+      if (assistant.userId && assistant.userId !== req.userId) {
+        return res.status(400).json({ message: "Bu taklif boshqa foydalanuvchiga tegishli" });
+      }
+      if (assistant.password) {
+        if (!password) return res.status(400).json({ message: "Parol kerak", requirePassword: true });
+        const valid = await bcrypt.compare(password, assistant.password);
+        if (!valid) return res.status(403).json({ message: "Noto'g'ri parol" });
+      }
+      const updated = await storage.updateClassAssistant(assistant.id, {
+        userId: req.userId,
+        status: "active",
+      } as any);
+      const cls = await storage.getClass(assistant.classId);
+      res.json({ assistant: updated, class: cls });
+    } catch (error) {
+      console.error("Join assistant error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/assistant-classes", requireAuth, async (req: any, res) => {
+    try {
+      const assistantRecords = await storage.getAssistantClasses(req.userId);
+      const result = await Promise.all(assistantRecords.map(async (a) => {
+        const cls = await storage.getClass(a.classId);
+        if (!cls) return null;
+        let teacherName = "—";
+        try {
+          const teacherUser = await storage.getUser(cls.teacherId);
+          teacherName = teacherUser?.name || teacherUser?.email || "—";
+        } catch {}
+        return { ...a, className: cls.name, teacherName };
+      }));
+      res.json(result.filter(Boolean));
     } catch (error) {
       res.status(500).json({ message: "Server error" });
     }
@@ -2961,6 +3115,10 @@ export async function registerRoutes(
     try {
       const cls = await storage.getClass(req.params.id);
       if (!cls) return res.status(404).json({ message: "Class not found" });
+      const { allowed } = await isTeacherOrAssistant(req.userId, cls, "canViewTracker");
+      if (!allowed && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
 
       const [members, lessons, taskColumnsData, existingLessonTasks, submissionsData] = await Promise.all([
         storage.getClassMembers(req.params.id),
@@ -2995,6 +3153,7 @@ export async function registerRoutes(
         })
       );
 
+      const { isAssistant, assistant } = await isTeacherOrAssistant(req.userId, cls);
       res.json({
         classInfo: cls,
         students: membersWithProfiles,
@@ -3002,6 +3161,8 @@ export async function registerRoutes(
         taskColumns: taskColumnsData,
         lessonTasks: lessonTasksData,
         submissions: submissionsData,
+        isAssistant,
+        assistantPermissions: isAssistant ? assistant?.permissions : null,
       });
     } catch (error) {
       console.error("Tracker error:", error);
@@ -3032,7 +3193,8 @@ export async function registerRoutes(
     try {
       const cls = await storage.getClass(req.params.id);
       if (!cls) return res.status(404).json({ message: "Class not found" });
-      if (cls.teacherId !== req.userId && req.userProfile?.role !== "admin") {
+      const { allowed: debtorAllowed } = await isTeacherOrAssistant(req.userId, cls, "canViewTracker");
+      if (!debtorAllowed && req.userProfile?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
 
@@ -3059,14 +3221,16 @@ export async function registerRoutes(
     try {
       const cls = await storage.getClass(req.params.id);
       if (!cls) return res.status(404).json({ message: "Class not found" });
-      if (cls.teacherId !== req.userId && req.userProfile?.role !== "admin") {
+      const { allowed: tgAllowed } = await isTeacherOrAssistant(req.userId, cls, "canSendTelegram");
+      if (!tgAllowed && req.userProfile?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      const profile = await storage.getUserProfile(req.userId);
-      if (!profile?.telegramBotToken) {
-        return res.status(400).json({ message: "Avval Telegram bot tokenini saqlang" });
+      const ownerProfile = await storage.getUserProfile(cls.teacherId);
+      if (!ownerProfile?.telegramBotToken) {
+        return res.status(400).json({ message: "Sinf egasi Telegram bot tokenini saqlamagan" });
       }
+      const profile = ownerProfile;
 
       const { chatId, type, lessonId } = req.body;
       if (!chatId) return res.status(400).json({ message: "Chat ID kerak" });

@@ -90,6 +90,10 @@ export default function TeacherClasses() {
     queryKey: ["/api/classes"],
   });
 
+  const { data: assistantClasses = [] } = useQuery<any[]>({
+    queryKey: ["/api/assistant-classes"],
+  });
+
   const { data: members, isLoading: membersLoading } = useQuery<ClassMemberInfo[]>({
     queryKey: ["/api/classes", selectedClassId, "members"],
     queryFn: async () => {
@@ -540,6 +544,39 @@ export default function TeacherClasses() {
             <Plus className="w-4 h-4 mr-1" /> Yangi Sinf
           </Button>
         </Card>
+      )}
+
+      {assistantClasses.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Users className="w-5 h-5" />
+            Yordamchilik qilayotgan sinflarim
+          </h2>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {assistantClasses.map((ac: any) => (
+              <Card key={ac.id} className="p-5 hover-elevate border-dashed" data-testid={`card-assistant-class-${ac.classId}`}>
+                <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
+                  <h3 className="font-semibold">{ac.className || "Sinf"}</h3>
+                  <Badge variant="secondary">Yordamchi</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground mb-3">
+                  O'qituvchi: {ac.teacherName || "—"}
+                </p>
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {ac.permissions?.canViewTracker && <Badge variant="outline" className="text-xs">Tracker</Badge>}
+                  {ac.permissions?.canMarkTasks && <Badge variant="outline" className="text-xs">Vazifalar</Badge>}
+                  {ac.permissions?.canSendTelegram && <Badge variant="outline" className="text-xs">Telegram</Badge>}
+                  {ac.permissions?.canEditLessons && <Badge variant="outline" className="text-xs">Darslar</Badge>}
+                </div>
+                <Link href={`/teacher/classes/${ac.classId}/tracker`}>
+                  <Button variant="default" size="sm" data-testid={`button-assistant-tracker-${ac.classId}`}>
+                    <BarChart3 className="w-3 h-3 mr-1" /> Tracker
+                  </Button>
+                </Link>
+              </Card>
+            ))}
+          </div>
+        </div>
       )}
 
       <Dialog open={membersOpen} onOpenChange={(open) => { setMembersOpen(open); if (!open) { setSelectedClassId(null); setBulkText(""); setBulkResults(null); } }}>

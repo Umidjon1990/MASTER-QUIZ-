@@ -17,7 +17,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ArrowLeft, Users, BookOpen, CheckCircle2, Clock, XCircle, RotateCcw, AlertTriangle, Send, CalendarCheck, FileText, BarChart3, ChevronRight, Calendar, MoreVertical, Plus, Pencil, Copy, Trash2 } from "lucide-react";
 import { Link } from "wouter";
-import type { Class, ClassLesson, TaskColumn, LessonTask, TaskSubmission, UserProfile, TelegramChat } from "@shared/schema";
+import type { Class, ClassLesson, TaskColumn, LessonTask, TaskSubmission, UserProfile, TelegramChat, AssistantPermissions } from "@shared/schema";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface ClassMemberInfo {
   id: string;
@@ -32,6 +33,21 @@ interface TrackerData {
   taskColumns: TaskColumn[];
   lessonTasks: LessonTask[];
   submissions: TaskSubmission[];
+  isAssistant?: boolean;
+  assistantPermissions?: AssistantPermissions | null;
+}
+
+interface AssistantInfo {
+  id: string;
+  classId: string;
+  userId: string | null;
+  inviteCode: string;
+  password: string | null;
+  permissions: AssistantPermissions;
+  invitedBy: string;
+  status: string;
+  userName: string | null;
+  createdAt: string;
 }
 
 interface DebtorItem {
@@ -89,6 +105,11 @@ export default function ClassTracker() {
   const [taskEditOpen, setTaskEditOpen] = useState(false);
   const [editingColId, setEditingColId] = useState<string | null>(null);
   const [editingColTitle, setEditingColTitle] = useState("");
+  const [assistantDialogOpen, setAssistantDialogOpen] = useState(false);
+  const [assistantPassword, setAssistantPassword] = useState("");
+  const [assistantPerms, setAssistantPerms] = useState<AssistantPermissions>({
+    canMarkTasks: true, canSendTelegram: false, canEditLessons: false, canViewTracker: true,
+  });
 
   const { data: classInfo } = useQuery<Class>({
     queryKey: ["/api/classes", classId],
@@ -256,6 +277,51 @@ export default function ClassTracker() {
     onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
   });
 
+  const { data: assistants = [] } = useQuery<AssistantInfo[]>({
+    queryKey: ["/api/classes", classId, "assistants"],
+    enabled: !!classId && !tracker?.isAssistant,
+  });
+
+  const createAssistantMutation = useMutation({
+    mutationFn: async (data: { password?: string; permissions: AssistantPermissions }) => {
+      const res = await apiRequest("POST", `/api/classes/${classId}/assistants`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/classes", classId, "assistants"] });
+      toast({ title: "Yordamchi taklifi yaratildi" });
+      setAssistantDialogOpen(false);
+      setAssistantPassword("");
+    },
+    onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
+  });
+
+  const deleteAssistantMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/class-assistants/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/classes", classId, "assistants"] });
+      toast({ title: "Yordamchi o'chirildi" });
+    },
+    onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
+  });
+
+  const updateAssistantMutation = useMutation({
+    mutationFn: async (data: { id: string; permissions?: AssistantPermissions; status?: string }) => {
+      const { id, ...body } = data;
+      await apiRequest("PATCH", `/api/class-assistants/${id}`, body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/classes", classId, "assistants"] });
+      toast({ title: "Yangilandi" });
+    },
+    onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
+  });
+
+  const isAssistantUser = tracker?.isAssistant || false;
+  const aPerms = tracker?.assistantPermissions;
+
   const members = tracker?.students || [];
   const lessons = tracker?.lessons || [];
   const taskColumnsData = tracker?.taskColumns || [];
@@ -368,7 +434,12 @@ export default function ClassTracker() {
   const STATUS_CYCLE: SubmissionStatus[] = ["missing", "submitted", "pending"];
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const canMarkTasks = !isAssistantUser || aPerms?.canMarkTasks;
+  const canEditLessons = !isAssistantUser || aPerms?.canEditLessons;
+  const canSendTelegram = !isAssistantUser || aPerms?.canSendTelegram;
+
   const handleCellClick = useCallback((studentId: string, lessonTaskId: string) => {
+    if (!canMarkTasks) return;
     if (clickTimerRef.current) {
       clearTimeout(clickTimerRef.current);
       clickTimerRef.current = null;
@@ -544,9 +615,18 @@ export default function ClassTracker() {
                 <Badge variant="destructive" className="ml-1.5">{uniqueDebtorStudents}</Badge>
               )}
             </TabsTrigger>
+            {!isAssistantUser && (
+              <TabsTrigger value="assistants" data-testid="tab-assistants">
+                <Users className="w-4 h-4 mr-1.5" />
+                Yordamchilar
+                {assistants.length > 0 && (
+                  <Badge variant="secondary" className="ml-1.5">{assistants.length}</Badge>
+                )}
+              </TabsTrigger>
+            )}
           </TabsList>
 
-          {hasTelegramBot && telegramChats.length > 0 && (
+          {hasTelegramBot && telegramChats.length > 0 && canSendTelegram && (
             <div className="flex items-center gap-2 flex-wrap">
               <Button variant="outline" size="sm" onClick={() => openTelegramDialog("today_task")} data-testid="button-telegram-today">
                 <CalendarCheck className="w-4 h-4 mr-1.5" />
@@ -580,17 +660,21 @@ export default function ClassTracker() {
               <p className="text-muted-foreground mb-4" data-testid="text-no-data">
                 Darslar topilmadi. Avval darslar va vazifa ustunlarini yarating.
               </p>
-              <Button onClick={openAddLesson} data-testid="button-add-first-lesson">
-                <Plus className="w-4 h-4 mr-1.5" /> Birinchi darsni qo'shish
-              </Button>
+              {canEditLessons && (
+                <Button onClick={openAddLesson} data-testid="button-add-first-lesson">
+                  <Plus className="w-4 h-4 mr-1.5" /> Birinchi darsni qo'shish
+                </Button>
+              )}
             </Card>
           ) : (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">{sortedLessons.length} ta dars</p>
-                <Button variant="outline" size="sm" onClick={openAddLesson} data-testid="button-add-lesson">
-                  <Plus className="w-4 h-4 mr-1.5" /> Dars qo'shish
-                </Button>
+                {canEditLessons && (
+                  <Button variant="outline" size="sm" onClick={openAddLesson} data-testid="button-add-lesson">
+                    <Plus className="w-4 h-4 mr-1.5" /> Dars qo'shish
+                  </Button>
+                )}
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2" data-testid="lesson-grid">
                 {sortedLessons.map((lesson) => {
@@ -607,24 +691,26 @@ export default function ClassTracker() {
                         <span className={`text-sm font-semibold ${isActive ? "text-primary" : ""}`}>
                           Dars {lesson.lessonNo}
                         </span>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" data-testid={`button-lesson-menu-${lesson.lessonNo}`}>
-                              <MoreVertical className="w-3.5 h-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                            <DropdownMenuItem onClick={() => openEditLesson(lesson)} data-testid={`menu-edit-lesson-${lesson.lessonNo}`}>
-                              <Pencil className="w-3.5 h-3.5 mr-2" /> Tahrirlash
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openDuplicateLesson(lesson)} data-testid={`menu-duplicate-lesson-${lesson.lessonNo}`}>
-                              <Copy className="w-3.5 h-3.5 mr-2" /> Takrorlash
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive" onClick={() => openDeleteLesson(lesson.id)} data-testid={`menu-delete-lesson-${lesson.lessonNo}`}>
-                              <Trash2 className="w-3.5 h-3.5 mr-2" /> O'chirish
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {canEditLessons && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                              <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" data-testid={`button-lesson-menu-${lesson.lessonNo}`}>
+                                <MoreVertical className="w-3.5 h-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                              <DropdownMenuItem onClick={() => openEditLesson(lesson)} data-testid={`menu-edit-lesson-${lesson.lessonNo}`}>
+                                <Pencil className="w-3.5 h-3.5 mr-2" /> Tahrirlash
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openDuplicateLesson(lesson)} data-testid={`menu-duplicate-lesson-${lesson.lessonNo}`}>
+                                <Copy className="w-3.5 h-3.5 mr-2" /> Takrorlash
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-destructive" onClick={() => openDeleteLesson(lesson.id)} data-testid={`menu-delete-lesson-${lesson.lessonNo}`}>
+                                <Trash2 className="w-3.5 h-3.5 mr-2" /> O'chirish
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </div>
                       {lesson.date && (
                         <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
@@ -657,15 +743,17 @@ export default function ClassTracker() {
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setTaskEditOpen(true)}
-                          data-testid="btn-edit-lesson-tasks"
-                        >
-                          <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                          Vazifalar
-                        </Button>
+                        {canEditLessons && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setTaskEditOpen(true)}
+                            data-testid="btn-edit-lesson-tasks"
+                          >
+                            <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                            Vazifalar
+                          </Button>
+                        )}
                         <Select value={filterStatus} onValueChange={setFilterStatus}>
                           <SelectTrigger className="w-[160px]" data-testid="select-filter-status">
                             <SelectValue placeholder="Status" />
@@ -753,7 +841,7 @@ export default function ClassTracker() {
               ) : selectedLesson && selectedLessonColumns.length === 0 ? (
                 <Card className="p-8 text-center">
                   <p className="text-muted-foreground mb-3">Bu darsda vazifa ustunlari topilmadi.</p>
-                  {taskColumnsData.length > 0 && (
+                  {taskColumnsData.length > 0 && canEditLessons && (
                     <Button variant="outline" size="sm" onClick={() => setTaskEditOpen(true)} data-testid="btn-add-tasks-empty">
                       <Plus className="h-3.5 w-3.5 mr-1.5" />
                       Vazifa qo'shish
@@ -826,7 +914,147 @@ export default function ClassTracker() {
             </div>
           )}
         </TabsContent>
+
+        {!isAssistantUser && (
+          <TabsContent value="assistants" className="mt-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Yordamchi o'qituvchilar</h3>
+              <Button size="sm" onClick={() => {
+                setAssistantPerms({ canMarkTasks: true, canSendTelegram: false, canEditLessons: false, canViewTracker: true });
+                setAssistantPassword("");
+                setAssistantDialogOpen(true);
+              }} data-testid="button-add-assistant">
+                <Plus className="w-4 h-4 mr-1.5" />
+                Yordamchi qo'shish
+              </Button>
+            </div>
+
+            {assistants.length === 0 ? (
+              <Card className="p-8 text-center text-muted-foreground">
+                <Users className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                <p>Hozircha yordamchi o'qituvchi yo'q</p>
+                <p className="text-sm mt-1">Invite link yaratib, boshqa o'qituvchiga yuboring</p>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {assistants.map((a) => (
+                  <Card key={a.id} className="p-4" data-testid={`card-assistant-${a.id}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium">{a.userName || "Kutilmoqda..."}</span>
+                          <Badge variant={a.status === "active" ? "default" : a.status === "revoked" ? "destructive" : "secondary"}>
+                            {a.status === "active" ? "Faol" : a.status === "revoked" ? "Bekor qilingan" : "Kutilmoqda"}
+                          </Badge>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {a.permissions.canViewTracker && <Badge variant="outline" className="text-xs">Trackerni ko'rish</Badge>}
+                          {a.permissions.canMarkTasks && <Badge variant="outline" className="text-xs">Vazifalarni belgilash</Badge>}
+                          {a.permissions.canSendTelegram && <Badge variant="outline" className="text-xs">Telegram yuborish</Badge>}
+                          {a.permissions.canEditLessons && <Badge variant="outline" className="text-xs">Darslarni tahrirlash</Badge>}
+                        </div>
+                        <div className="mt-2 flex items-center gap-2">
+                          <code className="text-xs bg-muted px-2 py-0.5 rounded">{`${window.location.origin}/classes/join-assistant/${a.inviteCode}`}</code>
+                          <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => {
+                            navigator.clipboard.writeText(`${window.location.origin}/classes/join-assistant/${a.inviteCode}`);
+                            toast({ title: "Link nusxalandi" });
+                          }} data-testid={`button-copy-link-${a.id}`}>
+                            <Copy className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {a.status === "active" && (
+                          <Button variant="ghost" size="sm" onClick={() => updateAssistantMutation.mutate({ id: a.id, status: "revoked" })} data-testid={`button-revoke-${a.id}`}>
+                            <XCircle className="w-4 h-4 text-red-500" />
+                          </Button>
+                        )}
+                        {a.status === "revoked" && (
+                          <Button variant="ghost" size="sm" onClick={() => updateAssistantMutation.mutate({ id: a.id, status: "active" })} data-testid={`button-reactivate-${a.id}`}>
+                            <CheckCircle2 className="w-4 h-4 text-green-500" />
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={() => deleteAssistantMutation.mutate(a.id)} data-testid={`button-delete-assistant-${a.id}`}>
+                          <Trash2 className="w-4 h-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        )}
       </Tabs>
+
+      <Dialog open={assistantDialogOpen} onOpenChange={setAssistantDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Yordamchi o'qituvchi qo'shish</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Parol (ixtiyoriy)</Label>
+              <Input
+                type="text"
+                placeholder="Parol qo'yish (bo'sh qoldirsa paroli yo'q)"
+                value={assistantPassword}
+                onChange={(e) => setAssistantPassword(e.target.value)}
+                data-testid="input-assistant-password"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Link orqali kirganda parol so'raladi</p>
+            </div>
+            <div>
+              <Label className="mb-2 block">Huquqlar</Label>
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={assistantPerms.canViewTracker}
+                    onCheckedChange={(c) => setAssistantPerms(p => ({ ...p, canViewTracker: !!c }))}
+                    data-testid="checkbox-perm-view"
+                  />
+                  <span className="text-sm">Trackerni ko'rish</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={assistantPerms.canMarkTasks}
+                    onCheckedChange={(c) => setAssistantPerms(p => ({ ...p, canMarkTasks: !!c }))}
+                    data-testid="checkbox-perm-mark"
+                  />
+                  <span className="text-sm">Vazifalarni belgilash</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={assistantPerms.canSendTelegram}
+                    onCheckedChange={(c) => setAssistantPerms(p => ({ ...p, canSendTelegram: !!c }))}
+                    data-testid="checkbox-perm-telegram"
+                  />
+                  <span className="text-sm">Telegram xabar yuborish</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={assistantPerms.canEditLessons}
+                    onCheckedChange={(c) => setAssistantPerms(p => ({ ...p, canEditLessons: !!c }))}
+                    data-testid="checkbox-perm-lessons"
+                  />
+                  <span className="text-sm">Darslarni tahrirlash</span>
+                </label>
+              </div>
+            </div>
+            <Button
+              className="w-full"
+              disabled={createAssistantMutation.isPending}
+              onClick={() => createAssistantMutation.mutate({
+                password: assistantPassword || undefined,
+                permissions: assistantPerms,
+              })}
+              data-testid="button-create-assistant"
+            >
+              {createAssistantMutation.isPending ? "Yaratilmoqda..." : "Invite link yaratish"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={telegramOpen} onOpenChange={setTelegramOpen}>
         <DialogContent className="max-w-sm">

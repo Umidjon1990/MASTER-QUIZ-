@@ -21,11 +21,12 @@ import {
   type TaskColumn, type InsertTaskColumn,
   type LessonTask, type InsertLessonTask,
   type TaskSubmission, type InsertTaskSubmission,
+  type ClassAssistant, type InsertClassAssistant,
   userProfiles, quizzes, questions, liveSessions,
   sessionParticipants, sessionAnswers, quizResults,
   assignments, assignmentAttempts, classes, classMembers, questionBank, quizLikes,
   liveLessons, quizCategories, quizFolders, sharedQuizzes, sharedQuizAttempts,
-  classLessons, taskColumns, lessonTasks, taskSubmissions,
+  classLessons, taskColumns, lessonTasks, taskSubmissions, classAssistants,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, ilike, isNull, or, inArray, lte } from "drizzle-orm";
@@ -155,6 +156,14 @@ export interface IStorage {
   createOrUpdateSubmission(data: InsertTaskSubmission): Promise<TaskSubmission>;
   getSubmissionsByClass(classId: string): Promise<TaskSubmission[]>;
   getDebtors(classId: string): Promise<{ studentId: string; lessonTaskId: string; taskTitle: string; lessonNo: number; dueDate: Date | null }[]>;
+
+  createClassAssistant(data: InsertClassAssistant): Promise<ClassAssistant>;
+  getClassAssistants(classId: string): Promise<ClassAssistant[]>;
+  getClassAssistantByCode(code: string): Promise<ClassAssistant | undefined>;
+  getClassAssistantByUserId(classId: string, userId: string): Promise<ClassAssistant | undefined>;
+  updateClassAssistant(id: string, data: Partial<InsertClassAssistant>): Promise<ClassAssistant | undefined>;
+  deleteClassAssistant(id: string): Promise<void>;
+  getAssistantClasses(userId: string): Promise<ClassAssistant[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -764,6 +773,40 @@ export class DatabaseStorage implements IStorage {
     }
 
     return debtors;
+  }
+
+  async createClassAssistant(data: InsertClassAssistant): Promise<ClassAssistant> {
+    const [created] = await db.insert(classAssistants).values(data as any).returning();
+    return created;
+  }
+
+  async getClassAssistants(classId: string): Promise<ClassAssistant[]> {
+    return db.select().from(classAssistants).where(eq(classAssistants.classId, classId));
+  }
+
+  async getClassAssistantByCode(code: string): Promise<ClassAssistant | undefined> {
+    const [found] = await db.select().from(classAssistants).where(eq(classAssistants.inviteCode, code));
+    return found;
+  }
+
+  async getClassAssistantByUserId(classId: string, userId: string): Promise<ClassAssistant | undefined> {
+    const [found] = await db.select().from(classAssistants)
+      .where(and(eq(classAssistants.classId, classId), eq(classAssistants.userId, userId)));
+    return found;
+  }
+
+  async updateClassAssistant(id: string, data: Partial<InsertClassAssistant>): Promise<ClassAssistant | undefined> {
+    const [updated] = await db.update(classAssistants).set(data as any).where(eq(classAssistants.id, id)).returning();
+    return updated;
+  }
+
+  async deleteClassAssistant(id: string): Promise<void> {
+    await db.delete(classAssistants).where(eq(classAssistants.id, id));
+  }
+
+  async getAssistantClasses(userId: string): Promise<ClassAssistant[]> {
+    return db.select().from(classAssistants)
+      .where(and(eq(classAssistants.userId, userId), eq(classAssistants.status, "active")));
   }
 }
 

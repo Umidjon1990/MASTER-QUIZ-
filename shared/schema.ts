@@ -368,3 +368,31 @@ export const activeGames = pgTable("active_games", {
 });
 
 export type ActiveGame = typeof activeGames.$inferSelect;
+
+export type AssistantPermissions = {
+  canMarkTasks: boolean;
+  canSendTelegram: boolean;
+  canEditLessons: boolean;
+  canViewTracker: boolean;
+};
+
+export const classAssistants = pgTable("class_assistants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  classId: varchar("class_id").notNull(),
+  userId: varchar("user_id"),
+  inviteCode: varchar("invite_code", { length: 12 }).notNull().unique(),
+  password: varchar("password", { length: 255 }),
+  permissions: jsonb("permissions").$type<AssistantPermissions>().notNull().default({
+    canMarkTasks: true,
+    canSendTelegram: false,
+    canEditLessons: false,
+    canViewTracker: true,
+  }),
+  invitedBy: varchar("invited_by").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertClassAssistantSchema = createInsertSchema(classAssistants).omit({ id: true, createdAt: true });
+export type InsertClassAssistant = z.infer<typeof insertClassAssistantSchema>;
+export type ClassAssistant = typeof classAssistants.$inferSelect;
