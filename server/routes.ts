@@ -3031,6 +3031,127 @@ export async function registerRoutes(
         }
       };
 
+      const generateTrackerPDF = async (options: {
+        title: string;
+        subtitle: string;
+        columns: string[];
+        rows: { name: string; cells: { text: string; color?: string }[]; summary?: string }[];
+        stats?: { label: string; value: string }[];
+      }): Promise<Buffer> => {
+        const PDFDocument = (await import("pdfkit")).default;
+        const path = (await import("path")).default;
+        const fs = (await import("fs")).default;
+
+        return new Promise((resolve, reject) => {
+          const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 30, bufferPages: true });
+          const chunks: Buffer[] = [];
+          doc.on("data", (c: Buffer) => chunks.push(c));
+          doc.on("end", () => resolve(Buffer.concat(chunks)));
+          doc.on("error", reject);
+
+          const fontDir = path.join(process.cwd(), "server", "fonts");
+          const regularFont = path.join(fontDir, "NotoSans-Regular.ttf");
+          const arabicFont = path.join(fontDir, "NotoSansArabic-Regular.ttf");
+          const hasRegular = fs.existsSync(regularFont);
+          const hasArabic = fs.existsSync(arabicFont);
+          if (hasRegular) doc.registerFont("NotoSans", regularFont);
+          if (hasArabic) doc.registerFont("NotoArabic", arabicFont);
+          const mainFont = hasRegular ? "NotoSans" : "Helvetica";
+
+          const RTL = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+          const writeText = (text: string, x: number, y: number, opts: any = {}) => {
+            if (RTL.test(text) && hasArabic) {
+              doc.font("NotoArabic");
+            } else {
+              doc.font(mainFont);
+            }
+            doc.text(text, x, y, opts);
+          };
+
+          const pageW = 841.89 - 60;
+          const nameColW = 140;
+          const numColW = 30;
+          const summaryColW = 60;
+          const dataAreaW = pageW - nameColW - numColW - summaryColW;
+          const colCount = options.columns.length || 1;
+          const cellW = Math.min(Math.max(dataAreaW / colCount, 30), 80);
+
+          doc.font(mainFont).fontSize(14).text(options.title, 30, 30, { align: "center", width: pageW });
+          doc.fontSize(10).fillColor("#666").text(options.subtitle, 30, doc.y + 2, { align: "center", width: pageW });
+          doc.moveDown(0.6);
+          doc.fillColor("#000");
+
+          const headerY = doc.y;
+          const rowH = 18;
+
+          doc.fontSize(7).font(mainFont);
+          doc.rect(30, headerY, pageW, rowH).fill("#2563eb");
+          doc.fillColor("#fff");
+          writeText("№", 32, headerY + 4, { width: numColW });
+          writeText("Ism", 32 + numColW, headerY + 4, { width: nameColW - 4 });
+          let hx = 30 + numColW + nameColW;
+          for (const col of options.columns) {
+            writeText(col, hx + 2, headerY + 4, { width: cellW - 4 });
+            hx += cellW;
+          }
+          writeText("Jami", hx + 2, headerY + 4, { width: summaryColW - 4 });
+          doc.fillColor("#000");
+
+          let currentY = headerY + rowH;
+          options.rows.forEach((row, i) => {
+            if (currentY > 550) {
+              doc.addPage();
+              currentY = 30;
+            }
+
+            const bgColor = i % 2 === 0 ? "#f8fafc" : "#ffffff";
+            doc.rect(30, currentY, pageW, rowH).fill(bgColor);
+            doc.fillColor("#000").fontSize(7);
+
+            writeText(`${i + 1}`, 32, currentY + 4, { width: numColW });
+            writeText(row.name, 32 + numColW, currentY + 4, { width: nameColW - 4 });
+
+            let cx = 30 + numColW + nameColW;
+            for (const cell of row.cells) {
+              if (cell.color) {
+                doc.rect(cx, currentY, cellW, rowH).fill(cell.color);
+              }
+              doc.fillColor("#000").fontSize(7);
+              writeText(cell.text, cx + 2, currentY + 4, { width: cellW - 4 });
+              cx += cellW;
+            }
+
+            if (row.summary) {
+              doc.fillColor("#000").fontSize(7);
+              writeText(row.summary, cx + 2, currentY + 4, { width: summaryColW - 4 });
+            }
+
+            currentY += rowH;
+          });
+
+          if (options.stats && options.stats.length > 0) {
+            currentY += 10;
+            if (currentY > 540) { doc.addPage(); currentY = 30; }
+            doc.font(mainFont).fontSize(9).fillColor("#000");
+            for (const stat of options.stats) {
+              doc.text(`${stat.label}: ${stat.value}`, 35, currentY);
+              currentY += 14;
+            }
+          }
+
+          doc.end();
+        });
+      };
+
+      const sendPdfDocument = async (pdfBuffer: Buffer, filename: string, caption: string) => {
+        await bot.sendDocument(targetChat, pdfBuffer, {
+          caption: caption.substring(0, 1024),
+        }, {
+          filename,
+          contentType: "application/pdf",
+        });
+      };
+
       const getProfileMap = async (classId: string) => {
         const members = await storage.getClassMembers(classId);
         const profileMap = new Map<string, string>();
@@ -3123,6 +3244,35 @@ export async function registerRoutes(
         text += `✅ Barchasi bajarilgan: ${allDone}\n`;
         text += `❌ Qarzdor: ${hasDebt}\n`;
 
+        const statusLabel = (st: string) => st === "submitted" ? "✓" : st === "missing" ? "✗" : st === "pending" ? "?" : "↻";
+        const statusColor = (st: string) => st === "submitted" ? "#dcfce7" : st === "missing" ? "#fecaca" : st === "pending" ? "#fef9c3" : "#dbeafe";
+
+        const pdfRows = members.map(m => {
+          const name = profileMap.get(m.userId) || "Noma'lum";
+          let done = 0;
+          const cells = lessonTasks.map(lt => {
+            const sub = submissionMap.get(`${m.userId}_${lt.id}`);
+            const st = sub?.status || "missing";
+            if (st === "submitted") done++;
+            const scoreText = sub?.score != null ? `${statusLabel(st)} ${sub.score}` : statusLabel(st);
+            return { text: scoreText, color: statusColor(st) };
+          });
+          return { name, cells, summary: `${done}/${lessonTasks.length}` };
+        });
+
+        const pdfBuf = await generateTrackerPDF({
+          title: `${cls.name} — Dars ${lesson.lessonNo}`,
+          subtitle: `${dateStr}${lesson.title ? " | " + lesson.title : ""}`,
+          columns: colHeaders,
+          rows: pdfRows,
+          stats: [
+            { label: "Jami o'quvchilar", value: `${members.length}` },
+            { label: "Barchasi bajarilgan", value: `${allDone}` },
+            { label: "Qarzdor", value: `${hasDebt}` },
+          ],
+        });
+
+        await sendPdfDocument(pdfBuf, `Dars_${lesson.lessonNo}_hisobot.pdf`, `📋 ${cls.name} — Dars ${lesson.lessonNo} hisoboti`);
         await sendLongMessage(text);
         res.json({ success: true, message: "Dars hisoboti yuborildi" });
 
@@ -3163,6 +3313,27 @@ export async function registerRoutes(
 
         text += `\n📊 Jami qarzdor: ${sortedDebtors.length} ta o'quvchi, ${debtors.length} ta vazifa`;
 
+        const debtorPdfRows = sortedDebtors.map(d => ({
+          name: d.name,
+          cells: [
+            { text: `${d.count}`, color: d.count > 5 ? "#fecaca" : d.count > 2 ? "#fef9c3" : "#fff" },
+            { text: d.tasks.slice(0, 6).join(", "), color: undefined },
+          ],
+          summary: `${d.count} ta`,
+        }));
+
+        const debtorPdf = await generateTrackerPDF({
+          title: `${cls.name} — Qarzdorlar`,
+          subtitle: new Date().toLocaleDateString("uz-UZ", { day: "numeric", month: "long", year: "numeric" }),
+          columns: ["Soni", "Bajarilmagan vazifalar"],
+          rows: debtorPdfRows,
+          stats: [
+            { label: "Jami qarzdor", value: `${sortedDebtors.length} ta o'quvchi` },
+            { label: "Jami bajarilmagan", value: `${debtors.length} ta vazifa` },
+          ],
+        });
+
+        await sendPdfDocument(debtorPdf, `Qarzdorlar_${cls.name.replace(/\s+/g, "_")}.pdf`, `⚠️ ${cls.name} — Qarzdorlar ro'yxati`);
         await sendLongMessage(text);
         res.json({ success: true, message: "Qarzdorlar ro'yxati yuborildi" });
 
@@ -3271,6 +3442,35 @@ export async function registerRoutes(
           if (zeroStudents > 0) text += `⚠️ 0% bajargan: ${zeroStudents} ta\n`;
         }
 
+        const periodPdfRows = studentStats.map(s => ({
+          name: s.name,
+          cells: [
+            { text: `${s.submitted}`, color: undefined },
+            { text: `${s.missing}`, color: s.missing > 0 ? "#fecaca" : "#dcfce7" },
+            { text: `${s.pct}%`, color: s.pct >= 80 ? "#dcfce7" : s.pct >= 50 ? "#fef9c3" : "#fecaca" },
+            { text: s.avg > 0 ? `${s.avg}` : "—", color: undefined },
+          ],
+          summary: `${s.pct}%`,
+        }));
+
+        const totalSubmittedPdf = studentStats.reduce((a, b) => a + b.submitted, 0);
+        const totalPossiblePdf = studentStats.reduce((a, b) => a + b.total, 0);
+        const overallPctPdf = totalPossiblePdf > 0 ? Math.round((totalSubmittedPdf / totalPossiblePdf) * 100) : 0;
+
+        const periodPdf = await generateTrackerPDF({
+          title: `${cls.name} — ${periodLabel} hisobot`,
+          subtitle: `${startStr} — ${endStr} | Darslar: ${periodLessons.length} ta`,
+          columns: ["Bajarildi", "Qarzdor", "Foiz", "O'rtacha ball"],
+          rows: periodPdfRows,
+          stats: [
+            { label: "Umumiy bajarilish", value: `${overallPctPdf}%` },
+            { label: "O'quvchilar soni", value: `${members.length}` },
+            { label: "Darslar", value: `${periodLessons.length} ta` },
+            { label: "Vazifalar", value: `${periodLessonTasks.length} ta` },
+          ],
+        });
+
+        await sendPdfDocument(periodPdf, `${periodLabel}_hisobot_${cls.name.replace(/\s+/g, "_")}.pdf`, `📊 ${cls.name} — ${periodLabel} hisobot`);
         await sendLongMessage(text);
         res.json({ success: true, message: `${periodLabel} hisobot yuborildi` });
       }
