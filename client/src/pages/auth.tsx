@@ -55,6 +55,14 @@ export default function AuthPage() {
       await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
       toast({ title: mode === "login" ? "Muvaffaqiyatli kirdingiz!" : "Ro'yxatdan o'tdingiz!" });
+
+      const returnTo = sessionStorage.getItem("returnTo");
+      if (returnTo) {
+        sessionStorage.removeItem("returnTo");
+        navigate(returnTo);
+        return;
+      }
+
       try {
         const profileRes = await fetch("/api/profile", { credentials: "include" });
         if (profileRes.ok) {

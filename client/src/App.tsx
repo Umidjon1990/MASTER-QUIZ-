@@ -47,10 +47,14 @@ import JoinAssistant from "@/pages/join-assistant";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
 
   useEffect(() => {
     if (!isLoading && !user) {
+      const returnTo = window.location.pathname + window.location.search;
+      if (returnTo && returnTo !== "/auth") {
+        sessionStorage.setItem("returnTo", returnTo);
+      }
       navigate("/auth");
     }
   }, [isLoading, user, navigate]);
