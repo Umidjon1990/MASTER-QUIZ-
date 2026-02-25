@@ -1,10 +1,9 @@
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 
-// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-export async function transcribeAudio(audioBuffer: Buffer, filename: string = "audio.ogg"): Promise<string> {
-  const file = new File([audioBuffer], filename, { type: "audio/ogg" });
+export async function transcribeAudio(audioBuffer: Buffer, filename: string = "audio.oga"): Promise<string> {
+  const file = await toFile(audioBuffer, filename);
   const transcription = await openai.audio.transcriptions.create({
     file,
     model: "whisper-1",
@@ -34,7 +33,7 @@ Javobni faqat JSON formatda ber: {"score": <1-10>, "feedback": "<qisqa izoh>"}`;
     : `O'quvchining javobi:\n${studentAnswer}`;
 
   const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "gpt-4o-mini",
     messages: [
       { role: "system", content: systemMessage },
       { role: "user", content: userMessage },

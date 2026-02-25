@@ -183,7 +183,8 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
     const response = await fetch(fileLink);
     const audioBuffer = Buffer.from(await response.arrayBuffer());
 
-    const transcription = await transcribeAudio(audioBuffer, "voice.ogg");
+    const ext = msg.voice ? "oga" : (msg.audio?.mime_type?.split("/")[1] || "mp3");
+    const transcription = await transcribeAudio(audioBuffer, `voice.${ext}`);
 
     await storage.updateAiSubmission(submission.id, { transcription, status: "processing" });
 
