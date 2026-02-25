@@ -2111,13 +2111,22 @@ export async function registerRoutes(
   app.post("/api/classes", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const { name, description, level, startDate, endDate, scheduleType, scheduleDays, totalLessons } = req.body;
       const cls = await storage.createClass({
-        ...req.body,
+        name,
+        description: description || null,
+        level: level || null,
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
+        scheduleType: scheduleType || null,
+        scheduleDays: scheduleDays || null,
+        totalLessons: totalLessons ? Number(totalLessons) : null,
         teacherId: req.userId,
         joinCode,
-      });
+      } as any);
       res.json(cls);
     } catch (error) {
+      console.error("Create class error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -2179,6 +2188,75 @@ export async function registerRoutes(
       );
       res.json(membersWithProfiles);
     } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/classes/:id/bulk-add-students", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const cls = await storage.getClass(req.params.id);
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      if (cls.teacherId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const { students } = req.body;
+      if (!students || !Array.isArray(students) || students.length === 0) {
+        return res.status(400).json({ message: "O'quvchilar ro'yxati kerak" });
+      }
+
+      const results: { name: string; email: string; password: string; status: string }[] = [];
+      const existingMembers = await storage.getClassMembers(cls.id);
+
+      for (const studentName of students) {
+        const trimmedName = (studentName as string).trim();
+        if (!trimmedName) continue;
+
+        const nameParts = trimmedName.toLowerCase().replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/);
+        const baseEmail = nameParts.join('.') || 'student';
+        const randomSuffix = Math.random().toString(36).substring(2, 6);
+        const email = `${baseEmail}.${randomSuffix}@student.local`;
+        const password = Math.random().toString(36).substring(2, 10);
+
+        try {
+          const existing = await authStorage.getUserByEmail(email);
+          if (existing) {
+            results.push({ name: trimmedName, email, password: "", status: "email_exists" });
+            continue;
+          }
+
+          const hashedPassword = await bcrypt.hash(password, 10);
+          const user = await authStorage.upsertUser({
+            email,
+            password: hashedPassword,
+            firstName: trimmedName.split(" ")[0] || trimmedName,
+            lastName: trimmedName.split(" ").slice(1).join(" ") || null,
+          });
+
+          await storage.createUserProfile({
+            userId: user.id,
+            role: "student",
+            displayName: trimmedName,
+            plan: "free",
+            quizLimit: 5,
+            isActive: true,
+          });
+
+          const alreadyMember = existingMembers.some(m => m.userId === user.id);
+          if (!alreadyMember) {
+            await storage.addClassMember({ classId: cls.id, userId: user.id });
+          }
+
+          results.push({ name: trimmedName, email, password, status: "created" });
+        } catch (e) {
+          console.error("Bulk add student error for:", trimmedName, e);
+          results.push({ name: trimmedName, email, password: "", status: "error" });
+        }
+      }
+
+      res.json({ results, classId: cls.id, className: cls.name });
+    } catch (error) {
+      console.error("Bulk add students error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });

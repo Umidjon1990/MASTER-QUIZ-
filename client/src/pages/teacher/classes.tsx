@@ -13,9 +13,17 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Copy, GraduationCap, Users, UserMinus, ChevronLeft, ChevronRight, CalendarDays, ListChecks, X, BarChart3 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus, Trash2, Copy, GraduationCap, Users, UserMinus, ChevronLeft, ChevronRight, CalendarDays, ListChecks, X, BarChart3, UserPlus, Download, FileText } from "lucide-react";
 import { Link } from "wouter";
 import type { Class } from "@shared/schema";
+
+interface BulkResult {
+  name: string;
+  email: string;
+  password: string;
+  status: string;
+}
 
 interface ClassMemberInfo {
   id: string;
@@ -50,6 +58,9 @@ export default function TeacherClasses() {
   const [createOpen, setCreateOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+
+  const [bulkText, setBulkText] = useState("");
+  const [bulkResults, setBulkResults] = useState<BulkResult[] | null>(null);
 
   const [wizardStep, setWizardStep] = useState(0);
   const [name, setName] = useState("");
@@ -157,6 +168,39 @@ export default function TeacherClasses() {
     },
   });
 
+  const bulkAddStudents = useMutation({
+    mutationFn: async () => {
+      const names = bulkText.split("\n").map(s => s.trim()).filter(Boolean);
+      if (names.length === 0) throw new Error("Ismlarni kiriting");
+      const res = await apiRequest("POST", `/api/classes/${selectedClassId}/bulk-add-students`, { students: names });
+      return res.json();
+    },
+    onSuccess: (data: { results: BulkResult[] }) => {
+      setBulkResults(data.results);
+      queryClient.invalidateQueries({ queryKey: ["/api/classes", selectedClassId, "members"] });
+      toast({ title: `${data.results.filter(r => r.status === "created").length} ta o'quvchi qo'shildi!` });
+    },
+    onError: () => {
+      toast({ title: "Xatolik yuz berdi", variant: "destructive" });
+    },
+  });
+
+  const downloadCredentials = () => {
+    if (!bulkResults) return;
+    const created = bulkResults.filter(r => r.status === "created");
+    let text = "Ism\tEmail\tParol\n";
+    for (const r of created) {
+      text += `${r.name}\t${r.email}\t${r.password}\n`;
+    }
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "students_credentials.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleCopyCode = (code: string) => {
     navigator.clipboard.writeText(code);
     toast({ title: "Kod nusxalandi!" });
@@ -164,6 +208,8 @@ export default function TeacherClasses() {
 
   const handleViewMembers = (id: string) => {
     setSelectedClassId(id);
+    setBulkText("");
+    setBulkResults(null);
     setMembersOpen(true);
   };
 
@@ -496,43 +542,136 @@ export default function TeacherClasses() {
         </Card>
       )}
 
-      <Dialog open={membersOpen} onOpenChange={(open) => { setMembersOpen(open); if (!open) setSelectedClassId(null); }}>
-        <DialogContent className="max-w-lg">
+      <Dialog open={membersOpen} onOpenChange={(open) => { setMembersOpen(open); if (!open) { setSelectedClassId(null); setBulkText(""); setBulkResults(null); } }}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Sinf a'zolari</DialogTitle>
           </DialogHeader>
-          {membersLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
-            </div>
-          ) : members && members.length > 0 ? (
-            <div className="space-y-2 max-h-80 overflow-auto">
-              {members.map((m) => (
-                <Card key={m.id} className="p-3" data-testid={`card-member-${m.id}`}>
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div>
-                      <p className="font-medium text-sm" data-testid={`text-member-name-${m.id}`}>{m.userName || "Foydalanuvchi"}</p>
-                      {m.joinedAt && (
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(m.joinedAt).toLocaleDateString("uz-UZ")}
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => selectedClassId && removeMember.mutate({ classId: selectedClassId, userId: m.userId })}
-                      data-testid={`button-remove-member-${m.id}`}
-                    >
-                      <UserMinus className="w-4 h-4" />
-                    </Button>
+          <Tabs defaultValue="members">
+            <TabsList className="w-full" data-testid="tabs-members">
+              <TabsTrigger value="members" className="flex-1" data-testid="tab-members">
+                <Users className="w-4 h-4 mr-1" /> A'zolar {members ? `(${members.length})` : ""}
+              </TabsTrigger>
+              <TabsTrigger value="bulk" className="flex-1" data-testid="tab-bulk-add">
+                <UserPlus className="w-4 h-4 mr-1" /> Bulk qo'shish
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="members">
+              {membersLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+                </div>
+              ) : members && members.length > 0 ? (
+                <div className="space-y-2 max-h-80 overflow-auto">
+                  {members.map((m) => (
+                    <Card key={m.id} className="p-3" data-testid={`card-member-${m.id}`}>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div>
+                          <p className="font-medium text-sm" data-testid={`text-member-name-${m.id}`}>{m.userName || "Foydalanuvchi"}</p>
+                          {m.joinedAt && (
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(m.joinedAt).toLocaleDateString("uz-UZ")}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => selectedClassId && removeMember.mutate({ classId: selectedClassId, userId: m.userId })}
+                          data-testid={`button-remove-member-${m.id}`}
+                        >
+                          <UserMinus className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-muted-foreground py-6">Hali a'zolar yo'q</p>
+              )}
+            </TabsContent>
+
+            <TabsContent value="bulk">
+              {!bulkResults ? (
+                <div className="space-y-4">
+                  <div>
+                    <Label data-testid="label-bulk-instructions">O'quvchilar ismlarini kiriting (har qator — bitta o'quvchi)</Label>
+                    <p className="text-xs text-muted-foreground mt-1 mb-2">
+                      Har bir ismni alohida qatorga yozing. Har biriga avtomatik email va parol yaratiladi.
+                    </p>
+                    <Textarea
+                      placeholder={"Ali Valiyev\nVali Aliyev\nHasan Karimov\nHusayn Saidov"}
+                      value={bulkText}
+                      onChange={(e) => setBulkText(e.target.value)}
+                      className="min-h-[180px] font-mono text-sm"
+                      data-testid="textarea-bulk-students"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {bulkText.split("\n").filter(s => s.trim()).length} ta o'quvchi
+                    </p>
                   </div>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <p className="text-center text-muted-foreground py-6">Hali a'zolar yo'q</p>
-          )}
+                  <Button
+                    className="w-full gradient-purple border-0"
+                    onClick={() => bulkAddStudents.mutate()}
+                    disabled={!bulkText.trim() || bulkAddStudents.isPending}
+                    data-testid="button-bulk-submit"
+                  >
+                    <UserPlus className="w-4 h-4 mr-1" />
+                    {bulkAddStudents.isPending ? "Qo'shilmoqda..." : "O'quvchilarni qo'shish"}
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">
+                      {bulkResults.filter(r => r.status === "created").length} ta o'quvchi yaratildi
+                    </p>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={downloadCredentials} data-testid="button-download-credentials">
+                        <Download className="w-4 h-4 mr-1" /> Yuklab olish
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => { setBulkResults(null); setBulkText(""); }} data-testid="button-bulk-reset">
+                        Yana qo'shish
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="border rounded-lg overflow-auto max-h-72">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-medium">Ism</th>
+                          <th className="text-left px-3 py-2 font-medium">Email</th>
+                          <th className="text-left px-3 py-2 font-medium">Parol</th>
+                          <th className="text-left px-3 py-2 font-medium">Holat</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkResults.map((r, i) => (
+                          <tr key={i} className="border-t" data-testid={`row-bulk-result-${i}`}>
+                            <td className="px-3 py-2">{r.name}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{r.email}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{r.password || "—"}</td>
+                            <td className="px-3 py-2">
+                              {r.status === "created" ? (
+                                <Badge variant="default" className="bg-green-600 text-xs">Yaratildi</Badge>
+                              ) : (
+                                <Badge variant="destructive" className="text-xs">Xatolik</Badge>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    <FileText className="w-3 h-3 inline mr-1" />
+                    Login ma'lumotlarini "Yuklab olish" tugmasi orqali saqlang — parollar faqat bir marta ko'rinadi!
+                  </p>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
     </div>
