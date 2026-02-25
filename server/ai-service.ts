@@ -1,22 +1,48 @@
 import OpenAI from "openai";
-import fs from "fs";
-import path from "path";
-import os from "os";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-export async function transcribeAudio(audioBuffer: Buffer, filename: string = "audio.oga"): Promise<string> {
-  const tmpPath = path.join(os.tmpdir(), `whisper_${Date.now()}_${filename}`);
-  fs.writeFileSync(tmpPath, audioBuffer);
-  try {
-    const transcription = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(tmpPath),
-      model: "whisper-1",
-    });
-    return transcription.text;
-  } finally {
-    fs.unlinkSync(tmpPath);
+const MIME_MAP: Record<string, string> = {
+  oga: "audio/ogg",
+  ogg: "audio/ogg",
+  m4a: "audio/mp4",
+  mp3: "audio/mpeg",
+  mp4: "audio/mp4",
+  wav: "audio/wav",
+  webm: "audio/webm",
+  flac: "audio/flac",
+  mpeg: "audio/mpeg",
+  mpga: "audio/mpeg",
+};
+
+export async function transcribeAudio(audioBuffer: Buffer, filename: string = "audio.ogg"): Promise<string> {
+  const ext = filename.split(".").pop()?.toLowerCase() || "ogg";
+  const mimeType = MIME_MAP[ext] || "audio/ogg";
+
+  const formData = new FormData();
+  const blob = new Blob([audioBuffer], { type: mimeType });
+  formData.append("file", blob, filename);
+  formData.append("model", "whisper-1");
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  const baseUrl = openai.baseURL || "https://api.openai.com/v1";
+
+  const response = await fetch(`${baseUrl}/audio/transcriptions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error(`[AI-SERVICE] Whisper error ${response.status}: ${errorBody}`);
+    throw new Error(`Whisper API error: ${response.status} ${errorBody}`);
   }
+
+  const result = await response.json() as { text: string };
+  return result.text;
 }
 
 export async function evaluateSubmission({
