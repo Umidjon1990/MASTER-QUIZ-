@@ -174,11 +174,27 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
 
   try {
     const fileLink = await bot.getFileLink(fileId);
+    console.log(`[AI-BOT] Downloading audio: ${fileLink}`);
     const response = await fetch(fileLink);
     const audioBuffer = Buffer.from(await response.arrayBuffer());
 
-    const ext = msg.voice ? "oga" : (msg.audio?.mime_type?.split("/")[1] || "mp3");
-    const transcription = await transcribeAudio(audioBuffer, `voice.${ext}`);
+    const mimeType = msg.voice?.mime_type || msg.audio?.mime_type || "";
+    const filePath = (msg.voice as any)?.file_path || (msg.audio as any)?.file_name || "";
+    let ext = "ogg";
+    if (filePath && filePath.includes(".")) {
+      ext = filePath.split(".").pop()!.toLowerCase();
+    } else if (mimeType.includes("oga")) {
+      ext = "oga";
+    } else if (mimeType.includes("ogg")) {
+      ext = "ogg";
+    } else if (mimeType.includes("mp4") || mimeType.includes("m4a")) {
+      ext = "m4a";
+    } else if (mimeType.includes("mp3") || mimeType.includes("mpeg")) {
+      ext = "mp3";
+    }
+    const filename = `voice.${ext}`;
+    console.log(`[AI-BOT] Audio info: mime=${mimeType}, filePath=${filePath}, ext=${ext}, size=${audioBuffer.length}, filename=${filename}`);
+    const transcription = await transcribeAudio(audioBuffer, filename);
 
     await storage.updateAiSubmission(submission.id, { transcription, status: "processing" });
 
