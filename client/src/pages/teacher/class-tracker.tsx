@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute } from "wouter";
 import { Card } from "@/components/ui/card";
@@ -137,6 +137,18 @@ export default function ClassTracker() {
     },
   });
 
+  const quickToggleMutation = useMutation({
+    mutationFn: async (data: { studentId: string; lessonTaskId: string; status: string; id?: string }) => {
+      await apiRequest("POST", "/api/submissions", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/classes", classId, "tracker"] });
+    },
+    onError: () => {
+      toast({ title: "Xatolik yuz berdi", variant: "destructive" });
+    },
+  });
+
   const invalidateTracker = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/classes", classId, "tracker"] });
     queryClient.invalidateQueries({ queryKey: ["/api/classes", classId, "debtors"] });
@@ -255,7 +267,7 @@ export default function ClassTracker() {
     return members.filter((m) => {
       return selectedLessonColumns.some((col) => {
         const sub = getSubmission(m.userId, col.lessonTaskId);
-        const status = sub?.status || "pending";
+        const status = sub?.status || "missing";
         return status === filterStatus;
       });
     });
@@ -293,12 +305,37 @@ export default function ClassTracker() {
     const existing = getSubmission(studentId, lessonTaskId);
     setEditStudentId(studentId);
     setEditLessonTaskId(lessonTaskId);
-    setEditStatus((existing?.status as SubmissionStatus) || "pending");
+    setEditStatus((existing?.status as SubmissionStatus) || "missing");
     setEditScore(existing?.score ?? undefined);
     setEditFeedback(existing?.feedback || "");
     setEditSubmissionId(existing?.id || null);
     setEditOpen(true);
   };
+
+  const STATUS_CYCLE: SubmissionStatus[] = ["missing", "submitted", "pending"];
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleCellClick = useCallback((studentId: string, lessonTaskId: string) => {
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+      openEditModal(studentId, lessonTaskId);
+    } else {
+      clickTimerRef.current = setTimeout(() => {
+        clickTimerRef.current = null;
+        const existing = getSubmission(studentId, lessonTaskId);
+        const currentStatus = (existing?.status as SubmissionStatus) || "missing";
+        const currentIdx = STATUS_CYCLE.indexOf(currentStatus);
+        const nextStatus = STATUS_CYCLE[(currentIdx + 1) % STATUS_CYCLE.length];
+        quickToggleMutation.mutate({
+          studentId,
+          lessonTaskId,
+          status: nextStatus,
+          id: existing?.id || undefined,
+        });
+      }, 250);
+    }
+  }, [submissionMap, quickToggleMutation]);
 
   const handleSave = () => {
     submitMutation.mutate({
@@ -565,6 +602,9 @@ export default function ClassTracker() {
                         </SelectContent>
                       </Select>
                     </div>
+                    <p className="text-[11px] text-muted-foreground mt-2">
+                      1 marta bosish = status almashtirish &nbsp;|&nbsp; 2 marta bosish = ball va izoh kiritish
+                    </p>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -602,12 +642,16 @@ export default function ClassTracker() {
                               </td>
                               {selectedLessonColumns.map((col, cIdx) => {
                                 const sub = getSubmission(member.userId, col.lessonTaskId);
-                                const status = (sub?.status as SubmissionStatus) || "pending";
+                                const status = (sub?.status as SubmissionStatus) || "missing";
+                                const cellBg = status === "submitted" ? "bg-green-50 dark:bg-green-950/30" :
+                                               status === "missing" ? "bg-red-50 dark:bg-red-950/30" :
+                                               status === "pending" ? "bg-yellow-50 dark:bg-yellow-950/30" :
+                                               status === "rework" ? "bg-blue-50 dark:bg-blue-950/30" : "";
                                 return (
                                   <td
                                     key={cIdx}
-                                    className="text-center p-2 border-l cursor-pointer hover:bg-muted/30 transition-colors"
-                                    onClick={() => openEditModal(member.userId, col.lessonTaskId)}
+                                    className={`text-center p-2 border-l cursor-pointer hover:opacity-80 transition-all select-none ${cellBg}`}
+                                    onClick={() => handleCellClick(member.userId, col.lessonTaskId)}
                                     data-testid={`cell-${member.userId}-${col.lessonTaskId}`}
                                   >
                                     <div className="flex flex-col items-center gap-0.5">
