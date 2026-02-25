@@ -79,6 +79,8 @@ export default function ClassTracker() {
   const classId = params?.id;
   const { toast } = useToast();
 
+  const urlTab = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
+
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editStudentId, setEditStudentId] = useState("");
@@ -89,7 +91,7 @@ export default function ClassTracker() {
   const [editSubmissionId, setEditSubmissionId] = useState<string | null>(null);
 
   const [filterStatus, setFilterStatus] = useState("all");
-  const [activeTab, setActiveTab] = useState("tracker");
+  const [activeTab, setActiveTab] = useState(urlTab === "assistants" ? "assistants" : "tracker");
   const [telegramOpen, setTelegramOpen] = useState(false);
   const [telegramType, setTelegramType] = useState<"today_task" | "debtors" | "weekly_report" | "monthly_report" | "lesson_report">("today_task");
   const [selectedChatId, setSelectedChatId] = useState("");

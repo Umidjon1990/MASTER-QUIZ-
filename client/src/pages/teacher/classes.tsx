@@ -14,7 +14,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Trash2, Copy, GraduationCap, Users, UserMinus, ChevronLeft, ChevronRight, CalendarDays, ListChecks, X, BarChart3, UserPlus, Download, FileText } from "lucide-react";
+import { Plus, Trash2, Copy, GraduationCap, Users, UserMinus, ChevronLeft, ChevronRight, CalendarDays, ListChecks, X, BarChart3, UserPlus, Download, FileText, UserCog, Link2 } from "lucide-react";
 import { Link } from "wouter";
 import type { Class } from "@shared/schema";
 
@@ -525,6 +525,11 @@ export default function TeacherClasses() {
                   <Button variant="outline" size="sm" onClick={() => handleViewMembers(c.id)} data-testid={`button-view-members-${c.id}`}>
                     <Users className="w-3 h-3 mr-1" /> A'zolar
                   </Button>
+                  <Link href={`/teacher/classes/${c.id}/tracker?tab=assistants`}>
+                    <Button variant="outline" size="sm" data-testid={`button-assistants-${c.id}`}>
+                      <UserCog className="w-3 h-3 mr-1" /> Yordamchi
+                    </Button>
+                  </Link>
                   <Button variant="ghost" size="sm" onClick={() => deleteClass.mutate(c.id)} data-testid={`button-delete-class-${c.id}`}>
                     <Trash2 className="w-3 h-3" />
                   </Button>
