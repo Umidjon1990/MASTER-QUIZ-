@@ -1,0 +1,315 @@
+1) Mahsulot (Product) konsepsiyasi
+
+Kim uchun: o‘qituvchi
+Muammo: o‘quvchi vazifani qildi/qilmadi, baholash, kim qarzdor — hammasi qo‘lda va tartibsiz
+Yechim: guruhlar, dars jadvali, vazifa ustunlari, submit/tekshir/ball, avtomatik “qarzdor” ro‘yxat, Telegramga xabar
+
+2) MVP (1-versiya) funksiyalar
+
+MVP’ni shunday qiling: “ishlaydi, foyda beradi, sodda”.
+
+A) Asosiy modullar
+
+Auth (o‘qituvchi account)
+
+Guruhlarim
+
+Guruh yaratish
+
+Telegram guruhini biriktirish (chat_id)
+
+O‘quvchilar ro‘yxati
+
+guruhga qo‘shish/olib tashlash
+
+Dars jadvali
+
+kurs davomiyligi: darslar soni yoki start/end
+
+“kun ora” yoki haftalik kunlar tanlash
+
+sana avtomatik generatsiya
+
+Vazifalar
+
+vazifa ustunlari (Assignment columns) yaratish (masalan: HW1, HW2… yoki “Dars 1 vazifa”)
+
+har darsga bog‘lash yoki mustaqil
+
+Check & Grade
+
+status: ✅Yubordi / ⏳Kutilmoqda / ❌Yubormadi / ♻️Qayta topshirish
+
+ball: 0–100 yoki 1–10
+
+izoh (feedback)
+
+Qarzdorlar
+
+kimning qaysi vazifasi qolganini avtomatik chiqarish
+
+Telegramga yuborish
+
+guruhga “Bugungi vazifa”, “Qarzdorlar ro‘yxati”, “Haftalik hisobot” yuborish
+
+3) 2-versiya (kuchaytirish)
+
+O‘quvchi login (student portal) yoki “link orqali topshirish”
+
+File upload (pdf/jpg/audio)
+
+Reyting/leaderboard
+
+Push notifications / email
+
+Admin panel + audit log
+
+“Template” kurslar (B1/B2/C1) tayyor shablon
+
+4) Texnologiya tanlovi (Replit uchun qulay)
+Variant A (eng tez, vibe-codingga mos)
+
+Next.js (App Router) + TypeScript
+
+Supabase (Postgres + Auth + Storage)
+
+UI: Tailwind + shadcn/ui
+
+Telegram: Bot API (node fetch)
+
+Nega zo‘r: Auth + DB + hosting oson, schema tez, scaling bor.
+
+Variant B (hammasi o‘zingizda)
+
+Next.js + Prisma + Postgres (Neon) yoki SQLite (dev)
+
+Auth: NextAuth
+
+Telegram: Bot API
+
+5) DB (ma’lumotlar modeli) — “toza va kengayadigan”
+
+Minimal, lekin “future-proof”:
+
+Jadval(lar)
+
+users (teacher)
+
+id, name, email, password_hash / supabase auth id
+
+groups
+
+id, teacher_id, name, level, start_date, end_date, schedule_type, created_at
+
+group_telegram
+
+id, group_id, bot_token (yoki teacher settingsda), chat_id, thread_id(optional)
+
+students
+
+id, group_id, full_name, phone(optional), telegram_username(optional), created_at
+
+lessons
+
+id, group_id, lesson_no, date, title(optional)
+
+assignments
+
+id, group_id, title, description(optional), due_rule (same_day/next_day/custom), created_at
+
+lesson_assignments (qaysi darsda qaysi vazifa)
+
+id, lesson_id, assignment_id, due_date
+
+submissions
+
+id, student_id, lesson_assignment_id
+
+status (PENDING/SUBMITTED/MISSING/REWORK)
+
+score (int)
+
+feedback (text)
+
+updated_at
+
+notifications_log
+
+id, group_id, type, payload_json, sent_at, status
+
+Shu model bilan siz “excelga o‘xshagan” jadvalni ham qilasiz, qarzdorni ham oson topasiz.
+
+6) UI sahifalar (o‘qituvchi panel)
+
+Dashboard
+
+bugungi darslar, bugungi qarzdorlar
+
+Guruhlarim
+
+guruh yaratish wizard
+
+Guruh ichida:
+
+Students
+
+Lessons (calendar)
+
+Assignments
+
+Tracker (asosiy ekran): jadval ko‘rinishida (o‘quvchi × vazifa)
+
+Telegram Settings
+
+bot token / chat_id
+
+“Send test message”
+
+Reports
+
+top qarzdorlar
+
+o‘rtacha ball
+
+7) Asosiy flow (eng muhim)
+Guruh yaratish wizard
+
+Guruh nomi, daraja (B1/B2/C1)
+
+Start date
+
+Jadval: haftalik kunlar (Du/Chor/Juma…) yoki “kun ora”
+
+Darslar soni (masalan 24 dars)
+
+App avtomatik lessons yaratadi (date’lar bilan)
+
+Assignment ustunlari qo‘shish (HW, Listening, Reading…)
+
+Tracker tayyor bo‘ladi ✅
+
+Vazifa tekshirish
+
+Tracker jadvalida katakchani bosasiz:
+
+✅ yubordi + ball + izoh
+
+❌ yubormadi
+
+Avtomatik “qarzdorlar” ro‘yxati yangilanadi
+
+Telegramga yuborish
+
+“Send today task” tugmasi
+
+“Send debtors list” tugmasi
+
+“Weekly report” tugmasi
+
+8) Telegram integratsiya (amaliy)
+Qadamlar
+
+BotFather’dan bot ochasiz → BOT_TOKEN
+
+Botni Telegram guruhga qo‘shasiz
+
+Botni admin qilasiz (xabar yuborishi uchun)
+
+Guruh chat_id ni olasiz:
+
+eng oson: botga /start yozib yuborasiz va “getUpdates” orqali chat_id olasiz
+
+yoki app ichida “Detect chat_id” tugmasi: bot update’larini olib ko‘rsatadi
+
+group_telegram ga chat_id saqlanadi
+
+App xabar yuboradi: https://api.telegram.org/bot<TOKEN>/sendMessage
+
+Xabar shablonlari (tayyor)
+
+Bugungi vazifa:
+
+“📚 Bugungi vazifa: …”
+Qarzdorlar:
+
+“❗ Qarzdorlar: 1) Ali — HW3, 2) Vali — Reading2 …”
+Haftalik hisobot:
+
+“📊 Haftalik: eng yaxshi 5 ta, qarzdor 5 ta…”
+
+9) Qarzdorlarni aniqlash (logika)
+
+Qarzdor = due_date o‘tgan + status != SUBMITTED
+Yoki “bugungi dars vazifasi” bo‘lsa: due_date = today 23:59.
+
+SQL fikr:
+
+“due_date < now() AND status IN (PENDING, MISSING)”
+
+10) Replit AI uchun PROMPT PAKET (copy-paste)
+
+Quyidagilarni Replit AI’ga ketma-ket bering. “Vibe coding” uchun juda qulay:
+
+Prompt 1 — Project scaffold
+
+Build a full-stack web app called “Task Tracker for Teachers”. Use Next.js (App Router) + TypeScript + Tailwind + shadcn/ui. Use Supabase for auth and Postgres database. Create pages: Dashboard, Groups, Group Details (Students, Lessons, Assignments, Tracker), Telegram Settings. Implement responsive UI.
+
+Prompt 2 — Database schema
+
+Create a Supabase Postgres schema with tables: groups, students, lessons, assignments, lesson_assignments, submissions, group_telegram, notifications_log. Add relations and indexes. Generate TypeScript types for queries.
+
+Prompt 3 — Group creation wizard
+
+Implement a “Create Group” wizard: group name, level, start date, schedule type (weekly days or every-other-day), number of lessons. On submit, auto-generate lessons with dates. Save to database. Show group in “My Groups”.
+
+Prompt 4 — Assignments + linking to lessons
+
+In group details, implement “Assignments” CRUD (title, description, due rule). Implement linking assignments to lessons and auto creating lesson_assignments with due_date.
+
+Prompt 5 — Tracker grid
+
+Build a Tracker page showing a grid: rows = students, columns = lesson_assignments. Each cell shows status + score. Clicking opens a modal to set: status (SUBMITTED/MISSING/REWORK/PENDING), score, feedback. Persist to submissions table. Optimize performance.
+
+Prompt 6 — Debtors view
+
+Implement a “Debtors” panel that filters submissions where due_date passed and status != SUBMITTED. Group by student and show missing tasks count. Add button “Send to Telegram”.
+
+Prompt 7 — Telegram integration
+
+Add Telegram Settings page: input bot token and chat_id per group. Add “Send test message”. Implement server action / API route to sendMessage using Telegram Bot API. Log sent messages to notifications_log.
+
+Prompt 8 — Automation (optional)
+
+Add a cron-like scheduled job (daily at 21:00) to send debtors list to each group Telegram automatically. Use a server-side scheduler compatible with deployment (Supabase edge functions / Vercel cron / Replit cron). Ensure it doesn’t spam.
+
+Prompt 9 — Security and roles
+
+Ensure teacher can only access their own groups/students/submissions. Add row-level security (RLS) policies in Supabase. Validate all inputs.
+
+11) Deploy reja
+
+Supabase project: DB + Auth + RLS
+
+Hosting: Vercel / Replit Deployments
+
+Env vars:
+
+SUPABASE_URL
+
+SUPABASE_ANON_KEY / SERVICE_ROLE_KEY (serverda)
+
+TELEGRAM_BOT_TOKEN (global bo‘lsa)
+
+Domain: keyin ulab qo‘yasiz
+
+12) Sizga eng muhim “qaror nuqtalari”
+
+Rejani mukammal qilish uchun sizdan hech narsa so‘ramay, default yechim beraman:
+
+O‘qituvchi login: bor ✅
+
+O‘quvchi login: hozircha yo‘q (keyin qo‘shamiz)
+
+Vazifa topshirish: hozircha o‘qituvchi belgilaydi (keyin student upload)
+
+Telegram: bot token + chat_id har guruhga

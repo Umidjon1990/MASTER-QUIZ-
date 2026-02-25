@@ -29,6 +29,7 @@ import TeacherTelegram from "@/pages/teacher/telegram";
 import TeacherLessons from "@/pages/teacher/lessons";
 import TeacherLessonLive from "@/pages/teacher/lesson-live";
 import FolderDetail from "@/pages/teacher/folder-detail";
+import ClassTracker from "@/pages/teacher/class-tracker";
 import LessonJoin from "@/pages/lesson/join";
 import StudentDashboard from "@/pages/student/index";
 import StudentResults from "@/pages/student/results";
@@ -160,6 +161,9 @@ function App() {
             </Route>
             <Route path="/teacher/classes">
               {() => <ProtectedPage component={TeacherClasses} />}
+            </Route>
+            <Route path="/teacher/classes/:id/tracker">
+              {() => <ProtectedPage component={ClassTracker} />}
             </Route>
             <Route path="/teacher/question-bank">
               {() => <ProtectedPage component={TeacherQuestionBank} />}

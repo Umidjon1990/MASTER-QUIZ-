@@ -8,10 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, Copy, GraduationCap, Users, UserMinus } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, Trash2, Copy, GraduationCap, Users, UserMinus, ChevronLeft, ChevronRight, CalendarDays, ListChecks, X, BarChart3 } from "lucide-react";
+import { Link } from "wouter";
 import type { Class } from "@shared/schema";
 
 interface ClassMemberInfo {
@@ -21,13 +24,56 @@ interface ClassMemberInfo {
   joinedAt?: string;
 }
 
+const WEEK_DAYS = [
+  { value: "monday", label: "Dush" },
+  { value: "tuesday", label: "Sesh" },
+  { value: "wednesday", label: "Chor" },
+  { value: "thursday", label: "Pay" },
+  { value: "friday", label: "Jum" },
+  { value: "saturday", label: "Shan" },
+  { value: "sunday", label: "Yak" },
+];
+
+const DEFAULT_TASK_COLUMNS = [
+  "Homework",
+  "Listening",
+  "Reading",
+  "Writing",
+  "Speaking",
+  "Vocabulary",
+];
+
+const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
+
 export default function TeacherClasses() {
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+
+  const [wizardStep, setWizardStep] = useState(0);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [level, setLevel] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [scheduleType, setScheduleType] = useState("weekly");
+  const [scheduleDays, setScheduleDays] = useState<string[]>([]);
+  const [totalLessons, setTotalLessons] = useState(30);
+  const [taskColumnNames, setTaskColumnNames] = useState<string[]>(["Homework", "Listening", "Reading"]);
+  const [newColumnName, setNewColumnName] = useState("");
+
+  const resetWizard = () => {
+    setWizardStep(0);
+    setName("");
+    setDescription("");
+    setLevel("");
+    setStartDate("");
+    setScheduleType("weekly");
+    setScheduleDays([]);
+    setTotalLessons(30);
+    setTaskColumnNames(["Homework", "Listening", "Reading"]);
+    setNewColumnName("");
+  };
 
   const { data: classes, isLoading } = useQuery<Class[]>({
     queryKey: ["/api/classes"],
@@ -43,23 +89,48 @@ export default function TeacherClasses() {
     enabled: !!selectedClassId && membersOpen,
   });
 
-  const createClass = useMutation({
+  const createClassWizard = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/classes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, description }),
-        credentials: "include",
+      const classRes = await apiRequest("POST", "/api/classes", {
+        name,
+        description: description || undefined,
+        level: level || undefined,
+        startDate: startDate ? new Date(startDate).toISOString() : undefined,
+        scheduleType: scheduleType || undefined,
+        scheduleDays: scheduleDays.length > 0 ? scheduleDays : undefined,
+        totalLessons: totalLessons || undefined,
       });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
+      const createdClass = await classRes.json();
+
+      if (startDate && totalLessons > 0) {
+        try {
+          await apiRequest("POST", `/api/classes/${createdClass.id}/generate-lessons`, {
+            startDate: new Date(startDate).toISOString(),
+            scheduleType,
+            scheduleDays,
+            totalLessons,
+          });
+        } catch (e) {
+        }
+      }
+
+      for (let i = 0; i < taskColumnNames.length; i++) {
+        try {
+          await apiRequest("POST", `/api/classes/${createdClass.id}/task-columns`, {
+            title: taskColumnNames[i],
+            sortOrder: i,
+          });
+        } catch (e) {
+        }
+      }
+
+      return createdClass;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
       toast({ title: "Sinf yaratildi!" });
       setCreateOpen(false);
-      setName("");
-      setDescription("");
+      resetWizard();
     },
     onError: () => {
       toast({ title: "Sinf yaratishda xatolik", variant: "destructive" });
@@ -68,9 +139,7 @@ export default function TeacherClasses() {
 
   const deleteClass = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/classes/${id}`, { method: "DELETE", credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
+      await apiRequest("DELETE", `/api/classes/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/classes"] });
@@ -80,9 +149,7 @@ export default function TeacherClasses() {
 
   const removeMember = useMutation({
     mutationFn: async ({ classId, userId }: { classId: string; userId: string }) => {
-      const res = await fetch(`/api/classes/${classId}/members/${userId}`, { method: "DELETE", credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
+      await apiRequest("DELETE", `/api/classes/${classId}/members/${userId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/classes", selectedClassId, "members"] });
@@ -100,6 +167,39 @@ export default function TeacherClasses() {
     setMembersOpen(true);
   };
 
+  const toggleDay = (day: string) => {
+    setScheduleDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+    );
+  };
+
+  const addTaskColumn = () => {
+    const trimmed = newColumnName.trim();
+    if (trimmed && !taskColumnNames.includes(trimmed)) {
+      setTaskColumnNames((prev) => [...prev, trimmed]);
+      setNewColumnName("");
+    }
+  };
+
+  const removeTaskColumn = (col: string) => {
+    setTaskColumnNames((prev) => prev.filter((c) => c !== col));
+  };
+
+  const addDefaultColumn = (col: string) => {
+    if (!taskColumnNames.includes(col)) {
+      setTaskColumnNames((prev) => [...prev, col]);
+    }
+  };
+
+  const canGoNext = () => {
+    if (wizardStep === 0) return name.trim().length > 0;
+    if (wizardStep === 1) return true;
+    if (wizardStep === 2) return true;
+    return false;
+  };
+
+  const stepTitles = ["Asosiy ma'lumotlar", "Dars jadvali", "Vazifa ustunlari"];
+
   return (
     <div className="p-6 space-y-6">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between gap-4 flex-wrap">
@@ -107,33 +207,212 @@ export default function TeacherClasses() {
           <h1 className="text-2xl font-bold" data-testid="text-classes-title">Sinflarim</h1>
           <p className="text-muted-foreground">Sinflar va guruhlarni boshqarish</p>
         </div>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) resetWizard(); }}>
           <DialogTrigger asChild>
             <Button className="gradient-purple border-0" data-testid="button-new-class">
               <Plus className="w-4 h-4 mr-1" /> Yangi Sinf
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Yangi Sinf Yaratish</DialogTitle>
+              <DialogTitle data-testid="text-wizard-title">Yangi Sinf Yaratish</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Sinf nomi</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Masalan: 5-A sinf" data-testid="input-class-name" />
+
+            <div className="flex items-center gap-2 mb-4">
+              {stepTitles.map((title, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  <div
+                    className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold ${
+                      i === wizardStep
+                        ? "bg-primary text-primary-foreground"
+                        : i < wizardStep
+                          ? "bg-primary/20 text-primary"
+                          : "bg-muted text-muted-foreground"
+                    }`}
+                    data-testid={`badge-step-${i}`}
+                  >
+                    {i + 1}
+                  </div>
+                  <span className={`text-xs hidden sm:inline ${i === wizardStep ? "font-semibold" : "text-muted-foreground"}`}>
+                    {title}
+                  </span>
+                  {i < stepTitles.length - 1 && <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+                </div>
+              ))}
+            </div>
+
+            {wizardStep === 0 && (
+              <div className="space-y-4" data-testid="wizard-step-0">
+                <div>
+                  <Label>Sinf nomi</Label>
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Masalan: B2-Morning"
+                    data-testid="input-class-name"
+                  />
+                </div>
+                <div>
+                  <Label>Daraja</Label>
+                  <Select value={level} onValueChange={setLevel}>
+                    <SelectTrigger data-testid="select-level">
+                      <SelectValue placeholder="Darajani tanlang" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LEVELS.map((l) => (
+                        <SelectItem key={l} value={l} data-testid={`option-level-${l}`}>{l}</SelectItem>
+                      ))}
+                      <SelectItem value="other" data-testid="option-level-other">Boshqa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Tavsif (ixtiyoriy)</Label>
+                  <Textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Sinf haqida qisqacha..."
+                    data-testid="input-class-description"
+                  />
+                </div>
               </div>
-              <div>
-                <Label>Tavsif (ixtiyoriy)</Label>
-                <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Sinf haqida qisqacha..." data-testid="input-class-description" />
+            )}
+
+            {wizardStep === 1 && (
+              <div className="space-y-4" data-testid="wizard-step-1">
+                <div>
+                  <Label>Boshlanish sanasi</Label>
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    data-testid="input-start-date"
+                  />
+                </div>
+                <div>
+                  <Label>Jadval turi</Label>
+                  <Select value={scheduleType} onValueChange={setScheduleType}>
+                    <SelectTrigger data-testid="select-schedule-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="weekly">Haftalik (kunlarni tanlash)</SelectItem>
+                      <SelectItem value="every_other_day">Kun ora</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {scheduleType === "weekly" && (
+                  <div>
+                    <Label>Dars kunlari</Label>
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      {WEEK_DAYS.map((day) => (
+                        <Button
+                          key={day.value}
+                          variant="outline"
+                          size="sm"
+                          className={`toggle-elevate ${scheduleDays.includes(day.value) ? "toggle-elevated" : ""}`}
+                          onClick={() => toggleDay(day.value)}
+                          data-testid={`button-day-${day.value}`}
+                        >
+                          {day.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <Label>Umumiy darslar soni</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={totalLessons}
+                    onChange={(e) => setTotalLessons(parseInt(e.target.value) || 0)}
+                    data-testid="input-total-lessons"
+                  />
+                </div>
               </div>
+            )}
+
+            {wizardStep === 2 && (
+              <div className="space-y-4" data-testid="wizard-step-2">
+                <div>
+                  <Label>Vazifa ustunlari</Label>
+                  <p className="text-xs text-muted-foreground mb-2">Har dars uchun qanday vazifalar bo'lishini belgilang</p>
+                  <div className="flex gap-2 flex-wrap mb-3">
+                    {taskColumnNames.map((col) => (
+                      <Badge key={col} variant="secondary" data-testid={`badge-task-col-${col}`}>
+                        {col}
+                        <button
+                          className="ml-1 inline-flex"
+                          onClick={() => removeTaskColumn(col)}
+                          data-testid={`button-remove-col-${col}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newColumnName}
+                      onChange={(e) => setNewColumnName(e.target.value)}
+                      placeholder="Yangi ustun nomi..."
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTaskColumn(); } }}
+                      data-testid="input-new-column"
+                    />
+                    <Button variant="outline" onClick={addTaskColumn} disabled={!newColumnName.trim()} data-testid="button-add-column">
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Tayyor shablonlardan qo'shish:</Label>
+                  <div className="flex gap-2 mt-1 flex-wrap">
+                    {DEFAULT_TASK_COLUMNS.filter((c) => !taskColumnNames.includes(c)).map((col) => (
+                      <Button
+                        key={col}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => addDefaultColumn(col)}
+                        data-testid={`button-template-${col}`}
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> {col}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2 mt-4">
               <Button
-                className="gradient-purple border-0 w-full"
-                onClick={() => createClass.mutate()}
-                disabled={!name.trim() || createClass.isPending}
-                data-testid="button-create-class"
+                variant="outline"
+                onClick={() => setWizardStep((s) => s - 1)}
+                disabled={wizardStep === 0}
+                data-testid="button-wizard-back"
               >
-                Yaratish
+                <ChevronLeft className="w-4 h-4 mr-1" /> Orqaga
               </Button>
+              {wizardStep < 2 ? (
+                <Button
+                  className="gradient-purple border-0"
+                  onClick={() => setWizardStep((s) => s + 1)}
+                  disabled={!canGoNext()}
+                  data-testid="button-wizard-next"
+                >
+                  Keyingi <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              ) : (
+                <Button
+                  className="gradient-purple border-0"
+                  onClick={() => createClassWizard.mutate()}
+                  disabled={!name.trim() || createClassWizard.isPending}
+                  data-testid="button-create-class"
+                >
+                  {createClassWizard.isPending ? "Yaratilmoqda..." : "Yaratish"}
+                </Button>
+              )}
             </div>
           </DialogContent>
         </Dialog>
@@ -161,9 +440,12 @@ export default function TeacherClasses() {
               <Card className="p-5 hover-elevate" data-testid={`card-class-${c.id}`}>
                 <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
                   <h3 className="font-semibold" data-testid={`text-class-name-${c.id}`}>{c.name}</h3>
-                  <Badge variant="secondary">
-                    <GraduationCap className="w-3 h-3 mr-1" /> Sinf
-                  </Badge>
+                  <div className="flex gap-1 flex-wrap">
+                    {c.level && <Badge variant="outline" data-testid={`badge-level-${c.id}`}>{c.level}</Badge>}
+                    <Badge variant="secondary">
+                      <GraduationCap className="w-3 h-3 mr-1" /> Sinf
+                    </Badge>
+                  </div>
                 </div>
                 {c.description && (
                   <p className="text-sm text-muted-foreground mb-3 line-clamp-2" data-testid={`text-class-desc-${c.id}`}>{c.description}</p>
@@ -175,7 +457,21 @@ export default function TeacherClasses() {
                     <Copy className="w-3 h-3" />
                   </Button>
                 </div>
+                {c.totalLessons && (
+                  <div className="flex items-center gap-2 mb-3 text-sm text-muted-foreground flex-wrap">
+                    <CalendarDays className="w-3 h-3" />
+                    <span data-testid={`text-total-lessons-${c.id}`}>{c.totalLessons} dars</span>
+                    {c.scheduleType && (
+                      <span>({c.scheduleType === "weekly" ? "Haftalik" : "Kun ora"})</span>
+                    )}
+                  </div>
+                )}
                 <div className="flex gap-2 flex-wrap">
+                  <Link href={`/teacher/classes/${c.id}/tracker`}>
+                    <Button variant="default" size="sm" data-testid={`button-tracker-${c.id}`}>
+                      <BarChart3 className="w-3 h-3 mr-1" /> Tracker
+                    </Button>
+                  </Link>
                   <Button variant="outline" size="sm" onClick={() => handleViewMembers(c.id)} data-testid={`button-view-members-${c.id}`}>
                     <Users className="w-3 h-3 mr-1" /> A'zolar
                   </Button>

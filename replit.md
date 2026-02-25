@@ -34,7 +34,8 @@ Preferred communication style: Simple, everyday language.
 - `/admin/*` — Admin pages (user management, quiz oversight)
 - `/teacher/*` — Teacher pages (quiz CRUD, live session hosting, results, assignments, classes, question bank)
 - `/teacher/assignments` — Assignment management (create/delete/view attempts/CSV export)
-- `/teacher/classes` — Class management (create/delete/view members/join codes)
+- `/teacher/classes` — Class management (create/delete/view members/join codes, 3-step wizard with schedule & task columns)
+- `/teacher/classes/:id/tracker` — Task tracker (student × task grid, status/score editing, debtors panel, Telegram notifications)
 - `/teacher/question-bank` — Question bank (add/copy from quiz/copy to quiz)
 - `/student/*` — Student pages (join quiz, view results, assignments, classes)
 - `/student/assignments` — Student assignment list and self-paced quiz solving
@@ -74,8 +75,12 @@ Preferred communication style: Simple, everyday language.
   - `quiz_results` — Aggregated quiz results
   - `assignments` — Homework assignments (quizId, deadline, attemptsLimit, classId)
   - `assignment_attempts` — Student assignment attempt results (answers JSONB, score)
-  - `classes` — Teacher classes/groups with join codes
+  - `classes` — Teacher classes/groups with join codes, level, schedule config (startDate, endDate, scheduleType, scheduleDays, totalLessons)
   - `class_members` — Class membership (classId, userId)
+  - `class_lessons` — Auto-generated lesson schedule per class (classId, lessonNo, date, title)
+  - `task_columns` — Reusable task column types per class (HW, Listening, Reading etc.) with sortOrder
+  - `lesson_tasks` — Links lessons to task columns with optional dueDate
+  - `task_submissions` — Student submission tracking (studentId, lessonTaskId, status: pending/submitted/missing/rework, score, feedback)
   - `question_bank` — Reusable question bank with category/tags
   - `quiz_likes` — Quiz like tracking (quizId, userId)
   - `live_lessons` — Live lesson sessions with lessonType (pdf/voice), title, pdfUrl (nullable for voice), teacher, status, code, requireCode

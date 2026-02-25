@@ -17,10 +17,15 @@ import {
   type QuizFolder, type InsertQuizFolder,
   type SharedQuiz, type InsertSharedQuiz,
   type SharedQuizAttempt, type InsertSharedQuizAttempt,
+  type ClassLesson, type InsertClassLesson,
+  type TaskColumn, type InsertTaskColumn,
+  type LessonTask, type InsertLessonTask,
+  type TaskSubmission, type InsertTaskSubmission,
   userProfiles, quizzes, questions, liveSessions,
   sessionParticipants, sessionAnswers, quizResults,
   assignments, assignmentAttempts, classes, classMembers, questionBank, quizLikes,
   liveLessons, quizCategories, quizFolders, sharedQuizzes, sharedQuizAttempts,
+  classLessons, taskColumns, lessonTasks, taskSubmissions,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, ilike, isNull, or, inArray, lte } from "drizzle-orm";
@@ -130,6 +135,24 @@ export interface IStorage {
   getSharedQuizAttempts(sharedQuizId: string): Promise<SharedQuizAttempt[]>;
   getSharedQuizAttempt(id: string): Promise<SharedQuizAttempt | undefined>;
   deleteSharedQuizAttempt(id: string): Promise<void>;
+
+  createClassLesson(data: InsertClassLesson): Promise<ClassLesson>;
+  getLessonsByClass(classId: string): Promise<ClassLesson[]>;
+  deleteClassLesson(id: string): Promise<void>;
+  generateLessonsForClass(classId: string, startDate: Date, scheduleType: string, scheduleDays: string[], totalLessons: number): Promise<ClassLesson[]>;
+
+  createTaskColumn(data: InsertTaskColumn): Promise<TaskColumn>;
+  getTaskColumnsByClass(classId: string): Promise<TaskColumn[]>;
+  updateTaskColumn(id: string, data: Partial<InsertTaskColumn>): Promise<TaskColumn | undefined>;
+  deleteTaskColumn(id: string): Promise<void>;
+
+  createLessonTask(data: InsertLessonTask): Promise<LessonTask>;
+  getLessonTasksByClass(classId: string): Promise<LessonTask[]>;
+  deleteLessonTask(id: string): Promise<void>;
+
+  createOrUpdateSubmission(data: InsertTaskSubmission): Promise<TaskSubmission>;
+  getSubmissionsByClass(classId: string): Promise<TaskSubmission[]>;
+  getDebtors(classId: string): Promise<{ studentId: string; lessonTaskId: string; taskTitle: string; lessonNo: number; dueDate: Date | null }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -571,6 +594,161 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSharedQuizAttempt(id: string): Promise<void> {
     await db.delete(sharedQuizAttempts).where(eq(sharedQuizAttempts.id, id));
+  }
+
+  async createClassLesson(data: InsertClassLesson): Promise<ClassLesson> {
+    const [created] = await db.insert(classLessons).values(data as any).returning();
+    return created;
+  }
+
+  async getLessonsByClass(classId: string): Promise<ClassLesson[]> {
+    return db.select().from(classLessons).where(eq(classLessons.classId, classId)).orderBy(classLessons.lessonNo);
+  }
+
+  async deleteClassLesson(id: string): Promise<void> {
+    await db.delete(lessonTasks).where(eq(lessonTasks.lessonId, id));
+    await db.delete(classLessons).where(eq(classLessons.id, id));
+  }
+
+  async generateLessonsForClass(classId: string, startDate: Date, scheduleType: string, scheduleDays: string[], totalLessons: number): Promise<ClassLesson[]> {
+    const dayMap: Record<string, number> = { monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6, sunday: 0 };
+    const created: ClassLesson[] = [];
+    let currentDate = new Date(startDate);
+    let lessonCount = 0;
+
+    if (scheduleType === "every_other_day") {
+      while (lessonCount < totalLessons) {
+        lessonCount++;
+        const [lesson] = await db.insert(classLessons).values({
+          classId,
+          lessonNo: lessonCount,
+          date: new Date(currentDate),
+          title: `Dars ${lessonCount}`,
+        } as any).returning();
+        created.push(lesson);
+        currentDate.setDate(currentDate.getDate() + 2);
+      }
+    } else {
+      const targetDays = scheduleDays.map(d => dayMap[d.toLowerCase()]).filter(d => d !== undefined);
+      if (targetDays.length === 0) return created;
+      while (lessonCount < totalLessons) {
+        const dayOfWeek = currentDate.getDay();
+        if (targetDays.includes(dayOfWeek)) {
+          lessonCount++;
+          const [lesson] = await db.insert(classLessons).values({
+            classId,
+            lessonNo: lessonCount,
+            date: new Date(currentDate),
+            title: `Dars ${lessonCount}`,
+          } as any).returning();
+          created.push(lesson);
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    }
+
+    return created;
+  }
+
+  async createTaskColumn(data: InsertTaskColumn): Promise<TaskColumn> {
+    const [created] = await db.insert(taskColumns).values(data as any).returning();
+    return created;
+  }
+
+  async getTaskColumnsByClass(classId: string): Promise<TaskColumn[]> {
+    return db.select().from(taskColumns).where(eq(taskColumns.classId, classId)).orderBy(taskColumns.sortOrder);
+  }
+
+  async updateTaskColumn(id: string, data: Partial<InsertTaskColumn>): Promise<TaskColumn | undefined> {
+    const [updated] = await db.update(taskColumns).set(data as any).where(eq(taskColumns.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTaskColumn(id: string): Promise<void> {
+    const tasks = await db.select().from(lessonTasks).where(eq(lessonTasks.taskColumnId, id));
+    for (const t of tasks) {
+      await db.delete(taskSubmissions).where(eq(taskSubmissions.lessonTaskId, t.id));
+    }
+    await db.delete(lessonTasks).where(eq(lessonTasks.taskColumnId, id));
+    await db.delete(taskColumns).where(eq(taskColumns.id, id));
+  }
+
+  async createLessonTask(data: InsertLessonTask): Promise<LessonTask> {
+    const [created] = await db.insert(lessonTasks).values(data as any).returning();
+    return created;
+  }
+
+  async getLessonTasksByClass(classId: string): Promise<LessonTask[]> {
+    const lessons = await this.getLessonsByClass(classId);
+    if (lessons.length === 0) return [];
+    const lessonIds = lessons.map(l => l.id);
+    return db.select().from(lessonTasks).where(inArray(lessonTasks.lessonId, lessonIds));
+  }
+
+  async deleteLessonTask(id: string): Promise<void> {
+    await db.delete(taskSubmissions).where(eq(taskSubmissions.lessonTaskId, id));
+    await db.delete(lessonTasks).where(eq(lessonTasks.id, id));
+  }
+
+  async createOrUpdateSubmission(data: InsertTaskSubmission): Promise<TaskSubmission> {
+    const existing = await db.select().from(taskSubmissions)
+      .where(and(eq(taskSubmissions.studentId, data.studentId), eq(taskSubmissions.lessonTaskId, data.lessonTaskId)));
+    if (existing.length > 0) {
+      const [updated] = await db.update(taskSubmissions)
+        .set({ ...data, updatedAt: new Date() } as any)
+        .where(eq(taskSubmissions.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(taskSubmissions).values({ ...data, updatedAt: new Date() } as any).returning();
+    return created;
+  }
+
+  async getSubmissionsByClass(classId: string): Promise<TaskSubmission[]> {
+    const allLessonTasks = await this.getLessonTasksByClass(classId);
+    if (allLessonTasks.length === 0) return [];
+    const ltIds = allLessonTasks.map(lt => lt.id);
+    return db.select().from(taskSubmissions).where(inArray(taskSubmissions.lessonTaskId, ltIds));
+  }
+
+  async getDebtors(classId: string): Promise<{ studentId: string; lessonTaskId: string; taskTitle: string; lessonNo: number; dueDate: Date | null }[]> {
+    const lessons = await this.getLessonsByClass(classId);
+    const allLessonTasks = await this.getLessonTasksByClass(classId);
+    const columns = await this.getTaskColumnsByClass(classId);
+    const submissions = await this.getSubmissionsByClass(classId);
+    const members = await this.getClassMembers(classId);
+    const now = new Date();
+
+    const submissionMap = new Map<string, TaskSubmission>();
+    for (const s of submissions) {
+      submissionMap.set(`${s.studentId}_${s.lessonTaskId}`, s);
+    }
+
+    const columnMap = new Map(columns.map(c => [c.id, c.title]));
+    const lessonMap = new Map(lessons.map(l => [l.id, l.lessonNo]));
+
+    const debtors: { studentId: string; lessonTaskId: string; taskTitle: string; lessonNo: number; dueDate: Date | null }[] = [];
+
+    for (const lt of allLessonTasks) {
+      const dueDate = lt.dueDate;
+      if (dueDate && new Date(dueDate) > now) continue;
+
+      for (const member of members) {
+        const key = `${member.userId}_${lt.id}`;
+        const sub = submissionMap.get(key);
+        if (!sub || sub.status !== "submitted") {
+          debtors.push({
+            studentId: member.userId,
+            lessonTaskId: lt.id,
+            taskTitle: columnMap.get(lt.taskColumnId) || "Vazifa",
+            lessonNo: lessonMap.get(lt.lessonId) || 0,
+            dueDate: dueDate,
+          });
+        }
+      }
+    }
+
+    return debtors;
   }
 }
 

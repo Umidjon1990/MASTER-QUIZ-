@@ -107,6 +107,12 @@ export const classes = pgTable("classes", {
   description: text("description"),
   teacherId: varchar("teacher_id").notNull(),
   joinCode: varchar("join_code", { length: 8 }).notNull().unique(),
+  level: varchar("level", { length: 20 }),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  scheduleType: varchar("schedule_type", { length: 20 }),
+  scheduleDays: jsonb("schedule_days").$type<string[]>(),
+  totalLessons: integer("total_lessons"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -115,6 +121,40 @@ export const classMembers = pgTable("class_members", {
   classId: varchar("class_id").notNull(),
   userId: varchar("user_id").notNull(),
   joinedAt: timestamp("joined_at").defaultNow(),
+});
+
+export const classLessons = pgTable("class_lessons", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  classId: varchar("class_id").notNull(),
+  lessonNo: integer("lesson_no").notNull(),
+  date: timestamp("date").notNull(),
+  title: varchar("title", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const taskColumns = pgTable("task_columns", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  classId: varchar("class_id").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const lessonTasks = pgTable("lesson_tasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  lessonId: varchar("lesson_id").notNull(),
+  taskColumnId: varchar("task_column_id").notNull(),
+  dueDate: timestamp("due_date"),
+});
+
+export const taskSubmissions = pgTable("task_submissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  studentId: varchar("student_id").notNull(),
+  lessonTaskId: varchar("lesson_task_id").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  score: integer("score"),
+  feedback: text("feedback"),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const quizLikes = pgTable("quiz_likes", {
@@ -232,6 +272,10 @@ export const insertAssignmentSchema = createInsertSchema(assignments).omit({ id:
 export const insertAssignmentAttemptSchema = createInsertSchema(assignmentAttempts).omit({ id: true, completedAt: true });
 export const insertClassSchema = createInsertSchema(classes).omit({ id: true, createdAt: true });
 export const insertClassMemberSchema = createInsertSchema(classMembers).omit({ id: true, joinedAt: true });
+export const insertClassLessonSchema = createInsertSchema(classLessons).omit({ id: true, createdAt: true });
+export const insertTaskColumnSchema = createInsertSchema(taskColumns).omit({ id: true, createdAt: true });
+export const insertLessonTaskSchema = createInsertSchema(lessonTasks).omit({ id: true });
+export const insertTaskSubmissionSchema = createInsertSchema(taskSubmissions).omit({ id: true, updatedAt: true });
 export const insertQuestionBankSchema = createInsertSchema(questionBank).omit({ id: true, createdAt: true });
 export const insertQuizLikeSchema = createInsertSchema(quizLikes).omit({ id: true, createdAt: true });
 export const insertLiveLessonSchema = createInsertSchema(liveLessons).omit({ id: true, createdAt: true, participantCount: true, currentPage: true });
@@ -259,6 +303,14 @@ export type InsertClass = z.infer<typeof insertClassSchema>;
 export type Class = typeof classes.$inferSelect;
 export type InsertClassMember = z.infer<typeof insertClassMemberSchema>;
 export type ClassMember = typeof classMembers.$inferSelect;
+export type InsertClassLesson = z.infer<typeof insertClassLessonSchema>;
+export type ClassLesson = typeof classLessons.$inferSelect;
+export type InsertTaskColumn = z.infer<typeof insertTaskColumnSchema>;
+export type TaskColumn = typeof taskColumns.$inferSelect;
+export type InsertLessonTask = z.infer<typeof insertLessonTaskSchema>;
+export type LessonTask = typeof lessonTasks.$inferSelect;
+export type InsertTaskSubmission = z.infer<typeof insertTaskSubmissionSchema>;
+export type TaskSubmission = typeof taskSubmissions.$inferSelect;
 export type InsertQuestionBank = z.infer<typeof insertQuestionBankSchema>;
 export type QuestionBankItem = typeof questionBank.$inferSelect;
 export type InsertQuizLike = z.infer<typeof insertQuizLikeSchema>;

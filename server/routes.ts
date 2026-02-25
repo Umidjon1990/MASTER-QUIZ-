@@ -2206,6 +2206,75 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/classes/:id/generate-lessons", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const cls = await storage.getClass(req.params.id);
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      if (cls.teacherId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const { startDate, scheduleType, scheduleDays, totalLessons } = req.body;
+      if (!startDate || !scheduleType || !totalLessons) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      const lessons = await storage.generateLessonsForClass(
+        req.params.id,
+        new Date(startDate),
+        scheduleType,
+        scheduleDays || [],
+        totalLessons
+      );
+      res.json(lessons);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/classes/:id/lessons", requireAuth, async (req: any, res) => {
+    try {
+      const lessons = await storage.getLessonsByClass(req.params.id);
+      res.json(lessons);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/classes/:id/task-columns", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const cls = await storage.getClass(req.params.id);
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      if (cls.teacherId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const col = await storage.createTaskColumn({
+        classId: req.params.id,
+        title: req.body.title,
+        sortOrder: req.body.sortOrder || 0,
+      });
+      res.json(col);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/classes/:id/task-columns", requireAuth, async (req: any, res) => {
+    try {
+      const columns = await storage.getTaskColumnsByClass(req.params.id);
+      res.json(columns);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.delete("/api/classes/:id/task-columns/:colId", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      await storage.deleteTaskColumn(req.params.colId);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   // === Question Bank Routes ===
   app.get("/api/question-bank", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
@@ -2631,6 +2700,229 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Export error:", error);
       res.status(500).json({ message: "Eksport xatosi" });
+    }
+  });
+
+  app.get("/api/classes/:id/tracker", requireAuth, async (req: any, res) => {
+    try {
+      const cls = await storage.getClass(req.params.id);
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+
+      const [members, lessons, taskColumnsData, lessonTasksData, submissionsData] = await Promise.all([
+        storage.getClassMembers(req.params.id),
+        storage.getLessonsByClass(req.params.id),
+        storage.getTaskColumnsByClass(req.params.id),
+        storage.getLessonTasksByClass(req.params.id),
+        storage.getSubmissionsByClass(req.params.id),
+      ]);
+
+      const membersWithProfiles = await Promise.all(
+        members.map(async (m) => {
+          const profile = await storage.getUserProfile(m.userId);
+          return { ...m, displayName: profile?.displayName || "Unknown" };
+        })
+      );
+
+      res.json({
+        classInfo: cls,
+        students: membersWithProfiles,
+        lessons,
+        taskColumns: taskColumnsData,
+        lessonTasks: lessonTasksData,
+        submissions: submissionsData,
+      });
+    } catch (error) {
+      console.error("Tracker error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/submissions", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { studentId, lessonTaskId, status, score, feedback } = req.body;
+      if (!studentId || !lessonTaskId) {
+        return res.status(400).json({ message: "studentId va lessonTaskId kerak" });
+      }
+      const submission = await storage.createOrUpdateSubmission({
+        studentId,
+        lessonTaskId,
+        status: status || "pending",
+        score: score !== undefined ? Number(score) : null,
+        feedback: feedback || null,
+      });
+      res.json(submission);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.get("/api/classes/:id/debtors", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const cls = await storage.getClass(req.params.id);
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      if (cls.teacherId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const debtors = await storage.getDebtors(req.params.id);
+      const members = await storage.getClassMembers(req.params.id);
+      const profileMap = new Map<string, string>();
+      for (const m of members) {
+        const profile = await storage.getUserProfile(m.userId);
+        profileMap.set(m.userId, profile?.displayName || "Unknown");
+      }
+
+      const debtorsWithNames = debtors.map(d => ({
+        ...d,
+        studentName: profileMap.get(d.studentId) || "Unknown",
+      }));
+
+      res.json(debtorsWithNames);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/classes/:id/telegram-notify", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const cls = await storage.getClass(req.params.id);
+      if (!cls) return res.status(404).json({ message: "Class not found" });
+      if (cls.teacherId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const profile = await storage.getUserProfile(req.userId);
+      if (!profile?.telegramBotToken) {
+        return res.status(400).json({ message: "Avval Telegram bot tokenini saqlang" });
+      }
+
+      const { chatId, type } = req.body;
+      if (!chatId) return res.status(400).json({ message: "Chat ID kerak" });
+      if (!type || !["today_task", "debtors", "weekly_report"].includes(type)) {
+        return res.status(400).json({ message: "type: today_task | debtors | weekly_report" });
+      }
+
+      const TelegramBot = (await import("node-telegram-bot-api")).default;
+      const bot = new TelegramBot(profile.telegramBotToken);
+      const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
+
+      if (type === "today_task") {
+        const lessons = await storage.getLessonsByClass(req.params.id);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        const todayLesson = lessons.find(l => {
+          const d = new Date(l.date);
+          return d >= today && d < tomorrow;
+        });
+
+        if (!todayLesson) {
+          return res.status(400).json({ message: "Bugun dars topilmadi" });
+        }
+
+        const lessonTasksData = await storage.getLessonTasksByClass(req.params.id);
+        const taskColumnsData = await storage.getTaskColumnsByClass(req.params.id);
+        const columnMap = new Map(taskColumnsData.map(c => [c.id, c.title]));
+        const todayTasks = lessonTasksData.filter(lt => lt.lessonId === todayLesson.id);
+        const taskNames = todayTasks.map(t => columnMap.get(t.taskColumnId) || "Vazifa").join(", ");
+
+        const message = `📚 *${cls.name} — Dars ${todayLesson.lessonNo}*\n${todayLesson.title || ""}\n\n📝 Vazifalar: ${taskNames || "Vazifa yo'q"}`;
+        await bot.sendMessage(targetChat, message, { parse_mode: "Markdown" });
+        res.json({ success: true, message: "Bugungi vazifa yuborildi" });
+
+      } else if (type === "debtors") {
+        const debtors = await storage.getDebtors(req.params.id);
+        if (debtors.length === 0) {
+          const message = `✅ *${cls.name}*\n\nBarcha vazifalar bajarilgan! Qarzdorlar yo'q.`;
+          await bot.sendMessage(targetChat, message, { parse_mode: "Markdown" });
+          return res.json({ success: true, message: "Qarzdorlar yo'q" });
+        }
+
+        const members = await storage.getClassMembers(req.params.id);
+        const profileMap = new Map<string, string>();
+        for (const m of members) {
+          const p = await storage.getUserProfile(m.userId);
+          profileMap.set(m.userId, p?.displayName || "Unknown");
+        }
+
+        const grouped = new Map<string, { tasks: string[]; count: number }>();
+        for (const d of debtors) {
+          const name = profileMap.get(d.studentId) || "Unknown";
+          if (!grouped.has(name)) grouped.set(name, { tasks: [], count: 0 });
+          const g = grouped.get(name)!;
+          g.tasks.push(`Dars ${d.lessonNo}: ${d.taskTitle}`);
+          g.count++;
+        }
+
+        let text = `⚠️ *${cls.name} — Qarzdorlar*\n\n`;
+        for (const [name, data] of Array.from(grouped.entries())) {
+          text += `👤 *${name}* (${data.count} ta vazifa)\n`;
+          for (const t of data.tasks.slice(0, 5)) {
+            text += `  — ${t}\n`;
+          }
+          if (data.tasks.length > 5) text += `  ... va yana ${data.tasks.length - 5} ta\n`;
+          text += "\n";
+        }
+
+        await bot.sendMessage(targetChat, text, { parse_mode: "Markdown" });
+        res.json({ success: true, message: "Qarzdorlar ro'yxati yuborildi" });
+
+      } else if (type === "weekly_report") {
+        const submissions = await storage.getSubmissionsByClass(req.params.id);
+        const members = await storage.getClassMembers(req.params.id);
+        const lessonTasksData = await storage.getLessonTasksByClass(req.params.id);
+
+        const profileMap = new Map<string, string>();
+        for (const m of members) {
+          const p = await storage.getUserProfile(m.userId);
+          profileMap.set(m.userId, p?.displayName || "Unknown");
+        }
+
+        const studentStats = new Map<string, { submitted: number; total: number; totalScore: number; scoredCount: number }>();
+        for (const m of members) {
+          studentStats.set(m.userId, { submitted: 0, total: lessonTasksData.length, totalScore: 0, scoredCount: 0 });
+        }
+
+        for (const s of submissions) {
+          const stat = studentStats.get(s.studentId);
+          if (stat && s.status === "submitted") {
+            stat.submitted++;
+            if (s.score !== null) {
+              stat.totalScore += s.score;
+              stat.scoredCount++;
+            }
+          }
+        }
+
+        const ranked = Array.from(studentStats.entries()).map(([id, stat]) => ({
+          name: profileMap.get(id) || "Unknown",
+          submitted: stat.submitted,
+          total: stat.total,
+          avg: stat.scoredCount > 0 ? Math.round(stat.totalScore / stat.scoredCount) : 0,
+          pct: stat.total > 0 ? Math.round((stat.submitted / stat.total) * 100) : 0,
+        })).sort((a, b) => b.pct - a.pct || b.avg - a.avg);
+
+        let text = `📊 *${cls.name} — Haftalik hisobot*\n\n`;
+
+        text += `🏆 *Top 5 eng yaxshi:*\n`;
+        for (const s of ranked.slice(0, 5)) {
+          text += `  ${s.name} — ${s.pct}% (o'rtacha: ${s.avg})\n`;
+        }
+
+        text += `\n⚠️ *Top 5 qarzdor:*\n`;
+        const bottom = [...ranked].reverse().slice(0, 5);
+        for (const s of bottom) {
+          text += `  ${s.name} — ${s.pct}% (o'rtacha: ${s.avg})\n`;
+        }
+
+        await bot.sendMessage(targetChat, text, { parse_mode: "Markdown" });
+        res.json({ success: true, message: "Haftalik hisobot yuborildi" });
+      }
+    } catch (error) {
+      console.error("Telegram notify error:", error);
+      res.status(500).json({ message: "Telegram xabar yuborishda xatolik" });
     }
   });
 
