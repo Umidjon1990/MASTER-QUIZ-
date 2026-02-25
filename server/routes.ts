@@ -3196,11 +3196,25 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/submissions", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+  app.post("/api/submissions", requireAuth, async (req: any, res) => {
     try {
       const { studentId, lessonTaskId, status, score, feedback } = req.body;
       if (!studentId || !lessonTaskId) {
         return res.status(400).json({ message: "studentId va lessonTaskId kerak" });
+      }
+      const profile = await storage.getUserProfile(req.userId);
+      if (!profile) return res.status(403).json({ message: "Forbidden" });
+      if (profile.role === "admin") {
+      } else if (profile.role === "teacher") {
+      } else {
+        const allAssistants = await storage.getAssistantClasses(req.userId);
+        const hasMarkPermission = allAssistants.some(a => {
+          const perms = a.permissions as any;
+          return a.status === "active" && perms?.canMarkTasks;
+        });
+        if (!hasMarkPermission) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
       }
       const submission = await storage.createOrUpdateSubmission({
         studentId,
@@ -3215,12 +3229,13 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/classes/:id/debtors", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+  app.get("/api/classes/:id/debtors", requireAuth, async (req: any, res) => {
     try {
       const cls = await storage.getClass(req.params.id);
       if (!cls) return res.status(404).json({ message: "Class not found" });
+      const profile = await storage.getUserProfile(req.userId);
       const { allowed: debtorAllowed } = await isTeacherOrAssistant(req.userId, cls, "canViewTracker");
-      if (!debtorAllowed && req.userProfile?.role !== "admin") {
+      if (!debtorAllowed && profile?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
 

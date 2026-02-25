@@ -783,7 +783,7 @@ export default function ClassTracker() {
                           <th className="text-center p-1.5 sm:p-2 font-medium w-[32px] sm:w-[40px] sticky left-0 bg-muted/20 z-20" data-testid="th-student-no">
                             №
                           </th>
-                          <th className="text-left p-2 sm:p-3 font-medium min-w-[100px] sm:min-w-[160px] sticky left-[32px] sm:left-[40px] bg-muted/20 z-10" data-testid="th-student-name">
+                          <th className="text-left p-2 sm:p-3 font-medium min-w-[120px] sm:min-w-[160px] sticky left-[32px] sm:left-[40px] bg-muted/20 z-10" data-testid="th-student-name">
                             O'quvchi
                           </th>
                           {selectedLessonColumns.map((col, idx) => (
@@ -807,7 +807,7 @@ export default function ClassTracker() {
                                 {mIdx + 1}
                               </td>
                               <td className={`p-2 sm:p-3 font-medium sticky left-[32px] sm:left-[40px] z-10 ${mIdx % 2 === 0 ? "bg-background" : "bg-muted/10"}`} data-testid={`cell-student-name-${member.userId}`}>
-                                <span className="truncate block max-w-[90px] sm:max-w-[160px] text-[11px] sm:text-sm">{member.userName || "Foydalanuvchi"}</span>
+                                <span className="truncate block max-w-[110px] sm:max-w-[160px] text-xs sm:text-sm">{member.userName || "Foydalanuvchi"}</span>
                               </td>
                               {selectedLessonColumns.map((col, cIdx) => {
                                 const sub = getSubmission(member.userId, col.lessonTaskId);
