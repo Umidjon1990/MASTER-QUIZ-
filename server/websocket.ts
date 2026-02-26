@@ -2,8 +2,8 @@ import { Server as HttpServer } from "http";
 import { Server as SocketServer } from "socket.io";
 import { storage } from "./storage";
 import { db } from "./db";
-import { activeGames } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { activeGames, quizzes } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 import { fisherYatesShuffle, balancedShuffleOptions } from "./shuffle";
 
 let io: SocketServer;
@@ -97,6 +97,36 @@ async function deleteGameState(roomId: string) {
     await db.delete(activeGames).where(eq(activeGames.id, roomId));
   } catch (err) {
     console.error(`[PERSIST] Failed to delete game state for ${roomId}:`, err);
+  }
+}
+
+async function recoverStuckScheduledQuizzes() {
+  try {
+    const stuckQuizzes = await db.select().from(quizzes)
+      .where(eq(quizzes.scheduledStatus, "started"));
+
+    if (stuckQuizzes.length === 0) return;
+
+    const activeGamesList = await db.select({ quizId: activeGames.quizId }).from(activeGames);
+    const activeQuizIds = new Set(activeGamesList.map(g => g.quizId));
+
+    for (const quiz of stuckQuizzes) {
+      if (!activeQuizIds.has(quiz.id) && !scheduledQuizRoomCodes.has(quiz.id)) {
+        const scheduledTime = quiz.scheduledAt ? new Date(quiz.scheduledAt).getTime() : 0;
+        const now = Date.now();
+        const hoursSinceScheduled = (now - scheduledTime) / (1000 * 60 * 60);
+
+        if (hoursSinceScheduled > 2) {
+          await storage.updateQuiz(quiz.id, { scheduledStatus: "cancelled" } as any);
+          console.log(`[RECOVER] Quiz "${quiz.title}" was stuck >2h, cancelled`);
+        } else {
+          await storage.updateQuiz(quiz.id, { scheduledStatus: "pending", scheduledRoomCode: null } as any);
+          console.log(`[RECOVER] Quiz "${quiz.title}" reset to pending (was stuck in started)`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[RECOVER] Failed to recover stuck scheduled quizzes:", err);
   }
 }
 
@@ -1051,9 +1081,10 @@ export function setupWebSocket(httpServer: HttpServer) {
     pingTimeout: 60000,
   });
 
-  restoreGamesFromDB().then(() => {
+  restoreGamesFromDB().then(async () => {
     restorationComplete = true;
     console.log("[STARTUP] Game restoration complete");
+    await recoverStuckScheduledQuizzes();
   }).catch(err => {
     restorationComplete = true;
     console.error("[STARTUP] Game restoration failed:", err);
