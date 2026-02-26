@@ -149,10 +149,11 @@ async function sendNextTask(bot: TelegramBot, chatId: string, session: any, stor
 
   const task = tasks[session.currentTaskIndex];
   let message = `📝 ${session.currentTaskIndex + 1}-vazifa: ${task.title}\n\n`;
-  message += `📌 Quyidagi usullardan birida javob yuboring:\n`;
-  message += `🎤 Audio — mavzuni o'qib audio yuboring\n`;
-  message += `📸 Rasm — daftarga yozib, rasmga olib yuboring (lotin/kirill harflarida)\n`;
-  message += `✍️ Matn — tarjimasini yozib yuboring\n`;
+  message += `📌 Javob yuborish usullari (birini yoki bir nechtasini tanlang):\n\n`;
+  message += `🎤 Audio — mavzuni o'qib, ovozli xabar yuboring\n`;
+  message += `📸 Rasm — daftarga tarjimasini yozib, rasmga olib yuboring (lotin/kirill harflarida)\n`;
+  message += `✍️ Matn — tarjimasini yozib yuboring\n\n`;
+  message += `Istalgan usulda yuboring — barchasi qabul qilinadi!`;
 
   await bot.sendMessage(Number(chatId), message);
 }
@@ -234,7 +235,7 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
     await bot.sendMessage(Number(chatId), responseMsg);
     await advanceToNextTask(bot, chatId, session, tasks, storage);
   } catch (error: any) {
-    console.error("[AI-BOT] Submission error:", error);
+    console.error("[AI-BOT] Audio submission error:", error);
     await storage.updateAiSubmission(submission.id, { status: "failed", aiResponse: error.message });
     await bot.sendMessage(Number(chatId), "❌ Xatolik yuz berdi. Qaytadan urinib ko'ring.");
   }

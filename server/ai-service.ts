@@ -30,44 +30,38 @@ export function extractAudioSample(inputPath: string): string {
     ).toString().trim();
     const duration = parseFloat(durationStr);
 
-    if (duration <= 35) {
+    if (duration <= 65) {
       console.log(`[AI-SERVICE] Audio short (${duration}s), using full file`);
       return convertToMp3(inputPath);
     }
 
-    const segmentLength = 10;
-    const maxStart = Math.max(0, duration - segmentLength);
-    const starts: number[] = [];
-    while (starts.length < 3) {
-      const s = Math.floor(Math.random() * maxStart);
-      if (starts.every(existing => Math.abs(existing - s) >= segmentLength)) {
-        starts.push(s);
-      }
-    }
-    starts.sort((a, b) => a - b);
-
     const tmpDir = os.tmpdir();
-    const segFiles: string[] = [];
-    for (let i = 0; i < starts.length; i++) {
-      const segFile = path.join(tmpDir, `seg_${Date.now()}_${i}.mp3`);
-      execSync(
-        `ffmpeg -y -ss ${starts[i]} -i "${inputPath}" -t ${segmentLength} -vn -ar 16000 -ac 1 -b:a 64k "${segFile}" 2>/dev/null`,
-        { timeout: 15000 }
-      );
-      segFiles.push(segFile);
-    }
+    const segStart = path.join(tmpDir, `seg_start_${Date.now()}.mp3`);
+    const segEnd = path.join(tmpDir, `seg_end_${Date.now()}.mp3`);
+
+    execSync(
+      `ffmpeg -y -ss 0 -i "${inputPath}" -t 30 -vn -ar 16000 -ac 1 -b:a 64k "${segStart}" 2>/dev/null`,
+      { timeout: 15000 }
+    );
+
+    const endStart = Math.max(0, duration - 30);
+    execSync(
+      `ffmpeg -y -ss ${endStart} -i "${inputPath}" -t 30 -vn -ar 16000 -ac 1 -b:a 64k "${segEnd}" 2>/dev/null`,
+      { timeout: 15000 }
+    );
 
     const listFile = path.join(tmpDir, `concat_${Date.now()}.txt`);
-    fs.writeFileSync(listFile, segFiles.map(f => `file '${f}'`).join("\n"));
+    fs.writeFileSync(listFile, `file '${segStart}'\nfile '${segEnd}'`);
     execSync(
       `ffmpeg -y -f concat -safe 0 -i "${listFile}" -c copy "${outputPath}" 2>/dev/null`,
       { timeout: 15000 }
     );
 
-    for (const f of segFiles) { try { fs.unlinkSync(f); } catch {} }
+    try { fs.unlinkSync(segStart); } catch {}
+    try { fs.unlinkSync(segEnd); } catch {}
     try { fs.unlinkSync(listFile); } catch {}
 
-    console.log(`[AI-SERVICE] Audio sampled: ${duration.toFixed(0)}s -> 30s (3x10s from ${starts.map(s => s.toFixed(0) + "s").join(", ")})`);
+    console.log(`[AI-SERVICE] Audio sampled: ${duration.toFixed(0)}s -> 60s (boshi 30s + oxiri 30s)`);
     return outputPath;
   } catch (e) {
     console.log(`[AI-SERVICE] Audio sampling failed, converting full file`);
