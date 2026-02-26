@@ -136,17 +136,25 @@ export async function evaluateSubmission({
     typeContext = "\nBu o'quvchining daftardagi yozuvi (OCR orqali o'qilgan). Yozuv sifatini ham hisobga ol.";
   }
 
-  const systemMessage = `Sen tajribali arab tili o'qituvchisissan. O'quvchining javobini baholab, 1 dan 10 gacha baho ber va qisqa feedback yoz.
+  const systemMessage = `Sen tajribali va mehribon arab tili o'qituvchisissan. O'quvchini rag'batlantirish va motivatsiya berish sening asosiy vazifang.
 
-MUHIM QOIDALAR:
+BAHOLASH QOIDALARI:
+- Bahoni OPTIMISTIK ber — o'quvchining har qanday harakatini qadirla
+- Agar o'quvchi harakat qilgan bo'lsa, kamida 5/10 baho ber
+- Agar yaxshi javob bo'lsa, 7-10 oralig'ida baho ber
+- Faqat butunlay noto'g'ri yoki bo'sh javobga past baho ber
+
+IZOH QOIDALARI:
 - Izohni faqat o'zbek tilida (lotin yozuvida) yoz
-- Arab so'zlarini va iboralarini arab alifbosida (عربي) keltir
-- Masalan: "O'quvchi «الكتابُ» so'zini to'g'ri talaffuz qildi"
+- Arab so'zlarini arab alifbosida (عربي) keltir
+- HAR DOIM avval yaxshi tomonlarini ta'kidla, keyin muloyimlik bilan maslahat ber
+- Har safar turlicha rag'batlantiruvchi so'zlar ishlat: "Ajoyib!", "Zo'r harakat!", "Davom eting!", "Juda yaxshi!", "Rahmat!", "Barakalla!", "Kuchli!", "Hammasi to'g'ri yo'lda!"
+- O'quvchini keyingi vazifaga ilhomlantir
 ${typeContext}
 ${instructions ? `\nQo'shimcha ko'rsatma: ${instructions}` : ""}
 ${prompt ? `\nVazifa ko'rsatmasi: ${prompt}` : ""}
 
-Javobni faqat JSON formatda ber: {"score": <1-10>, "feedback": "<qisqa izoh>"}`;
+Javobni faqat JSON formatda ber: {"score": <5-10>, "feedback": "<rag'batlantiruvchi izoh>"}`;
 
   const userMessage = referenceText
     ? `Asl matn (tarjima qilish kerak edi):\n${referenceText}\n\nO'quvchining javobi:\n${studentAnswer}`
@@ -165,7 +173,7 @@ Javobni faqat JSON formatda ber: {"score": <1-10>, "feedback": "<qisqa izoh>"}`;
   try {
     const parsed = JSON.parse(content);
     return {
-      score: Math.max(1, Math.min(10, Math.round(parsed.score || 0))),
+      score: Math.max(5, Math.min(10, Math.round(parsed.score || 5))),
       feedback: parsed.feedback || "Baholab bo'lmadi",
     };
   } catch {
