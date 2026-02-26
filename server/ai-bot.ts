@@ -170,12 +170,18 @@ async function sendLessonList(bot: TelegramBot, chatId: string, session: any, st
     return;
   }
 
-  const lessonNumbers = getLessonNumbers(tasks);
+  const allLessonNumbers = getLessonNumbers(tasks);
+  const lessonNumbers = allLessonNumbers.filter(num => tasks.some(t => t.lessonNumber === num && t.prompt));
+
+  if (lessonNumbers.length === 0) {
+    await bot.sendMessage(Number(chatId), "Hozircha vazifalar tayyor emas. O'qituvchi vazifalarni biriktirishi kerak.");
+    return;
+  }
+
   const submissions = await storage.getAiSubmissions(session.aiStudentId);
   const completedTaskIds = new Set(submissions.filter(s => s.status === "completed").map(s => s.aiTaskId));
 
   let completedLessons = 0;
-  let totalScore = 0;
   let totalTasks = 0;
 
   const lessonStatuses: { num: number; done: boolean; tasksDone: number; tasksTotal: number }[] = [];
@@ -188,7 +194,7 @@ async function sendLessonList(bot: TelegramBot, chatId: string, session: any, st
     lessonStatuses.push({ num, done: allDone, tasksDone: doneCount, tasksTotal: lessonTasks.length });
   }
 
-  totalScore = submissions
+  const totalScore = submissions
     .filter(s => s.status === "completed")
     .reduce((sum, s) => sum + (s.score || 0), 0);
 
@@ -202,9 +208,9 @@ async function sendLessonList(bot: TelegramBot, chatId: string, session: any, st
 
   const keyboard: TelegramBot.InlineKeyboardButton[][] = [];
   const ROW_SIZE = 3;
-  for (let i = 0; i < lessonNumbers.length; i += ROW_SIZE) {
+  for (let i = 0; i < lessonStatuses.length; i += ROW_SIZE) {
     const row: TelegramBot.InlineKeyboardButton[] = [];
-    for (let j = i; j < Math.min(i + ROW_SIZE, lessonNumbers.length); j++) {
+    for (let j = i; j < Math.min(i + ROW_SIZE, lessonStatuses.length); j++) {
       const ls = lessonStatuses[j];
       let icon = "📝";
       if (ls.done) icon = "✅";
