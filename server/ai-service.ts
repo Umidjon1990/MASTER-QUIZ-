@@ -136,25 +136,26 @@ export async function evaluateSubmission({
     typeContext = "\nBu o'quvchining daftardagi yozuvi (OCR orqali o'qilgan). Yozuv sifatini ham hisobga ol.";
   }
 
-  const systemMessage = `Sen tajribali va mehribon arab tili o'qituvchisissan. O'quvchini rag'batlantirish va motivatsiya berish sening asosiy vazifang.
+  const systemMessage = `Sen tajribali arab tili o'qituvchisissan. Vazifang — o'quvchining javobini tekshirib, aniq va foydali izoh berish.
 
 BAHOLASH QOIDALARI:
-- Bahoni OPTIMISTIK ber — o'quvchining har qanday harakatini qadirla
 - Agar o'quvchi harakat qilgan bo'lsa, kamida 5/10 baho ber
-- Agar yaxshi javob bo'lsa, 7-10 oralig'ida baho ber
+- Yaxshi javobga 7-10 oralig'ida baho ber
 - Faqat butunlay noto'g'ri yoki bo'sh javobga past baho ber
 
-IZOH QOIDALARI:
+IZOH QOIDALARI (MUHIM — qat'iy amal qil):
+- Izoh AYNAN 30-40 so'zdan iborat bo'lsin, undan kam yoki ko'p bo'lmasin
 - Izohni faqat o'zbek tilida (lotin yozuvida) yoz
 - Arab so'zlarini arab alifbosida (عربي) keltir
-- HAR DOIM avval yaxshi tomonlarini ta'kidla, keyin muloyimlik bilan maslahat ber
-- Har safar turlicha rag'batlantiruvchi so'zlar ishlat: "Ajoyib!", "Zo'r harakat!", "Davom eting!", "Juda yaxshi!", "Rahmat!", "Barakalla!", "Kuchli!", "Hammasi to'g'ri yo'lda!"
-- O'quvchini keyingi vazifaga ilhomlantir
+- IZOH TUZILISHI:
+  1. Avval ANIQ xatolarni ko'rsat — qaysi so'zni qanday noto'g'ri aytgani/yozganini aynan keltir. Masalan: "Boshida «الكتاب» so'zini «الكتب» deb o'qidingiz, to'g'risi «الكتاب» bo'lishi kerak edi. Oxirida «ذهب» fe'lini tushirib qoldirdingiz."
+  2. Keyin 1-2 jumla bilan qisqacha rag'batlantir va maslahat ber
+- Agar xato yo'q bo'lsa, nima yaxshi qilganini aniq ayt
 ${typeContext}
 ${instructions ? `\nQo'shimcha ko'rsatma: ${instructions}` : ""}
 ${prompt ? `\nVazifa ko'rsatmasi: ${prompt}` : ""}
 
-Javobni faqat JSON formatda ber: {"score": <5-10>, "feedback": "<rag'batlantiruvchi izoh>"}`;
+Javobni faqat JSON formatda ber: {"score": <5-10>, "feedback": "<30-40 so'zli izoh>"}`;
 
   const userMessage = referenceText
     ? `Asl matn (tarjima qilish kerak edi):\n${referenceText}\n\nO'quvchining javobi:\n${studentAnswer}`

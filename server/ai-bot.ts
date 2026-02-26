@@ -247,10 +247,7 @@ async function sendCurrentTask(bot: TelegramBot, chatId: string, session: any, s
 
   const task = lessonTasks[session.currentTaskIndex];
   let message = `📝 ${session.selectedLessonNumber}-dars, ${session.currentTaskIndex + 1}/${lessonTasks.length}-vazifa: ${task.title}\n\n`;
-  message += `📌 Javob yuborish usullari:\n\n`;
-  message += `🎤 Audio — mavzuni o'qib, ovozli xabar yuboring\n`;
-  message += `📸 Rasm — daftarga tarjimasini yozib, rasmga olib yuboring\n`;
-  message += `✍️ Matn — tarjimasini yozib yuboring`;
+  message += `🎤 Ovozli xabar yuboring`;
 
   await bot.sendMessage(Number(chatId), message, {
     reply_markup: {
@@ -416,6 +413,9 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
 
 async function handleImageSubmission(bot: TelegramBot, msg: TelegramBot.Message, storage: IStorage) {
   const chatId = msg.chat.id.toString();
+  await bot.sendMessage(Number(chatId), "📸 Hozircha faqat ovozli xabar (audio) qabul qilinadi. Iltimos, ovozli xabar yuboring.");
+  return;
+  /* VAQTINCHA O'CHIRILGAN — keyinroq yoqiladi */
   const session = studentSessions.get(chatId);
   if (!session || !session.aiStudentId || session.awaitingPhone) {
     await bot.sendMessage(Number(chatId), "Avval /start buyrug'ini yuboring.");
@@ -500,7 +500,13 @@ async function handleImageSubmission(bot: TelegramBot, msg: TelegramBot.Message,
 async function handleTextSubmission(bot: TelegramBot, msg: TelegramBot.Message, storage: IStorage) {
   const chatId = msg.chat.id.toString();
   const session = studentSessions.get(chatId);
-  if (!session || !session.aiStudentId || session.awaitingPhone) return;
+  if (!session || session.awaitingPhone) return;
+  if (session.aiStudentId && session.selectedLessonNumber !== null) {
+    await bot.sendMessage(Number(chatId), "✍️ Hozircha faqat ovozli xabar (audio) qabul qilinadi. Iltimos, ovozli xabar yuboring.");
+    return;
+  }
+  if (!session.aiStudentId) return;
+  /* VAQTINCHA O'CHIRILGAN — keyinroq yoqiladi */
 
   const tasks = await storage.getAiTasks(session.aiClassId);
   const task = getCurrentTask(session, tasks);
