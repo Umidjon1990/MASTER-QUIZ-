@@ -1,6 +1,4 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
-import { serveStatic } from "./static";
 import { createServer } from "http";
 
 const app = express();
@@ -35,7 +33,7 @@ export function log(message: string, source = "express") {
 
 app.use((req, res, next) => {
   const start = Date.now();
-  const path = req.path;
+  const reqPath = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
   const originalResJson = res.json;
@@ -46,8 +44,8 @@ app.use((req, res, next) => {
 
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+    if (reqPath.startsWith("/api")) {
+      let logLine = `${req.method} ${reqPath} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
@@ -75,7 +73,7 @@ const port = parseInt(process.env.PORT || "5000", 10);
 
 if (process.env.NODE_ENV === "production") {
   httpServer.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
-    log(`health endpoint ready on port ${port}`);
+    log(`health ready on port ${port}, loading app...`);
   });
 }
 
@@ -83,6 +81,7 @@ if (process.env.NODE_ENV === "production") {
   const { runMigrations } = await import("./db");
   await runMigrations();
 
+  const { registerRoutes } = await import("./routes");
   await registerRoutes(httpServer, app);
 
   const { restoreActiveBots } = await import("./ai-bot");
@@ -103,6 +102,7 @@ if (process.env.NODE_ENV === "production") {
   });
 
   if (process.env.NODE_ENV === "production") {
+    const { serveStatic } = await import("./static");
     serveStatic(app);
     log(`fully loaded, serving static files`);
   } else {
