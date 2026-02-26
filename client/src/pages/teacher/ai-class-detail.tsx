@@ -52,7 +52,7 @@ export default function AiClassDetail() {
   });
 
   const { data: profile } = useQuery<any>({
-    queryKey: ["/api/user/profile"],
+    queryKey: ["/api/profile"],
   });
 
   const botStartMutation = useMutation({
@@ -290,7 +290,7 @@ export default function AiClassDetail() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs sm:text-sm" data-testid="ai-results-table">
                     <thead>
-                      {resultLessons.length > 1 && (
+                      {resultLessons.length > 0 && (
                         <tr className="border-b bg-purple-50 dark:bg-purple-950/20">
                           <th className="p-1 sticky left-0 bg-purple-50 dark:bg-purple-950/20 z-10" />
                           <th className="p-1 sticky left-[32px] bg-purple-50 dark:bg-purple-950/20 z-10" />
