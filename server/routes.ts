@@ -4085,14 +4085,21 @@ export async function registerRoutes(
       const top3 = studentResults.slice(0, 3);
       const medals = ["🥇", "🥈", "🥉"];
       top3.forEach((r, i) => {
-        const bar = "█".repeat(Math.round(r.percent / 10)) + "░".repeat(10 - Math.round(r.percent / 10));
-        message += `${medals[i]} <b>${r.name}</b>\n   ${bar} ${r.totalScore}/${r.maxScore} (${r.percent}%)\n\n`;
+        const taskDetails = filteredTasks.map((t, ti) => {
+          const score = r.scores[ti] || 0;
+          return `${t.title}: ${score}/10`;
+        }).join(" | ");
+        message += `${medals[i]} <b>${r.name}</b>\n   ${taskDetails}\n   📈 ${r.totalScore}/${r.maxScore} (${r.percent}%)\n\n`;
       });
 
       if (studentResults.length > 3) {
         message += `📋 <b>Barcha natijalar:</b>\n`;
         studentResults.forEach((r, i) => {
-          message += `${i + 1}. ${r.name} — ${r.totalScore}/${r.maxScore} (${r.percent}%)\n`;
+          const taskDetails = filteredTasks.map((t, ti) => {
+            const score = r.scores[ti] || 0;
+            return `${t.title}: ${score}`;
+          }).join(" | ");
+          message += `${i + 1}. ${r.name} — ${taskDetails} — ${r.percent}%\n`;
         });
       }
 
@@ -4106,7 +4113,7 @@ export async function registerRoutes(
 
       const PDFDocument = (await import("pdfkit")).default;
       const chunks: Buffer[] = [];
-      const doc = new PDFDocument({ size: "A4", margin: 40 });
+      const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 30 });
       doc.on("data", (chunk: Buffer) => chunks.push(chunk));
 
       const fontPath = path.join(process.cwd(), "server", "fonts");
@@ -4120,51 +4127,60 @@ export async function registerRoutes(
       const fontR = hasCustomFonts ? "Regular" : "Helvetica";
       const fontB = hasCustomFonts ? "Bold" : "Helvetica-Bold";
 
-      doc.font(fontB).fontSize(16).text(title, { align: "center" });
-      doc.moveDown(0.5);
-      doc.font(fontR).fontSize(9).text(`Sana: ${new Date().toLocaleDateString("uz-UZ")}`, { align: "center" });
-      doc.moveDown(1);
+      doc.font(fontB).fontSize(14).text(title, { align: "center" });
+      doc.moveDown(0.3);
+      doc.font(fontR).fontSize(8).text(`Sana: ${new Date().toLocaleDateString("uz-UZ")}`, { align: "center" });
+      doc.moveDown(0.8);
 
-      const lessonNums = lessonNumber ? [lessonNumber] : [...new Set(filteredTasks.map(t => t.lessonNumber))].sort((a, b) => a - b);
-      const colStart = 40;
-      const nameW = 120;
-      const scoreW = lessonNums.length > 6 ? 35 : 45;
+      const colStart = 30;
+      const nameW = 110;
+      const taskW = Math.min(55, Math.max(35, Math.floor((doc.page.width - 60 - nameW - 45) / filteredTasks.length)));
       const avgW = 45;
-      const totalW = nameW + lessonNums.length * scoreW + avgW;
+      const totalW = nameW + filteredTasks.length * taskW + avgW;
       let y = doc.y;
 
-      doc.font(fontB).fontSize(8);
-      doc.rect(colStart, y, totalW, 20).fill("#7c3aed");
+      const lessonNums = [...new Set(filteredTasks.map(t => t.lessonNumber))].sort((a, b) => a - b);
+      if (lessonNums.length > 1 || !lessonNumber) {
+        doc.font(fontB).fontSize(7);
+        doc.rect(colStart, y, totalW, 16).fill("#ede9fe");
+        doc.fill("#7c3aed");
+        doc.text("", colStart, y + 4, { width: nameW });
+        let taskOffset = 0;
+        lessonNums.forEach(ln => {
+          const lnTasks = filteredTasks.filter(t => t.lessonNumber === ln);
+          const lnWidth = lnTasks.length * taskW;
+          doc.text(`${ln}-dars`, colStart + nameW + taskOffset, y + 4, { width: lnWidth, align: "center" });
+          taskOffset += lnWidth;
+        });
+        y += 16;
+      }
+
+      doc.font(fontB).fontSize(7);
+      doc.rect(colStart, y, totalW, 18).fill("#7c3aed");
       doc.fill("#ffffff").text("O'quvchi", colStart + 4, y + 5, { width: nameW - 8 });
-      lessonNums.forEach((ln, i) => {
-        doc.text(`${ln}-dars`, colStart + nameW + i * scoreW, y + 5, { width: scoreW, align: "center" });
+      filteredTasks.forEach((task, i) => {
+        doc.text(task.title, colStart + nameW + i * taskW, y + 5, { width: taskW, align: "center" });
       });
-      doc.text("O'rtacha", colStart + nameW + lessonNums.length * scoreW, y + 5, { width: avgW, align: "center" });
-      y += 20;
+      doc.text("O'rtacha", colStart + nameW + filteredTasks.length * taskW, y + 5, { width: avgW, align: "center" });
+      y += 18;
 
       doc.fill("#000000");
       studentResults.forEach((r, idx) => {
-        if (y > 750) { doc.addPage(); y = 40; }
+        if (y > 550) { doc.addPage(); y = 30; }
         const bgColor = idx % 2 === 0 ? "#f5f3ff" : "#ffffff";
-        doc.rect(colStart, y, totalW, 18).fill(bgColor);
-        doc.fill("#000000").font(fontR).fontSize(8);
+        doc.rect(colStart, y, totalW, 16).fill(bgColor);
+        doc.fill("#000000").font(fontR).fontSize(7);
         doc.text(`${idx + 1}. ${r.name}`, colStart + 4, y + 4, { width: nameW - 8 });
 
-        lessonNums.forEach((ln, i) => {
-          const lessonTasks = filteredTasks.filter(t => t.lessonNumber === ln);
-          const lessonScore = lessonTasks.reduce((sum, t) => {
-            const tIdx = filteredTasks.indexOf(t);
-            return sum + (r.scores[tIdx] || 0);
-          }, 0);
-          const lessonMax = lessonTasks.length * 10;
-          const pct = lessonMax > 0 ? Math.round((lessonScore / lessonMax) * 100) : 0;
-          const color = pct >= 70 ? "#16a34a" : pct >= 40 ? "#ca8a04" : "#dc2626";
-          doc.fill(color).text(`${lessonScore}/${lessonMax}`, colStart + nameW + i * scoreW, y + 4, { width: scoreW, align: "center" });
+        filteredTasks.forEach((task, i) => {
+          const score = r.scores[i] || 0;
+          const color = score >= 7 ? "#16a34a" : score >= 4 ? "#ca8a04" : "#dc2626";
+          doc.fill(score === 0 ? "#9ca3af" : color).text(score === 0 ? "—" : `${score}`, colStart + nameW + i * taskW, y + 4, { width: taskW, align: "center" });
         });
 
         const avgColor = r.percent >= 70 ? "#16a34a" : r.percent >= 40 ? "#ca8a04" : "#dc2626";
-        doc.fill(avgColor).font(fontB).text(`${r.percent}%`, colStart + nameW + lessonNums.length * scoreW, y + 4, { width: avgW, align: "center" });
-        y += 18;
+        doc.fill(avgColor).font(fontB).text(`${r.percent}%`, colStart + nameW + filteredTasks.length * taskW, y + 4, { width: avgW, align: "center" });
+        y += 16;
       });
 
       await new Promise<void>((resolve) => { doc.on("end", resolve); doc.end(); });
