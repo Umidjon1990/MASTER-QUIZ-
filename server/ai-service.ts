@@ -36,32 +36,41 @@ export function extractAudioSample(inputPath: string): string {
     }
 
     const tmpDir = os.tmpdir();
-    const segStart = path.join(tmpDir, `seg_start_${Date.now()}.mp3`);
-    const segEnd = path.join(tmpDir, `seg_end_${Date.now()}.mp3`);
+    const ts = Date.now();
+    const segStart = path.join(tmpDir, `seg_start_${ts}.mp3`);
+    const segMid = path.join(tmpDir, `seg_mid_${ts}.mp3`);
+    const segEnd = path.join(tmpDir, `seg_end_${ts}.mp3`);
 
     execSync(
-      `ffmpeg -y -ss 0 -i "${inputPath}" -t 30 -vn -ar 16000 -ac 1 -b:a 64k "${segStart}" 2>/dev/null`,
+      `ffmpeg -y -ss 0 -i "${inputPath}" -t 20 -vn -ar 16000 -ac 1 -b:a 64k "${segStart}" 2>/dev/null`,
       { timeout: 15000 }
     );
 
-    const endStart = Math.max(0, duration - 30);
+    const midStart = Math.max(0, (duration / 2) - 10);
     execSync(
-      `ffmpeg -y -ss ${endStart} -i "${inputPath}" -t 30 -vn -ar 16000 -ac 1 -b:a 64k "${segEnd}" 2>/dev/null`,
+      `ffmpeg -y -ss ${midStart} -i "${inputPath}" -t 20 -vn -ar 16000 -ac 1 -b:a 64k "${segMid}" 2>/dev/null`,
       { timeout: 15000 }
     );
 
-    const listFile = path.join(tmpDir, `concat_${Date.now()}.txt`);
-    fs.writeFileSync(listFile, `file '${segStart}'\nfile '${segEnd}'`);
+    const endStart = Math.max(0, duration - 20);
+    execSync(
+      `ffmpeg -y -ss ${endStart} -i "${inputPath}" -t 20 -vn -ar 16000 -ac 1 -b:a 64k "${segEnd}" 2>/dev/null`,
+      { timeout: 15000 }
+    );
+
+    const listFile = path.join(tmpDir, `concat_${ts}.txt`);
+    fs.writeFileSync(listFile, `file '${segStart}'\nfile '${segMid}'\nfile '${segEnd}'`);
     execSync(
       `ffmpeg -y -f concat -safe 0 -i "${listFile}" -c copy "${outputPath}" 2>/dev/null`,
       { timeout: 15000 }
     );
 
     try { fs.unlinkSync(segStart); } catch {}
+    try { fs.unlinkSync(segMid); } catch {}
     try { fs.unlinkSync(segEnd); } catch {}
     try { fs.unlinkSync(listFile); } catch {}
 
-    console.log(`[AI-SERVICE] Audio sampled: ${duration.toFixed(0)}s -> 60s (boshi 30s + oxiri 30s)`);
+    console.log(`[AI-SERVICE] Audio sampled: ${duration.toFixed(0)}s -> 60s (boshi 20s + o'rtasi 20s + oxiri 20s)`);
     return outputPath;
   } catch (e) {
     console.log(`[AI-SERVICE] Audio sampling failed, converting full file`);
@@ -131,31 +140,35 @@ export async function evaluateSubmission({
 }): Promise<{ score: number; feedback: string }> {
   let typeContext = "";
   if (submissionType === "audio_sample") {
-    typeContext = "\nBu audio yozuvning 30 sekundlik namunasi (sample). O'quvchi to'liq matnni o'qiganmi yoki yo'qmi, shu namuna asosida professional xulosa ber.";
+    typeContext = "\nBu audio yozuvning 3 joydan olingan namunasi (boshi, o'rtasi, oxiri). Shu namuna asosida o'quvchining umumiy o'qish sifatini baholay.";
   } else if (submissionType === "image") {
     typeContext = "\nBu o'quvchining daftardagi yozuvi (OCR orqali o'qilgan). Yozuv sifatini ham hisobga ol.";
   }
 
-  const systemMessage = `Sen tajribali arab tili o'qituvchisissan. Vazifang — o'quvchining javobini tekshirib, aniq va foydali izoh berish.
+  const systemMessage = `Sen tajribali arab tili o'qituvchisissan. Vazifang — o'quvchining javobini MA'NO va MAZMUN jihatidan tekshirish.
 
 BAHOLASH QOIDALARI:
+- Asosiy mezon: o'quvchi vazifaga mos javob bergami? Mazmun to'g'rimi? Mavzudan chetlanmaganmi?
+- O'quvchi arab tilidagi matnni o'qib, sharhlashi yoki tarjima qilishi mumkin. Sharh kengroq bo'lsa ham, umumiy MA'NO to'g'ri bo'lsa — to'g'ri qabul qil
+- Mavzudan to'liq chetlanmagan bo'lsa, ijobiy bahola
 - Agar o'quvchi harakat qilgan bo'lsa, kamida 5/10 baho ber
 - Yaxshi javobga 7-10 oralig'ida baho ber
-- Faqat butunlay noto'g'ri yoki bo'sh javobga past baho ber
+- Faqat butunlay noto'g'ri, mavzuga aloqasiz yoki bo'sh javobga past baho ber
 
 IZOH QOIDALARI (MUHIM — qat'iy amal qil):
-- Izoh AYNAN 30-40 so'zdan iborat bo'lsin, undan kam yoki ko'p bo'lmasin
+- Izoh 40-50 so'zdan iborat bo'lsin
 - Izohni faqat o'zbek tilida (lotin yozuvida) yoz
 - Arab so'zlarini arab alifbosida (عربي) keltir
 - IZOH TUZILISHI:
-  1. Avval ANIQ xatolarni ko'rsat — qaysi so'zni qanday noto'g'ri aytgani/yozganini aynan keltir. Masalan: "Boshida «الكتاب» so'zini «الكتب» deb o'qidingiz, to'g'risi «الكتاب» bo'lishi kerak edi. Oxirida «ذهب» fe'lini tushirib qoldirdingiz."
-  2. Keyin 1-2 jumla bilan qisqacha rag'batlantir va maslahat ber
-- Agar xato yo'q bo'lsa, nima yaxshi qilganini aniq ayt
+  1. Avval mazmun jihatidan umumiy baho ber — vazifaga mos javob berilganmi, asosiy fikr to'g'ri tushunilganmi
+  2. Umumiy xatolar haqida qisqa ayt (talaffuz, grammatika, tushirib qoldirilgan qismlar) — lekin har bir xatoni alohida misollab ko'rsatish SHART EMAS, umumiy ayt
+  3. Oxirida qisqa rag'batlantir va keyingi safar nimaga e'tibor berish kerakligini maslahat ber
+- Agar xato yo'q bo'lsa, nimani yaxshi qilganini umumiy ayt
 ${typeContext}
 ${instructions ? `\nQo'shimcha ko'rsatma: ${instructions}` : ""}
 ${prompt ? `\nVazifa ko'rsatmasi: ${prompt}` : ""}
 
-Javobni faqat JSON formatda ber: {"score": <5-10>, "feedback": "<30-40 so'zli izoh>"}`;
+Javobni faqat JSON formatda ber: {"score": <5-10>, "feedback": "<40-50 so'zli izoh>"}`;
 
   const userMessage = referenceText
     ? `Asl matn (tarjima qilish kerak edi):\n${referenceText}\n\nO'quvchining javobi:\n${studentAnswer}`
