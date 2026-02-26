@@ -62,7 +62,7 @@ export async function startAiBot(aiClassId: string, token: string, storage: ISto
     const chatId = msg.chat.id.toString();
     const session = studentSessions.get(chatId);
     if (!session || !session.aiStudentId) {
-      await bot.sendMessage(Number(chatId), "Avval /start buyrug'ini yuboring va telefon raqamingizni tasdiqlang.");
+      await bot.sendMessage(Number(chatId), "Sessiya topilmadi. Qayta ulaning:", restartKeyboard);
       return;
     }
     session.selectedLessonNumber = null;
@@ -70,16 +70,54 @@ export async function startAiBot(aiClassId: string, token: string, storage: ISto
     await sendLessonList(bot, chatId, session, storage);
   });
 
+  const restartKeyboard = { reply_markup: { inline_keyboard: [[{ text: "🔄 Qayta ulash", callback_data: "restart_bot" }]] } };
+
   bot.on("callback_query", async (query) => {
     const chatId = query.message?.chat.id.toString();
     if (!chatId) return;
-    const session = studentSessions.get(chatId);
-    if (!session || !session.aiStudentId) {
-      await bot.answerCallbackQuery(query.id, { text: "Avval /start buyrug'ini yuboring." });
+
+    const data = query.data;
+    if (data === "restart_bot") {
+      await bot.answerCallbackQuery(query.id);
+      const existing = await storage.getAiStudentByTelegramChatId(chatId);
+      if (existing && existing.aiClassId === aiClassId) {
+        studentSessions.set(chatId, {
+          aiClassId,
+          aiStudentId: existing.id,
+          selectedLessonNumber: null,
+          currentTaskIndex: 0,
+          awaitingPhone: false,
+        });
+        await bot.sendMessage(Number(chatId), `✅ Qayta ulandi, ${existing.name}! Darslarni ko'rish uchun /vazifa buyrug'ini yuboring.`);
+      } else {
+        studentSessions.set(chatId, {
+          aiClassId,
+          aiStudentId: "",
+          selectedLessonNumber: null,
+          currentTaskIndex: 0,
+          awaitingPhone: true,
+        });
+        await bot.sendMessage(Number(chatId),
+          `Assalomu alaykum! "${aiClass.name}" sinfiga xush kelibsiz.\n\nIltimos, telefon raqamingizni yuboring (masalan: 998901234567):`,
+          {
+            reply_markup: {
+              keyboard: [[{ text: "📱 Telefon raqamni yuborish", request_contact: true }]],
+              resize_keyboard: true,
+              one_time_keyboard: true,
+            },
+          }
+        );
+      }
       return;
     }
 
-    const data = query.data;
+    const session = studentSessions.get(chatId);
+    if (!session || !session.aiStudentId) {
+      await bot.answerCallbackQuery(query.id, { text: "Qayta ulash kerak!" });
+      await bot.sendMessage(Number(chatId), "Sessiya tugagan. Qayta ulaning:", restartKeyboard);
+      return;
+    }
+
     if (data?.startsWith("lesson_")) {
       const lessonNum = parseInt(data.replace("lesson_", ""));
       const tasks = await storage.getAiTasks(session.aiClassId);
@@ -331,7 +369,8 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
   const chatId = msg.chat.id.toString();
   const session = studentSessions.get(chatId);
   if (!session || !session.aiStudentId || session.awaitingPhone) {
-    await bot.sendMessage(Number(chatId), "Avval /start buyrug'ini yuboring.");
+    const restartKb = { reply_markup: { inline_keyboard: [[{ text: "🔄 Qayta ulash", callback_data: "restart_bot" }]] } };
+    await bot.sendMessage(Number(chatId), "Sessiya topilmadi. Qayta ulaning:", restartKb);
     return;
   }
 
@@ -424,7 +463,8 @@ async function handleImageSubmission(bot: TelegramBot, msg: TelegramBot.Message,
   /* VAQTINCHA O'CHIRILGAN — keyinroq yoqiladi */
   const session = studentSessions.get(chatId);
   if (!session || !session.aiStudentId || session.awaitingPhone) {
-    await bot.sendMessage(Number(chatId), "Avval /start buyrug'ini yuboring.");
+    const restartKb = { reply_markup: { inline_keyboard: [[{ text: "🔄 Qayta ulash", callback_data: "restart_bot" }]] } };
+    await bot.sendMessage(Number(chatId), "Sessiya topilmadi. Qayta ulaning:", restartKb);
     return;
   }
 
