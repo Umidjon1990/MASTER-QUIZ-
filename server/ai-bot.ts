@@ -7,7 +7,8 @@ export const activeBots = new Map<string, TelegramBot>();
 const studentSessions = new Map<string, {
   aiClassId: string;
   aiStudentId: string;
-  selectedTaskId: string | null;
+  selectedLessonNumber: number | null;
+  currentTaskIndex: number;
   awaitingPhone: boolean;
 }>();
 
@@ -29,17 +30,19 @@ export async function startAiBot(aiClassId: string, token: string, storage: ISto
       studentSessions.set(chatId, {
         aiClassId,
         aiStudentId: existing.id,
-        selectedTaskId: null,
+        selectedLessonNumber: null,
+        currentTaskIndex: 0,
         awaitingPhone: false,
       });
-      await bot.sendMessage(Number(chatId), `Xush kelibsiz, ${existing.name}! Vazifalarni ko'rish uchun /vazifa buyrug'ini yuboring.`);
+      await bot.sendMessage(Number(chatId), `Xush kelibsiz, ${existing.name}! Darslarni ko'rish uchun /vazifa buyrug'ini yuboring.`);
       return;
     }
 
     studentSessions.set(chatId, {
       aiClassId,
       aiStudentId: "",
-      selectedTaskId: null,
+      selectedLessonNumber: null,
+      currentTaskIndex: 0,
       awaitingPhone: true,
     });
 
@@ -62,8 +65,9 @@ export async function startAiBot(aiClassId: string, token: string, storage: ISto
       await bot.sendMessage(Number(chatId), "Avval /start buyrug'ini yuboring va telefon raqamingizni tasdiqlang.");
       return;
     }
-    session.selectedTaskId = null;
-    await sendTaskList(bot, chatId, session, storage);
+    session.selectedLessonNumber = null;
+    session.currentTaskIndex = 0;
+    await sendLessonList(bot, chatId, session, storage);
   });
 
   bot.on("callback_query", async (query) => {
@@ -76,37 +80,35 @@ export async function startAiBot(aiClassId: string, token: string, storage: ISto
     }
 
     const data = query.data;
-    if (data?.startsWith("task_")) {
-      const taskId = data.replace("task_", "");
-      const existing = await storage.getAiSubmissionByStudentAndTask(session.aiStudentId, taskId);
-      if (existing && existing.status === "completed") {
-        await bot.answerCallbackQuery(query.id, { text: "Bu dars vazifasi allaqachon topshirilgan!" });
+    if (data?.startsWith("lesson_")) {
+      const lessonNum = parseInt(data.replace("lesson_", ""));
+      const tasks = await storage.getAiTasks(session.aiClassId);
+      const lessonTasks = tasks.filter(t => t.lessonNumber === lessonNum).sort((a, b) => a.orderIndex - b.orderIndex);
+
+      if (lessonTasks.length === 0) {
+        await bot.answerCallbackQuery(query.id, { text: "Bu darsda vazifalar yo'q." });
         return;
       }
 
-      session.selectedTaskId = taskId;
+      const submissions = await storage.getAiSubmissions(session.aiStudentId);
+      const completedTaskIds = new Set(submissions.filter(s => s.status === "completed").map(s => s.aiTaskId));
+      const allDone = lessonTasks.every(t => completedTaskIds.has(t.id));
+      if (allDone) {
+        await bot.answerCallbackQuery(query.id, { text: "Bu dars allaqachon topshirilgan!" });
+        return;
+      }
+
+      session.selectedLessonNumber = lessonNum;
+      const firstUndone = lessonTasks.findIndex(t => !completedTaskIds.has(t.id));
+      session.currentTaskIndex = firstUndone >= 0 ? firstUndone : 0;
+
       await bot.answerCallbackQuery(query.id);
-
-      const tasks = await storage.getAiTasks(session.aiClassId);
-      const task = tasks.find(t => t.id === taskId);
-      if (!task) return;
-
-      const taskIndex = tasks.findIndex(t => t.id === taskId) + 1;
-      let message = `📝 ${taskIndex}-dars: ${task.title}\n\n`;
-      message += `📌 Javob yuborish usullari:\n\n`;
-      message += `🎤 Audio — mavzuni o'qib, ovozli xabar yuboring\n`;
-      message += `📸 Rasm — daftarga tarjimasini yozib, rasmga olib yuboring\n`;
-      message += `✍️ Matn — tarjimasini yozib yuboring`;
-
-      await bot.sendMessage(Number(chatId), message, {
-        reply_markup: {
-          inline_keyboard: [[{ text: "⬅️ Darslar ro'yxatiga qaytish", callback_data: "back_to_tasks" }]],
-        },
-      });
-    } else if (data === "back_to_tasks") {
-      session.selectedTaskId = null;
+      await sendCurrentTask(bot, chatId, session, storage);
+    } else if (data === "back_to_lessons") {
+      session.selectedLessonNumber = null;
+      session.currentTaskIndex = 0;
       await bot.answerCallbackQuery(query.id);
-      await sendTaskList(bot, chatId, session, storage);
+      await sendLessonList(bot, chatId, session, storage);
     }
   });
 
@@ -155,46 +157,61 @@ export async function startAiBot(aiClassId: string, token: string, storage: ISto
   console.log(`[AI-BOT] Bot started for class ${aiClassId}`);
 }
 
-async function sendTaskList(bot: TelegramBot, chatId: string, session: any, storage: IStorage) {
+function getLessonNumbers(tasks: any[]): number[] {
+  const nums = new Set<number>();
+  tasks.forEach(t => nums.add(t.lessonNumber));
+  return Array.from(nums).sort((a, b) => a - b);
+}
+
+async function sendLessonList(bot: TelegramBot, chatId: string, session: any, storage: IStorage) {
   const tasks = await storage.getAiTasks(session.aiClassId);
   if (tasks.length === 0) {
-    await bot.sendMessage(Number(chatId), "Hozircha vazifalar yo'q. O'qituvchi vazifalarni qo'shishi kerak.");
+    await bot.sendMessage(Number(chatId), "Hozircha darslar yo'q. O'qituvchi darslarni qo'shishi kerak.");
     return;
   }
 
+  const lessonNumbers = getLessonNumbers(tasks);
   const submissions = await storage.getAiSubmissions(session.aiStudentId);
-  const completedTaskIds = new Set(
-    submissions.filter(s => s.status === "completed").map(s => s.aiTaskId)
-  );
-  const processingTaskIds = new Set(
-    submissions.filter(s => s.status === "processing").map(s => s.aiTaskId)
-  );
+  const completedTaskIds = new Set(submissions.filter(s => s.status === "completed").map(s => s.aiTaskId));
 
-  const completedCount = tasks.filter(t => completedTaskIds.has(t.id)).length;
-  const totalScore = submissions
+  let completedLessons = 0;
+  let totalScore = 0;
+  let totalTasks = 0;
+
+  const lessonStatuses: { num: number; done: boolean; tasksDone: number; tasksTotal: number }[] = [];
+  for (const num of lessonNumbers) {
+    const lessonTasks = tasks.filter(t => t.lessonNumber === num);
+    const doneCount = lessonTasks.filter(t => completedTaskIds.has(t.id)).length;
+    const allDone = doneCount === lessonTasks.length;
+    if (allDone) completedLessons++;
+    totalTasks += lessonTasks.length;
+    lessonStatuses.push({ num, done: allDone, tasksDone: doneCount, tasksTotal: lessonTasks.length });
+  }
+
+  totalScore = submissions
     .filter(s => s.status === "completed")
     .reduce((sum, s) => sum + (s.score || 0), 0);
 
-  let message = `📚 Darslar ro'yxati (${completedCount}/${tasks.length} topshirilgan)\n`;
-  if (completedCount > 0) {
-    message += `📊 Umumiy ball: ${totalScore}/${completedCount * 10}\n`;
+  const completedTotal = submissions.filter(s => s.status === "completed").length;
+
+  let message = `📚 Darslar ro'yxati (${completedLessons}/${lessonNumbers.length} dars topshirilgan)\n`;
+  if (completedTotal > 0) {
+    message += `📊 Umumiy ball: ${totalScore}/${completedTotal * 10}\n`;
   }
   message += `\nQuyidagi darslardan birini tanlang:`;
 
   const keyboard: TelegramBot.InlineKeyboardButton[][] = [];
   const ROW_SIZE = 3;
-  for (let i = 0; i < tasks.length; i += ROW_SIZE) {
+  for (let i = 0; i < lessonNumbers.length; i += ROW_SIZE) {
     const row: TelegramBot.InlineKeyboardButton[] = [];
-    for (let j = i; j < Math.min(i + ROW_SIZE, tasks.length); j++) {
-      const task = tasks[j];
-      const done = completedTaskIds.has(task.id);
-      const processing = processingTaskIds.has(task.id);
+    for (let j = i; j < Math.min(i + ROW_SIZE, lessonNumbers.length); j++) {
+      const ls = lessonStatuses[j];
       let icon = "📝";
-      if (done) icon = "✅";
-      else if (processing) icon = "⏳";
+      if (ls.done) icon = "✅";
+      else if (ls.tasksDone > 0) icon = `${ls.tasksDone}/${ls.tasksTotal}`;
       row.push({
-        text: `${j + 1}-dars ${icon}`,
-        callback_data: `task_${task.id}`,
+        text: `${ls.num}-dars ${icon}`,
+        callback_data: `lesson_${ls.num}`,
       });
     }
     keyboard.push(row);
@@ -205,29 +222,31 @@ async function sendTaskList(bot: TelegramBot, chatId: string, session: any, stor
   });
 }
 
-async function offerNextTask(bot: TelegramBot, chatId: string, session: any, storage: IStorage) {
+async function sendCurrentTask(bot: TelegramBot, chatId: string, session: any, storage: IStorage) {
   const tasks = await storage.getAiTasks(session.aiClassId);
-  const submissions = await storage.getAiSubmissions(session.aiStudentId);
-  const completedTaskIds = new Set(
-    submissions.filter(s => s.status === "completed").map(s => s.aiTaskId)
-  );
+  const lessonTasks = tasks
+    .filter(t => t.lessonNumber === session.selectedLessonNumber)
+    .sort((a, b) => a.orderIndex - b.orderIndex);
 
-  const nextTask = tasks.find(t => !completedTaskIds.has(t.id));
-  if (!nextTask) {
-    const totalScore = submissions
-      .filter(s => s.status === "completed")
-      .reduce((sum, s) => sum + (s.score || 0), 0);
+  if (session.currentTaskIndex >= lessonTasks.length) {
+    const submissions = await storage.getAiSubmissions(session.aiStudentId);
+    const lessonTaskIds = new Set(lessonTasks.map(t => t.id));
+    const lessonSubs = submissions.filter(s => s.status === "completed" && lessonTaskIds.has(s.aiTaskId));
+    const lessonScore = lessonSubs.reduce((sum, s) => sum + (s.score || 0), 0);
+
     await bot.sendMessage(Number(chatId),
-      `🎉 Barcha darslar topshirildi!\n📊 Umumiy ball: ${totalScore}/${tasks.length * 10}\n\nTabriklaymiz!`
+      `🎉 ${session.selectedLessonNumber}-dars topshirildi!\n📊 Dars bali: ${lessonScore}/${lessonTasks.length * 10}\n\nBoshqa darsni tanlash uchun /vazifa ni yuboring.`
     );
-    session.selectedTaskId = null;
+
+    session.selectedLessonNumber = null;
+    session.currentTaskIndex = 0;
+
+    await offerNextLesson(bot, chatId, session, storage, tasks);
     return;
   }
 
-  const nextIndex = tasks.findIndex(t => t.id === nextTask.id) + 1;
-  session.selectedTaskId = nextTask.id;
-
-  let message = `📝 Keyingi dars: ${nextIndex}-dars: ${nextTask.title}\n\n`;
+  const task = lessonTasks[session.currentTaskIndex];
+  let message = `📝 ${session.selectedLessonNumber}-dars, ${session.currentTaskIndex + 1}/${lessonTasks.length}-vazifa: ${task.title}\n\n`;
   message += `📌 Javob yuborish usullari:\n\n`;
   message += `🎤 Audio — mavzuni o'qib, ovozli xabar yuboring\n`;
   message += `📸 Rasm — daftarga tarjimasini yozib, rasmga olib yuboring\n`;
@@ -235,9 +254,37 @@ async function offerNextTask(bot: TelegramBot, chatId: string, session: any, sto
 
   await bot.sendMessage(Number(chatId), message, {
     reply_markup: {
-      inline_keyboard: [[{ text: "⬅️ Darslar ro'yxatiga qaytish", callback_data: "back_to_tasks" }]],
+      inline_keyboard: [[{ text: "⬅️ Darslar ro'yxatiga qaytish", callback_data: "back_to_lessons" }]],
     },
   });
+}
+
+async function offerNextLesson(bot: TelegramBot, chatId: string, session: any, storage: IStorage, allTasks?: any[]) {
+  const tasks = allTasks || await storage.getAiTasks(session.aiClassId);
+  const lessonNumbers = getLessonNumbers(tasks);
+  const submissions = await storage.getAiSubmissions(session.aiStudentId);
+  const completedTaskIds = new Set(submissions.filter(s => s.status === "completed").map(s => s.aiTaskId));
+
+  for (const num of lessonNumbers) {
+    const lessonTasks = tasks.filter(t => t.lessonNumber === num);
+    const allDone = lessonTasks.every(t => completedTaskIds.has(t.id));
+    if (!allDone) {
+      await bot.sendMessage(Number(chatId), `Keyingi darsni boshlaysizmi?`, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: `📝 ${num}-darsni boshlash`, callback_data: `lesson_${num}` }],
+            [{ text: "⬅️ Darslar ro'yxatiga qaytish", callback_data: "back_to_lessons" }],
+          ],
+        },
+      });
+      return;
+    }
+  }
+
+  const totalScore = submissions.filter(s => s.status === "completed").reduce((sum, s) => sum + (s.score || 0), 0);
+  await bot.sendMessage(Number(chatId),
+    `🎉 Barcha darslar topshirildi!\n📊 Umumiy ball: ${totalScore}/${tasks.length * 10}\n\nTabriklaymiz!`
+  );
 }
 
 async function matchStudent(bot: TelegramBot, chatId: string, phone: string, session: any, storage: IStorage, aiClassId: string) {
@@ -258,20 +305,23 @@ async function matchStudent(bot: TelegramBot, chatId: string, phone: string, ses
   session.awaitingPhone = false;
 
   await bot.sendMessage(Number(chatId),
-    `✅ Xush kelibsiz, ${matched.name}!\n\nVazifalarni ko'rish uchun /vazifa buyrug'ini yuboring.`,
+    `✅ Xush kelibsiz, ${matched.name}!\n\nDarslarni ko'rish uchun /vazifa buyrug'ini yuboring.`,
     { reply_markup: { remove_keyboard: true } }
   );
 }
 
-async function getSelectedTask(session: any, storage: IStorage) {
-  if (!session.selectedTaskId) return null;
-  const tasks = await storage.getAiTasks(session.aiClassId);
-  return tasks.find((t: any) => t.id === session.selectedTaskId) || null;
+function getCurrentTask(session: any, tasks: any[]) {
+  if (session.selectedLessonNumber === null) return null;
+  const lessonTasks = tasks
+    .filter((t: any) => t.lessonNumber === session.selectedLessonNumber)
+    .sort((a: any, b: any) => a.orderIndex - b.orderIndex);
+  if (session.currentTaskIndex >= lessonTasks.length) return null;
+  return lessonTasks[session.currentTaskIndex];
 }
 
-async function checkSubmissionLimit(session: any, taskId: string, storage: IStorage): Promise<boolean> {
-  const existing = await storage.getAiSubmissionByStudentAndTask(session.aiStudentId, taskId);
-  return !!(existing && existing.status === "completed");
+async function advanceToNextTask(bot: TelegramBot, chatId: string, session: any, storage: IStorage) {
+  session.currentTaskIndex++;
+  setTimeout(() => sendCurrentTask(bot, chatId, session, storage), 1500);
 }
 
 async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message, storage: IStorage) {
@@ -282,16 +332,17 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
     return;
   }
 
-  const task = await getSelectedTask(session, storage);
+  const tasks = await storage.getAiTasks(session.aiClassId);
+  const task = getCurrentTask(session, tasks);
   if (!task) {
     await bot.sendMessage(Number(chatId), "Avval /vazifa buyrug'i bilan darsni tanlang.");
     return;
   }
 
-  const alreadyDone = await checkSubmissionLimit(session, task.id, storage);
-  if (alreadyDone) {
-    await bot.sendMessage(Number(chatId), "⚠️ Bu dars vazifasi allaqachon topshirilgan. Boshqa darsni tanlash uchun /vazifa ni yuboring.");
-    session.selectedTaskId = null;
+  const existing = await storage.getAiSubmissionByStudentAndTask(session.aiStudentId, task.id);
+  if (existing && existing.status === "completed") {
+    await bot.sendMessage(Number(chatId), "⚠️ Bu vazifa allaqachon topshirilgan.");
+    await advanceToNextTask(bot, chatId, session, storage);
     return;
   }
 
@@ -355,8 +406,7 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
     responseMsg += `💬 Izoh: ${result.feedback}`;
 
     await bot.sendMessage(Number(chatId), responseMsg);
-    session.selectedTaskId = null;
-    await offerNextTask(bot, chatId, session, storage);
+    await advanceToNextTask(bot, chatId, session, storage);
   } catch (error: any) {
     console.error("[AI-BOT] Audio submission error:", error);
     await storage.updateAiSubmission(submission.id, { status: "failed", aiResponse: error.message });
@@ -372,16 +422,17 @@ async function handleImageSubmission(bot: TelegramBot, msg: TelegramBot.Message,
     return;
   }
 
-  const task = await getSelectedTask(session, storage);
+  const tasks = await storage.getAiTasks(session.aiClassId);
+  const task = getCurrentTask(session, tasks);
   if (!task) {
     await bot.sendMessage(Number(chatId), "Avval /vazifa buyrug'i bilan darsni tanlang.");
     return;
   }
 
-  const alreadyDone = await checkSubmissionLimit(session, task.id, storage);
-  if (alreadyDone) {
-    await bot.sendMessage(Number(chatId), "⚠️ Bu dars vazifasi allaqachon topshirilgan. Boshqa darsni tanlash uchun /vazifa ni yuboring.");
-    session.selectedTaskId = null;
+  const existing = await storage.getAiSubmissionByStudentAndTask(session.aiStudentId, task.id);
+  if (existing && existing.status === "completed") {
+    await bot.sendMessage(Number(chatId), "⚠️ Bu vazifa allaqachon topshirilgan.");
+    await advanceToNextTask(bot, chatId, session, storage);
     return;
   }
 
@@ -438,8 +489,7 @@ async function handleImageSubmission(bot: TelegramBot, msg: TelegramBot.Message,
     responseMsg += `📝 O'qilgan matn: "${ocrText.substring(0, 200)}${ocrText.length > 200 ? "..." : ""}"`;
 
     await bot.sendMessage(Number(chatId), responseMsg);
-    session.selectedTaskId = null;
-    await offerNextTask(bot, chatId, session, storage);
+    await advanceToNextTask(bot, chatId, session, storage);
   } catch (error: any) {
     console.error("[AI-BOT] Image submission error:", error);
     await storage.updateAiSubmission(submission.id, { status: "failed", aiResponse: error.message });
@@ -452,16 +502,17 @@ async function handleTextSubmission(bot: TelegramBot, msg: TelegramBot.Message, 
   const session = studentSessions.get(chatId);
   if (!session || !session.aiStudentId || session.awaitingPhone) return;
 
-  const task = await getSelectedTask(session, storage);
+  const tasks = await storage.getAiTasks(session.aiClassId);
+  const task = getCurrentTask(session, tasks);
   if (!task) {
     await bot.sendMessage(Number(chatId), "Avval /vazifa buyrug'i bilan darsni tanlang.");
     return;
   }
 
-  const alreadyDone = await checkSubmissionLimit(session, task.id, storage);
-  if (alreadyDone) {
-    await bot.sendMessage(Number(chatId), "⚠️ Bu dars vazifasi allaqachon topshirilgan. Boshqa darsni tanlash uchun /vazifa ni yuboring.");
-    session.selectedTaskId = null;
+  const existing = await storage.getAiSubmissionByStudentAndTask(session.aiStudentId, task.id);
+  if (existing && existing.status === "completed") {
+    await bot.sendMessage(Number(chatId), "⚠️ Bu vazifa allaqachon topshirilgan.");
+    await advanceToNextTask(bot, chatId, session, storage);
     return;
   }
 
@@ -500,8 +551,7 @@ async function handleTextSubmission(bot: TelegramBot, msg: TelegramBot.Message, 
     responseMsg += `💬 Izoh: ${result.feedback}`;
 
     await bot.sendMessage(Number(chatId), responseMsg);
-    session.selectedTaskId = null;
-    await offerNextTask(bot, chatId, session, storage);
+    await advanceToNextTask(bot, chatId, session, storage);
   } catch (error: any) {
     console.error("[AI-BOT] Text submission error:", error);
     await storage.updateAiSubmission(submission.id, { status: "failed", aiResponse: error.message });

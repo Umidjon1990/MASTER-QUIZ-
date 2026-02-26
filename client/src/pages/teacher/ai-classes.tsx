@@ -9,10 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, BrainCircuit, Users, ListChecks, Trash2, X } from "lucide-react";
+import { Plus, BrainCircuit, Users, ListChecks, X, ChevronDown, ChevronRight } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface TaskDraft {
+  lessonNumber: number;
   title: string;
   prompt: string;
   referenceText: string;
@@ -32,8 +33,10 @@ export default function AiClasses() {
   const [botToken, setBotToken] = useState("");
   const [instructions, setInstructions] = useState("");
   const [lessonsCount, setLessonsCount] = useState<number>(0);
+  const [tasksPerLesson, setTasksPerLesson] = useState<number>(3);
   const [tasks, setTasks] = useState<TaskDraft[]>([]);
   const [students, setStudents] = useState<StudentDraft[]>([{ name: "", phone: "" }]);
+  const [expandedLessons, setExpandedLessons] = useState<Set<number>>(new Set());
 
   const { data: aiClasses = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/ai-classes"],
@@ -61,22 +64,36 @@ export default function AiClasses() {
     setBotToken("");
     setInstructions("");
     setLessonsCount(0);
+    setTasksPerLesson(3);
     setTasks([]);
     setStudents([{ name: "", phone: "" }]);
+    setExpandedLessons(new Set());
   }
 
-  function generateLessons(count: number) {
+  function generateLessons(count: number, perLesson: number) {
     const newTasks: TaskDraft[] = [];
-    for (let i = 1; i <= count; i++) {
-      newTasks.push({
-        title: `${i}-dars`,
-        prompt: "",
-        referenceText: "",
-        type: "audio",
-      });
+    const defaultTaskNames = ["Xat", "Grammatika", "Insho", "Lug'at", "Tarjima"];
+    for (let lesson = 1; lesson <= count; lesson++) {
+      for (let t = 0; t < perLesson; t++) {
+        newTasks.push({
+          lessonNumber: lesson,
+          title: defaultTaskNames[t % defaultTaskNames.length] || `Vazifa ${t + 1}`,
+          prompt: "",
+          referenceText: "",
+          type: "audio",
+        });
+      }
     }
     setTasks(newTasks);
     setLessonsCount(count);
+    setTasksPerLesson(perLesson);
+  }
+
+  function toggleLesson(lessonNum: number) {
+    const next = new Set(expandedLessons);
+    if (next.has(lessonNum)) next.delete(lessonNum);
+    else next.add(lessonNum);
+    setExpandedLessons(next);
   }
 
   function handleCreate() {
@@ -89,7 +106,9 @@ export default function AiClasses() {
     });
   }
 
-  const stepTitles = ["Asosiy ma'lumotlar", "Darslar", "O'quvchilar"];
+  const lessonNumbers = [...new Set(tasks.map(t => t.lessonNumber))].sort((a, b) => a - b);
+
+  const stepTitles = ["Asosiy ma'lumotlar", "Darslar va vazifalar", "O'quvchilar"];
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -138,9 +157,9 @@ export default function AiClasses() {
                   <Label>AI uchun umumiy ko'rsatma</Label>
                   <Textarea value={instructions} onChange={e => setInstructions(e.target.value)} placeholder="Masalan: Arab tilidan o'zbek tiliga tarjimani tekshir, grammatik xatolarni belgilab ber..." rows={3} data-testid="input-ai-instructions" />
                 </div>
-                <div>
-                  <Label>Darslar soni</Label>
-                  <div className="flex items-center gap-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Darslar soni</Label>
                     <Input
                       type="number"
                       min={1}
@@ -149,43 +168,122 @@ export default function AiClasses() {
                       onChange={e => {
                         const val = parseInt(e.target.value) || 0;
                         if (val >= 0 && val <= 100) {
-                          generateLessons(val);
+                          generateLessons(val, tasksPerLesson);
                         }
                       }}
-                      placeholder="Masalan: 12"
-                      className="w-[120px]"
+                      placeholder="12"
                       data-testid="input-lessons-count"
                     />
-                    <span className="text-xs text-muted-foreground">ta dars avtomatik yaratiladi</span>
+                  </div>
+                  <div>
+                    <Label>Har bir darsda vazifalar</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={tasksPerLesson || ""}
+                      onChange={e => {
+                        const val = parseInt(e.target.value) || 1;
+                        if (val >= 1 && val <= 10) {
+                          generateLessons(lessonsCount, val);
+                        }
+                      }}
+                      placeholder="3"
+                      data-testid="input-tasks-per-lesson"
+                    />
                   </div>
                 </div>
+                {lessonsCount > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {lessonsCount} ta dars, har birida {tasksPerLesson} ta vazifa = jami {lessonsCount * tasksPerLesson} ta vazifa yaratiladi
+                  </p>
+                )}
               </div>
             )}
 
             {step === 1 && (
-              <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">Har bir darsni tahrirlang — nomi, mavzu matni va AI ko'rsatmasini kiriting</p>
-                <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                  {tasks.map((task, idx) => (
-                    <Card key={idx} className="p-3 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-muted-foreground w-5">{idx + 1}.</span>
-                        <Input value={task.title} onChange={e => { const t = [...tasks]; t[idx].title = e.target.value; setTasks(t); }} placeholder="Dars nomi" className="flex-1" data-testid={`input-task-title-${idx}`} />
-                        {tasks.length > 1 && (
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setTasks(tasks.filter((_, i) => i !== idx)); setLessonsCount(prev => prev - 1); }}>
-                            <X className="w-3.5 h-3.5" />
-                          </Button>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Har bir darsni kengaytirib, vazifalarni tahrirlang</p>
+                <div className="space-y-1 max-h-[400px] overflow-y-auto">
+                  {lessonNumbers.map(lessonNum => {
+                    const lessonTasks = tasks.filter(t => t.lessonNumber === lessonNum);
+                    const isExpanded = expandedLessons.has(lessonNum);
+                    return (
+                      <div key={lessonNum}>
+                        <div
+                          className="flex items-center gap-2 p-2 rounded hover:bg-muted/50 cursor-pointer"
+                          onClick={() => toggleLesson(lessonNum)}
+                          data-testid={`toggle-lesson-${lessonNum}`}
+                        >
+                          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          <span className="font-medium text-sm">{lessonNum}-dars</span>
+                          <span className="text-xs text-muted-foreground">({lessonTasks.length} vazifa)</span>
+                        </div>
+                        {isExpanded && (
+                          <div className="ml-6 space-y-2 mb-2">
+                            {lessonTasks.map((task, localIdx) => {
+                              const globalIdx = tasks.findIndex(t => t === task);
+                              return (
+                                <Card key={globalIdx} className="p-2 space-y-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-muted-foreground w-4">{localIdx + 1}.</span>
+                                    <Input
+                                      value={task.title}
+                                      onChange={e => { const t = [...tasks]; t[globalIdx].title = e.target.value; setTasks(t); }}
+                                      placeholder="Vazifa nomi"
+                                      className="flex-1 h-8 text-sm"
+                                      data-testid={`input-task-title-${globalIdx}`}
+                                    />
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setTasks(tasks.filter((_, i) => i !== globalIdx))}>
+                                      <X className="w-3 h-3" />
+                                    </Button>
+                                  </div>
+                                  <Textarea
+                                    value={task.referenceText}
+                                    onChange={e => { const t = [...tasks]; t[globalIdx].referenceText = e.target.value; setTasks(t); }}
+                                    placeholder="Mavzu matni (faqat AI uchun — o'quvchi ko'rmaydi)"
+                                    rows={2}
+                                    className="text-xs"
+                                    data-testid={`input-task-ref-${globalIdx}`}
+                                  />
+                                  <Input
+                                    value={task.prompt}
+                                    onChange={e => { const t = [...tasks]; t[globalIdx].prompt = e.target.value; setTasks(t); }}
+                                    placeholder="AI ga ko'rsatma"
+                                    className="h-8 text-xs"
+                                    data-testid={`input-task-prompt-${globalIdx}`}
+                                  />
+                                </Card>
+                              );
+                            })}
+                            <Button variant="outline" size="sm" className="text-xs" onClick={() => {
+                              const newTask: TaskDraft = { lessonNumber: lessonNum, title: "", prompt: "", referenceText: "", type: "audio" };
+                              const insertIdx = tasks.findIndex(t => t.lessonNumber > lessonNum);
+                              if (insertIdx === -1) setTasks([...tasks, newTask]);
+                              else { const t = [...tasks]; t.splice(insertIdx, 0, newTask); setTasks(t); }
+                            }}>
+                              <Plus className="w-3 h-3 mr-1" /> Vazifa qo'shish
+                            </Button>
+                          </div>
                         )}
                       </div>
-                      <Textarea value={task.referenceText} onChange={e => { const t = [...tasks]; t[idx].referenceText = e.target.value; setTasks(t); }} placeholder="Mavzu matni (o'quvchi tarjima qilishi kerak bo'lgan matn)" rows={2} data-testid={`input-task-ref-${idx}`} />
-                      <Input value={task.prompt} onChange={e => { const t = [...tasks]; t[idx].prompt = e.target.value; setTasks(t); }} placeholder="AI ga ko'rsatma (masalan: tarjimani tekshir)" data-testid={`input-task-prompt-${idx}`} />
-                    </Card>
-                  ))}
+                    );
+                  })}
                 </div>
                 <Button variant="outline" size="sm" onClick={() => {
-                  setTasks([...tasks, { title: `${tasks.length + 1}-dars`, prompt: "", referenceText: "", type: "audio" }]);
+                  const nextLesson = lessonNumbers.length > 0 ? Math.max(...lessonNumbers) + 1 : 1;
+                  const defaultNames = ["Xat", "Grammatika", "Insho"];
+                  const newTasks = defaultNames.slice(0, tasksPerLesson).map((name, i) => ({
+                    lessonNumber: nextLesson,
+                    title: name,
+                    prompt: "",
+                    referenceText: "",
+                    type: "audio",
+                  }));
+                  setTasks([...tasks, ...newTasks]);
                   setLessonsCount(prev => prev + 1);
-                }} data-testid="button-add-task">
+                  setExpandedLessons(prev => new Set([...prev, nextLesson]));
+                }} data-testid="button-add-lesson">
                   <Plus className="w-3.5 h-3.5 mr-1" /> Dars qo'shish
                 </Button>
               </div>
@@ -254,7 +352,7 @@ export default function AiClasses() {
                   </div>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {cls.studentCount} o'quvchi</span>
-                    <span className="flex items-center gap-1"><ListChecks className="w-3.5 h-3.5" /> {cls.taskCount} dars</span>
+                    <span className="flex items-center gap-1"><ListChecks className="w-3.5 h-3.5" /> {cls.taskCount} vazifa</span>
                   </div>
                 </Card>
               </Link>

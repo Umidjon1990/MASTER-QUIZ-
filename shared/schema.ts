@@ -414,6 +414,7 @@ export type AiClass = typeof aiClasses.$inferSelect;
 export const aiClassTasks = pgTable("ai_class_tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   aiClassId: varchar("ai_class_id").notNull(),
+  lessonNumber: integer("lesson_number").notNull().default(1),
   title: varchar("title", { length: 255 }).notNull(),
   orderIndex: integer("order_index").notNull().default(0),
   prompt: text("prompt"),

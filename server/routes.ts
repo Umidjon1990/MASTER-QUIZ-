@@ -3780,11 +3780,15 @@ export async function registerRoutes(
       });
 
       if (tasks && Array.isArray(tasks)) {
+        const lessonGroups: Record<number, number> = {};
         for (let i = 0; i < tasks.length; i++) {
+          const lessonNum = tasks[i].lessonNumber || 1;
+          if (!lessonGroups[lessonNum]) lessonGroups[lessonNum] = 0;
           await storage.createAiTask({
             aiClassId: aiClass.id,
+            lessonNumber: lessonNum,
             title: tasks[i].title,
-            orderIndex: i,
+            orderIndex: lessonGroups[lessonNum]++,
             prompt: tasks[i].prompt || null,
             referenceText: tasks[i].referenceText || null,
             type: tasks[i].type || "audio",
@@ -3878,12 +3882,15 @@ export async function registerRoutes(
       if (!aiClass || (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const { title, prompt, referenceText, type } = req.body;
+      const { title, prompt, referenceText, type, lessonNumber } = req.body;
       const existingTasks = await storage.getAiTasks(req.params.id);
+      const ln = lessonNumber || 1;
+      const lessonTasks = existingTasks.filter(t => t.lessonNumber === ln);
       const task = await storage.createAiTask({
         aiClassId: req.params.id,
+        lessonNumber: ln,
         title: title || "Vazifa",
-        orderIndex: existingTasks.length,
+        orderIndex: lessonTasks.length,
         prompt: prompt || null,
         referenceText: referenceText || null,
         type: type || "audio",
