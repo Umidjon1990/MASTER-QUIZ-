@@ -71,15 +71,15 @@ process.on("uncaughtException", (err) => {
   console.error("[CRITICAL] Uncaught Exception:", err);
 });
 
+const port = parseInt(process.env.PORT || "5000", 10);
+
+if (process.env.NODE_ENV === "production") {
+  httpServer.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+    log(`health endpoint ready on port ${port}`);
+  });
+}
+
 (async () => {
-  const port = parseInt(process.env.PORT || "5000", 10);
-
-  if (process.env.NODE_ENV === "production") {
-    httpServer.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
-      log(`serving on port ${port} (health ready, loading routes...)`);
-    });
-  }
-
   const { runMigrations } = await import("./db");
   await runMigrations();
 

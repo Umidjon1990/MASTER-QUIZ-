@@ -1,0 +1,101 @@
+scheduling build on Metal builder "builder-grpkqg"
+scheduling build on Metal builder "builder-vlejaa"
+fetched snapshot sha256:2479711f3bad9007f6345eb3ab7b1630cc4840c267bc76855f09e43c6cb3f706 (68 MB bytes)
+fetching snapshot
+64.6 MB
+1.1s
+unpacking archive
+73.3 MB
+730ms
+using build driver railpack-v0.17.2
+ INFO No package manager inferred, using npm default
+                   
+╭─────────────────╮
+│ Railpack 0.17.2 │
+╰─────────────────╯
+ 
+  ↳ Detected Node
+  ↳ Using npm package manager
+  ↳ Found web command in Procfile
+            
+  Packages  
+  ──────────
+  node  │  20.20.0  │  idiomatic-version-file (20.20.0)
+            
+  Steps     
+  ──────────
+  ▸ install
+    $ npm ci
+         
+  ▸ build
+    $ npm run build
+            
+  Deploy    
+  ──────────
+    $ npm run start
+ 
+
+load build definition from ./railpack-plan.json
+0ms
+
+install apt packages: libatomic1
+6s
+Processing triggers for libc-bin (2.36-9+deb12u13) ...
+
+copy .node-version cached
+0ms
+
+install mise packages: node
+3s
+mise node@20.20.0 ✓ installed
+
+mkdir -p /app/node_modules/.cache
+1s
+
+copy /root/.local/state/mise, /mise/installs, /mise/shims, /etc/mise/config.toml, /usr/local/bin/mise cached
+0ms
+
+copy .node-version, package-lock.json, package.json
+773ms
+
+npm ci
+13s
+Run `npm audit` for details.
+
+copy / /app
+844ms
+
+npm run build
+10s
+copying fonts...
+
+copy /app/node_modules
+4s
+
+copy /root/.cache cached
+0ms
+
+copy /app
+1s
+
+exporting to docker image format
+6s
+containerimage.digest: sha256:6b86be0c6f277db26c7c1645e3c98bd4e0d4dec96cc866559d79157f888351e4
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6NmI4NmJlMGM2ZjI3N2RiMjZjN2MxNjQ1ZTNjOThiZDRlMGQ0ZGVjOTZjYzg2NjU1OWQ3OTE1N2Y4ODgzNTFlNCIsInNpemUiOjIzODksImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wMi0yNlQwOToyMDo0NFoifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
+containerimage.config.digest: sha256:7016e97a0939a6eed289495ef711244ce8d6ba1707e82a5b3c94a4af45b9c45f
+image push
+277.2 MB / 277.3 MB
+23.5s
+ 
+====================
+Starting Healthcheck
+====================
+Path: /health
+Retry window: 30s
+ 
+Attempt #1 failed with service unavailable. Continuing to retry for 19s
+Attempt #2 failed with service unavailable. Continuing to retry for 8s
+ 
+1/1 replicas never became healthy!
+
+Healthcheck failed!
