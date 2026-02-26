@@ -10,8 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Plus, Trash2, Power, PowerOff, Users, ListChecks, Settings, BarChart3, X, Phone, Wifi, WifiOff, Pencil, Check, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Power, PowerOff, Users, ListChecks, Settings, BarChart3, X, Phone, Wifi, WifiOff, Pencil, Check, ChevronDown, ChevronRight, Send, Upload, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function AiClassDetail() {
@@ -22,6 +23,8 @@ export default function AiClassDetail() {
   const [addStudentOpen, setAddStudentOpen] = useState(false);
   const [newStudentName, setNewStudentName] = useState("");
   const [newStudentPhone, setNewStudentPhone] = useState("");
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkText, setBulkText] = useState("");
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskPrompt, setNewTaskPrompt] = useState("");
@@ -34,6 +37,9 @@ export default function AiClassDetail() {
   const [editPrompt, setEditPrompt] = useState("");
   const [editRef, setEditRef] = useState("");
   const [expandedLessons, setExpandedLessons] = useState<Set<number>>(new Set());
+  const [telegramOpen, setTelegramOpen] = useState(false);
+  const [selectedTgChat, setSelectedTgChat] = useState("");
+  const [selectedTgLesson, setSelectedTgLesson] = useState<string>("all");
 
   const { data: aiClass, isLoading } = useQuery<any>({
     queryKey: ["/api/ai-classes", classId],
@@ -43,6 +49,10 @@ export default function AiClassDetail() {
   const { data: results } = useQuery<any>({
     queryKey: ["/api/ai-classes", classId, "results"],
     enabled: !!classId,
+  });
+
+  const { data: profile } = useQuery<any>({
+    queryKey: ["/api/user/profile"],
   });
 
   const botStartMutation = useMutation({
@@ -80,6 +90,21 @@ export default function AiClassDetail() {
       setNewStudentName("");
       setNewStudentPhone("");
       toast({ title: "O'quvchi qo'shildi" });
+    },
+    onError: (err: any) => toast({ title: "Xatolik", description: err.message, variant: "destructive" }),
+  });
+
+  const bulkStudentMutation = useMutation({
+    mutationFn: async (students: { name: string; phone: string }[]) => {
+      const res = await apiRequest("POST", `/api/ai-classes/${classId}/students/bulk`, { students });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId, "results"] });
+      setBulkOpen(false);
+      setBulkText("");
+      toast({ title: `${data.created} ta o'quvchi qo'shildi` });
     },
     onError: (err: any) => toast({ title: "Xatolik", description: err.message, variant: "destructive" }),
   });
@@ -140,6 +165,21 @@ export default function AiClassDetail() {
     },
   });
 
+  const sendResultsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/ai-classes/${classId}/send-results`, {
+        chatId: selectedTgChat,
+        lessonNumber: selectedTgLesson === "all" ? null : parseInt(selectedTgLesson),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      setTelegramOpen(false);
+      toast({ title: "Natijalar Telegram ga yuborildi!" });
+    },
+    onError: (err: any) => toast({ title: "Xatolik", description: err.message, variant: "destructive" }),
+  });
+
   function startEditing(task: any) {
     setEditingTaskId(task.id);
     setEditTitle(task.title);
@@ -161,6 +201,28 @@ export default function AiClassDetail() {
     setExpandedLessons(next);
   }
 
+  function parseBulkStudents(): { name: string; phone: string }[] {
+    return bulkText
+      .split("\n")
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .map(line => {
+        const parts = line.split(/[\t,]+/).map(p => p.trim());
+        if (parts.length >= 2) {
+          const lastPart = parts[parts.length - 1];
+          if (/\d{9,}/.test(lastPart.replace(/\D/g, ""))) {
+            return { name: parts.slice(0, -1).join(" "), phone: lastPart.replace(/\D/g, "") };
+          }
+        }
+        const match = line.match(/^(.+?)\s+([\d\s+()-]{9,})$/);
+        if (match) {
+          return { name: match[1].trim(), phone: match[2].replace(/\D/g, "") };
+        }
+        return null;
+      })
+      .filter((s): s is { name: string; phone: string } => s !== null && s.name.length > 0 && s.phone.length >= 9);
+  }
+
   if (isLoading) return <div className="p-6"><div className="h-8 bg-muted animate-pulse rounded w-48 mb-4" /></div>;
   if (!aiClass) return <div className="p-6">AI sinf topilmadi</div>;
 
@@ -174,6 +236,11 @@ export default function AiClassDetail() {
   const allTasks = aiClass.tasks || [];
   const lessonNumbers = [...new Set(allTasks.map((t: any) => t.lessonNumber || 1))].sort((a: number, b: number) => a - b) as number[];
   const maxLessonNum = lessonNumbers.length > 0 ? Math.max(...lessonNumbers) : 0;
+
+  const resultLessons = results?.lessons || [];
+  const tgChats = profile?.telegramChats || [];
+  const hasTgBot = !!profile?.hasTelegramBot;
+  const parsedStudents = parseBulkStudents();
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -211,48 +278,73 @@ export default function AiClassDetail() {
 
         <TabsContent value="results" className="mt-4">
           {results?.results?.length > 0 ? (
-            <Card className="overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs sm:text-sm" data-testid="ai-results-table">
-                  <thead>
-                    <tr className="border-b bg-muted/20">
-                      <th className="text-center p-2 font-medium w-[32px] sticky left-0 bg-muted/20 z-10">N</th>
-                      <th className="text-left p-2 font-medium min-w-[120px] sticky left-[32px] bg-muted/20 z-10">O'quvchi</th>
-                      {results.tasks?.map((t: any, idx: number) => (
-                        <th key={idx} className="text-center p-2 font-medium border-l min-w-[70px]">{t.title}</th>
-                      ))}
-                      <th className="text-center p-2 font-medium border-l min-w-[60px] bg-muted/10">O'rtacha</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.results.map((r: any, idx: number) => (
-                      <tr key={r.studentId} className={`border-b ${idx % 2 ? "bg-muted/10" : ""}`}>
-                        <td className={`text-center p-2 text-xs text-muted-foreground sticky left-0 z-10 ${idx % 2 ? "bg-muted/10" : "bg-background"}`}>{idx + 1}</td>
-                        <td className={`p-2 font-medium sticky left-[32px] z-10 ${idx % 2 ? "bg-muted/10" : "bg-background"}`}>
-                          <div className="flex items-center gap-1">
-                            <span className="truncate max-w-[100px] sm:max-w-[140px]">{r.studentName}</span>
-                            {r.connected ? <Wifi className="w-3 h-3 text-green-500 flex-shrink-0" /> : <WifiOff className="w-3 h-3 text-gray-400 flex-shrink-0" />}
-                          </div>
-                        </td>
-                        {r.taskResults.map((tr: any, tIdx: number) => (
-                          <td
-                            key={tIdx}
-                            className={`text-center p-2 border-l cursor-pointer hover:opacity-80 transition-all ${scoreColor(tr.score)}`}
-                            onClick={() => { setSelectedDetail(tr); setDetailOpen(true); }}
-                            data-testid={`cell-result-${r.studentId}-${tr.taskId}`}
-                          >
-                            {tr.score ? <span className="font-semibold">{tr.score}</span> : <span className="text-muted-foreground">—</span>}
-                          </td>
+            <>
+              {hasTgBot && (
+                <div className="flex justify-end mb-3">
+                  <Button size="sm" variant="outline" onClick={() => setTelegramOpen(true)} data-testid="button-send-tg-results">
+                    <Send className="w-3.5 h-3.5 mr-1" /> Telegram ga yuborish
+                  </Button>
+                </div>
+              )}
+              <Card className="overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs sm:text-sm" data-testid="ai-results-table">
+                    <thead>
+                      {resultLessons.length > 1 && (
+                        <tr className="border-b bg-purple-50 dark:bg-purple-950/20">
+                          <th className="p-1 sticky left-0 bg-purple-50 dark:bg-purple-950/20 z-10" />
+                          <th className="p-1 sticky left-[32px] bg-purple-50 dark:bg-purple-950/20 z-10" />
+                          {resultLessons.map((lesson: any) => (
+                            <th
+                              key={lesson.lessonNumber}
+                              colSpan={lesson.tasks.length}
+                              className="text-center p-1 text-xs font-bold border-l text-purple-700 dark:text-purple-300"
+                            >
+                              {lesson.lessonNumber}-dars
+                            </th>
+                          ))}
+                          <th className="p-1 border-l bg-purple-50 dark:bg-purple-950/20" />
+                        </tr>
+                      )}
+                      <tr className="border-b bg-muted/20">
+                        <th className="text-center p-2 font-medium w-[32px] sticky left-0 bg-muted/20 z-10">N</th>
+                        <th className="text-left p-2 font-medium min-w-[120px] sticky left-[32px] bg-muted/20 z-10">O'quvchi</th>
+                        {results.tasks?.map((t: any, idx: number) => (
+                          <th key={idx} className="text-center p-2 font-medium border-l min-w-[55px] text-[10px] sm:text-xs">{t.taskTitle || t.title}</th>
                         ))}
-                        <td className={`text-center p-2 border-l font-semibold ${scoreColor(Math.round(r.avgScore))}`}>
-                          {r.avgScore > 0 ? r.avgScore : "—"}
-                        </td>
+                        <th className="text-center p-2 font-medium border-l min-w-[50px] bg-muted/10">O'rtacha</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+                    </thead>
+                    <tbody>
+                      {results.results.map((r: any, idx: number) => (
+                        <tr key={r.studentId} className={`border-b ${idx % 2 ? "bg-muted/10" : ""}`}>
+                          <td className={`text-center p-2 text-xs text-muted-foreground sticky left-0 z-10 ${idx % 2 ? "bg-muted/10" : "bg-background"}`}>{idx + 1}</td>
+                          <td className={`p-2 font-medium sticky left-[32px] z-10 ${idx % 2 ? "bg-muted/10" : "bg-background"}`}>
+                            <div className="flex items-center gap-1">
+                              <span className="truncate max-w-[100px] sm:max-w-[140px]">{r.studentName}</span>
+                              {r.connected ? <Wifi className="w-3 h-3 text-green-500 flex-shrink-0" /> : <WifiOff className="w-3 h-3 text-gray-400 flex-shrink-0" />}
+                            </div>
+                          </td>
+                          {r.taskResults.map((tr: any, tIdx: number) => (
+                            <td
+                              key={tIdx}
+                              className={`text-center p-2 border-l cursor-pointer hover:opacity-80 transition-all ${scoreColor(tr.score)}`}
+                              onClick={() => { setSelectedDetail(tr); setDetailOpen(true); }}
+                              data-testid={`cell-result-${r.studentId}-${tr.taskId}`}
+                            >
+                              {tr.score ? <span className="font-semibold">{tr.score}</span> : <span className="text-muted-foreground">—</span>}
+                            </td>
+                          ))}
+                          <td className={`text-center p-2 border-l font-semibold ${scoreColor(Math.round(r.avgScore))}`}>
+                            {r.avgScore > 0 ? r.avgScore : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </>
           ) : (
             <Card className="p-8 text-center">
               <p className="text-muted-foreground">Natijalar hali yo'q. O'quvchilar bot orqali vazifalarni yuborishi kerak.</p>
@@ -263,9 +355,14 @@ export default function AiClassDetail() {
         <TabsContent value="students" className="mt-4">
           <div className="flex justify-between items-center mb-4">
             <p className="text-sm text-muted-foreground">{aiClass.students?.length || 0} ta o'quvchi</p>
-            <Button size="sm" onClick={() => setAddStudentOpen(true)} data-testid="button-add-ai-student">
-              <Plus className="w-3.5 h-3.5 mr-1" /> O'quvchi qo'shish
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)} data-testid="button-bulk-add-students">
+                <Upload className="w-3.5 h-3.5 mr-1" /> Bulk qo'shish
+              </Button>
+              <Button size="sm" onClick={() => setAddStudentOpen(true)} data-testid="button-add-ai-student">
+                <Plus className="w-3.5 h-3.5 mr-1" /> Qo'shish
+              </Button>
+            </div>
           </div>
           <div className="space-y-2">
             {aiClass.students?.map((s: any, idx: number) => (
@@ -341,8 +438,8 @@ export default function AiClassDetail() {
                                   </Button>
                                 </div>
                               </div>
-                              {t.referenceText && <p className="text-xs text-muted-foreground line-clamp-2">📖 {t.referenceText}</p>}
-                              {t.prompt && <p className="text-xs text-muted-foreground mt-1">💡 {t.prompt}</p>}
+                              {t.referenceText && <p className="text-xs text-muted-foreground line-clamp-2">{t.referenceText}</p>}
+                              {t.prompt && <p className="text-xs text-muted-foreground mt-1">{t.prompt}</p>}
                             </>
                           )}
                         </Card>
@@ -394,6 +491,45 @@ export default function AiClassDetail() {
           <DialogFooter>
             <Button onClick={() => addStudentMutation.mutate()} disabled={!newStudentName || !newStudentPhone || addStudentMutation.isPending} data-testid="button-confirm-add-student">
               {addStudentMutation.isPending ? "Qo'shilmoqda..." : "Qo'shish"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>O'quvchilarni bulk qo'shish</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">Har bir qatorda ism va telefon raqamni yozing. Tab, vergul yoki bo'sh joy bilan ajrating.</p>
+            <Textarea
+              value={bulkText}
+              onChange={e => setBulkText(e.target.value)}
+              placeholder={"Ali Valiyev\t998901234567\nVali Aliyev\t998907654321\nHasan Husanov, 998931112233"}
+              rows={8}
+              className="font-mono text-sm"
+              data-testid="textarea-bulk-students"
+            />
+            {bulkText && (
+              <div className="text-sm">
+                <p className="font-medium">{parsedStudents.length} ta o'quvchi aniqlandi:</p>
+                {parsedStudents.length > 0 && (
+                  <div className="max-h-[120px] overflow-y-auto mt-1 space-y-0.5">
+                    {parsedStudents.slice(0, 10).map((s, i) => (
+                      <p key={i} className="text-xs text-muted-foreground">{i + 1}. {s.name} — {s.phone}</p>
+                    ))}
+                    {parsedStudents.length > 10 && <p className="text-xs text-muted-foreground">... va yana {parsedStudents.length - 10} ta</p>}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => bulkStudentMutation.mutate(parsedStudents)}
+              disabled={parsedStudents.length === 0 || bulkStudentMutation.isPending}
+              data-testid="button-confirm-bulk-add"
+            >
+              {bulkStudentMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Qo'shilmoqda...</> : `${parsedStudents.length} ta qo'shish`}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -454,6 +590,51 @@ export default function AiClassDetail() {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={telegramOpen} onOpenChange={setTelegramOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Natijalarni Telegram ga yuborish</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Telegram guruh/kanal</Label>
+              {tgChats.length > 0 ? (
+                <Select value={selectedTgChat} onValueChange={setSelectedTgChat}>
+                  <SelectTrigger data-testid="select-tg-chat"><SelectValue placeholder="Guruh tanlang" /></SelectTrigger>
+                  <SelectContent>
+                    {tgChats.map((chat: any) => (
+                      <SelectItem key={chat.chatId} value={chat.chatId}>{chat.title || chat.chatId}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <p className="text-sm text-muted-foreground mt-1">Telegram sozlamalarida guruh qo'shing</p>
+              )}
+            </div>
+            <div>
+              <Label>Qaysi natijalarni yuborish</Label>
+              <Select value={selectedTgLesson} onValueChange={setSelectedTgLesson}>
+                <SelectTrigger data-testid="select-tg-lesson"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Barcha darslar</SelectItem>
+                  {lessonNumbers.map(num => (
+                    <SelectItem key={num} value={String(num)}>{num}-dars</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => sendResultsMutation.mutate()}
+              disabled={!selectedTgChat || sendResultsMutation.isPending}
+              className="gradient-purple border-0"
+              data-testid="button-confirm-send-results"
+            >
+              {sendResultsMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Yuborilmoqda...</> : <><Send className="w-3.5 h-3.5 mr-1" /> Yuborish</>}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

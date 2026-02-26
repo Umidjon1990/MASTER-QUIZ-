@@ -37,7 +37,7 @@ Preferred communication style: Simple, everyday language.
 - `/teacher/classes` — Class management (create/delete/view members/join codes, 3-step wizard with schedule & task columns)
 - `/teacher/classes/:id/tracker` — Task tracker (student × task grid, status/score editing, debtors panel, Telegram notifications)
 - `/teacher/ai-classes` — AI nazorat sinflari (yaratish wizard, ro'yxat, boshqaruv)
-- `/teacher/ai-classes/:id` — AI sinf detail (natijalar jadvali, o'quvchilar, vazifalar, bot start/stop)
+- `/teacher/ai-classes/:id` — AI sinf detail (darsma-dars natijalar jadvali, Telegram ga matn+PDF yuborish, bulk o'quvchi qo'shish, vazifalar, bot start/stop)
 - `/teacher/question-bank` — Question bank (add/copy from quiz/copy to quiz)
 - `/student/*` — Student pages (join quiz, view results, assignments, classes)
 - `/student/assignments` — Student assignment list and self-paced quiz solving
@@ -87,9 +87,9 @@ Preferred communication style: Simple, everyday language.
   - `quiz_likes` — Quiz like tracking (quizId, userId)
   - `live_lessons` — Live lesson sessions with lessonType (pdf/voice), title, pdfUrl (nullable for voice), teacher, status, code, requireCode
   - `ai_classes` — AI nazorat sinflari (name, teacherId, telegramBotToken, instructions, status)
-  - `ai_class_tasks` — AI sinf darslar/vazifalari (title, orderIndex, prompt, referenceText, type: audio/text). Wizard auto-generates numbered lessons ("1-dars", "2-dars"...) from count input.
-  - `ai_students` — AI sinf o'quvchilari (name, phone, telegramChatId — bot orqali ulanadi)
-  - `ai_submissions` — O'quvchi topshiriqlari (submissionType: audio/image/text, audioFileId, imageFileId, ocrText, transcription via Whisper, aiResponse via GPT-4o-mini, score 5-10, status). **1 attempt per lesson limit** enforced via `getAiSubmissionByStudentAndTask()`.
+  - `ai_class_tasks` — AI sinf darslar/vazifalari (title, lessonNumber, orderIndex, prompt, referenceText, type: audio/text). Wizard auto-generates numbered lessons with configurable tasks per lesson. Tasks grouped by `lessonNumber`, sorted by `orderIndex`.
+  - `ai_students` — AI sinf o'quvchilari (name, phone, telegramChatId — bot orqali ulanadi). Bulk import via textarea (har qatorda ism + telefon).
+  - `ai_submissions` — O'quvchi topshiriqlari (submissionType: audio/image/text, audioFileId, imageFileId, ocrText, transcription via gpt-4o-mini-transcribe, aiResponse via GPT-4o-mini, score 5-10, status). Only `completed` blocks resubmission; `failed` allows retry. Image/text handlers temporarily disabled (audio only).
   - **Bot flow**: Students select lessons via inline keyboard buttons (1-dars, 2-dars... with status icons ✅/⏳/📝), not sequential. Each lesson can only be submitted once.
 
 ### Storage Layer

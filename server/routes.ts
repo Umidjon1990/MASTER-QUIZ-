@@ -3991,13 +3991,25 @@ export async function registerRoutes(
       const tasks = await storage.getAiTasks(req.params.id);
       const submissions = await storage.getAiSubmissionsByClass(req.params.id);
 
+      const sortedTasks = [...tasks].sort((a, b) => {
+        if (a.lessonNumber !== b.lessonNumber) return a.lessonNumber - b.lessonNumber;
+        return a.orderIndex - b.orderIndex;
+      });
+
+      const lessonNumbers = [...new Set(sortedTasks.map(t => t.lessonNumber))].sort((a, b) => a - b);
+      const lessons = lessonNumbers.map(num => ({
+        lessonNumber: num,
+        tasks: sortedTasks.filter(t => t.lessonNumber === num),
+      }));
+
       const results = students.map(student => {
         const studentSubs = submissions.filter(s => s.aiStudentId === student.id);
-        const taskResults = tasks.map(task => {
+        const taskResults = sortedTasks.map(task => {
           const sub = studentSubs.find(s => s.aiTaskId === task.id);
           return {
             taskId: task.id,
             taskTitle: task.title,
+            lessonNumber: task.lessonNumber,
             score: sub?.score || null,
             status: sub?.status || "pending",
             transcription: sub?.transcription || null,
@@ -4005,12 +4017,163 @@ export async function registerRoutes(
             submittedAt: sub?.submittedAt || null,
           };
         });
-        const avgScore = taskResults.filter(t => t.score).reduce((s, t) => s + (t.score || 0), 0) / (taskResults.filter(t => t.score).length || 1);
-        return { studentId: student.id, studentName: student.name, phone: student.phone, connected: !!student.telegramChatId, taskResults, avgScore: Math.round(avgScore * 10) / 10 };
+
+        const lessonScores: Record<number, { total: number; count: number }> = {};
+        for (const tr of taskResults) {
+          if (tr.score) {
+            if (!lessonScores[tr.lessonNumber]) lessonScores[tr.lessonNumber] = { total: 0, count: 0 };
+            lessonScores[tr.lessonNumber].total += tr.score;
+            lessonScores[tr.lessonNumber].count++;
+          }
+        }
+        const lessonAvgs: Record<number, number> = {};
+        for (const [ln, data] of Object.entries(lessonScores)) {
+          lessonAvgs[Number(ln)] = Math.round((data.total / data.count) * 10) / 10;
+        }
+
+        const scoredTasks = taskResults.filter(t => t.score);
+        const avgScore = scoredTasks.length > 0 ? Math.round((scoredTasks.reduce((s, t) => s + (t.score || 0), 0) / scoredTasks.length) * 10) / 10 : 0;
+
+        return { studentId: student.id, studentName: student.name, phone: student.phone, connected: !!student.telegramChatId, taskResults, lessonAvgs, avgScore };
       });
-      res.json({ tasks, results });
+      res.json({ tasks: sortedTasks, lessons, results });
     } catch (error) {
       res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/ai-classes/:id/send-results", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { chatId, lessonNumber } = req.body;
+      if (!chatId) return res.status(400).json({ message: "Chat ID kerak" });
+
+      const aiClass = await storage.getAiClass(req.params.id);
+      if (!aiClass || (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const profile = await storage.getUserProfile(req.userId);
+      if (!profile?.telegramBotToken) {
+        return res.status(400).json({ message: "Avval Telegram bot sozlamalarida tokenni saqlang" });
+      }
+
+      const students = await storage.getAiStudents(req.params.id);
+      const tasks = await storage.getAiTasks(req.params.id);
+      const submissions = await storage.getAiSubmissionsByClass(req.params.id);
+
+      const filteredTasks = lessonNumber
+        ? tasks.filter(t => t.lessonNumber === lessonNumber).sort((a, b) => a.orderIndex - b.orderIndex)
+        : [...tasks].sort((a, b) => { if (a.lessonNumber !== b.lessonNumber) return a.lessonNumber - b.lessonNumber; return a.orderIndex - b.orderIndex; });
+
+      const studentResults = students.map(student => {
+        const studentSubs = submissions.filter(s => s.aiStudentId === student.id);
+        const scores = filteredTasks.map(task => {
+          const sub = studentSubs.find(s => s.aiTaskId === task.id);
+          return sub?.score || 0;
+        });
+        const totalScore = scores.reduce((s, v) => s + v, 0);
+        const maxScore = filteredTasks.length * 10;
+        const percent = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+        return { name: student.name, scores, totalScore, maxScore, percent };
+      }).sort((a, b) => b.totalScore - a.totalScore);
+
+      const title = lessonNumber ? `${aiClass.name} — ${lessonNumber}-dars natijalari` : `${aiClass.name} — barcha natijalar`;
+      let message = `📊 <b>${title}</b>\n\n`;
+
+      const top3 = studentResults.slice(0, 3);
+      const medals = ["🥇", "🥈", "🥉"];
+      top3.forEach((r, i) => {
+        const bar = "█".repeat(Math.round(r.percent / 10)) + "░".repeat(10 - Math.round(r.percent / 10));
+        message += `${medals[i]} <b>${r.name}</b>\n   ${bar} ${r.totalScore}/${r.maxScore} (${r.percent}%)\n\n`;
+      });
+
+      if (studentResults.length > 3) {
+        message += `📋 <b>Barcha natijalar:</b>\n`;
+        studentResults.forEach((r, i) => {
+          message += `${i + 1}. ${r.name} — ${r.totalScore}/${r.maxScore} (${r.percent}%)\n`;
+        });
+      }
+
+      message += `\n👥 Jami: ${studentResults.length} o'quvchi`;
+
+      const TelegramBot = (await import("node-telegram-bot-api")).default;
+      const bot = new TelegramBot(profile.telegramBotToken);
+      const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
+
+      await bot.sendMessage(targetChat, message, { parse_mode: "HTML" });
+
+      const PDFDocument = (await import("pdfkit")).default;
+      const chunks: Buffer[] = [];
+      const doc = new PDFDocument({ size: "A4", margin: 40 });
+      doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+
+      const fontPath = path.join(process.cwd(), "server", "fonts");
+      const regularFont = path.join(fontPath, "NotoSans-Regular.ttf");
+      const boldFont = path.join(fontPath, "NotoSans-Bold.ttf");
+      const hasCustomFonts = fs.existsSync(regularFont) && fs.existsSync(boldFont);
+      if (hasCustomFonts) {
+        doc.registerFont("Regular", regularFont);
+        doc.registerFont("Bold", boldFont);
+      }
+      const fontR = hasCustomFonts ? "Regular" : "Helvetica";
+      const fontB = hasCustomFonts ? "Bold" : "Helvetica-Bold";
+
+      doc.font(fontB).fontSize(16).text(title, { align: "center" });
+      doc.moveDown(0.5);
+      doc.font(fontR).fontSize(9).text(`Sana: ${new Date().toLocaleDateString("uz-UZ")}`, { align: "center" });
+      doc.moveDown(1);
+
+      const lessonNums = lessonNumber ? [lessonNumber] : [...new Set(filteredTasks.map(t => t.lessonNumber))].sort((a, b) => a - b);
+      const colStart = 40;
+      const nameW = 120;
+      const scoreW = lessonNums.length > 6 ? 35 : 45;
+      const avgW = 45;
+      const totalW = nameW + lessonNums.length * scoreW + avgW;
+      let y = doc.y;
+
+      doc.font(fontB).fontSize(8);
+      doc.rect(colStart, y, totalW, 20).fill("#7c3aed");
+      doc.fill("#ffffff").text("O'quvchi", colStart + 4, y + 5, { width: nameW - 8 });
+      lessonNums.forEach((ln, i) => {
+        doc.text(`${ln}-dars`, colStart + nameW + i * scoreW, y + 5, { width: scoreW, align: "center" });
+      });
+      doc.text("O'rtacha", colStart + nameW + lessonNums.length * scoreW, y + 5, { width: avgW, align: "center" });
+      y += 20;
+
+      doc.fill("#000000");
+      studentResults.forEach((r, idx) => {
+        if (y > 750) { doc.addPage(); y = 40; }
+        const bgColor = idx % 2 === 0 ? "#f5f3ff" : "#ffffff";
+        doc.rect(colStart, y, totalW, 18).fill(bgColor);
+        doc.fill("#000000").font(fontR).fontSize(8);
+        doc.text(`${idx + 1}. ${r.name}`, colStart + 4, y + 4, { width: nameW - 8 });
+
+        lessonNums.forEach((ln, i) => {
+          const lessonTasks = filteredTasks.filter(t => t.lessonNumber === ln);
+          const lessonScore = lessonTasks.reduce((sum, t) => {
+            const tIdx = filteredTasks.indexOf(t);
+            return sum + (r.scores[tIdx] || 0);
+          }, 0);
+          const lessonMax = lessonTasks.length * 10;
+          const pct = lessonMax > 0 ? Math.round((lessonScore / lessonMax) * 100) : 0;
+          const color = pct >= 70 ? "#16a34a" : pct >= 40 ? "#ca8a04" : "#dc2626";
+          doc.fill(color).text(`${lessonScore}/${lessonMax}`, colStart + nameW + i * scoreW, y + 4, { width: scoreW, align: "center" });
+        });
+
+        const avgColor = r.percent >= 70 ? "#16a34a" : r.percent >= 40 ? "#ca8a04" : "#dc2626";
+        doc.fill(avgColor).font(fontB).text(`${r.percent}%`, colStart + nameW + lessonNums.length * scoreW, y + 4, { width: avgW, align: "center" });
+        y += 18;
+      });
+
+      await new Promise<void>((resolve) => { doc.on("end", resolve); doc.end(); });
+      const pdfBuffer = Buffer.concat(chunks);
+      const fileName = lessonNumber ? `${aiClass.name}_${lessonNumber}_dars.pdf` : `${aiClass.name}_natijalar.pdf`;
+      await bot.sendDocument(targetChat, pdfBuffer, { caption: `📄 ${title}` }, { filename: fileName, contentType: "application/pdf" });
+
+      res.json({ success: true, message: "Natijalar yuborildi" });
+    } catch (error: any) {
+      console.error("AI class send results error:", error);
+      res.status(500).json({ message: error.message || "Xatolik yuz berdi" });
     }
   });
 
