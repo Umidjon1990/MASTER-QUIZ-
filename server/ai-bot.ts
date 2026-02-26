@@ -149,11 +149,10 @@ async function sendNextTask(bot: TelegramBot, chatId: string, session: any, stor
 
   const task = tasks[session.currentTaskIndex];
   let message = `📝 ${session.currentTaskIndex + 1}-vazifa: ${task.title}\n\n`;
-  message += `📌 Javob yuborish usullari (birini yoki bir nechtasini tanlang):\n\n`;
+  message += `📌 Javob yuborish usullari:\n\n`;
   message += `🎤 Audio — mavzuni o'qib, ovozli xabar yuboring\n`;
   message += `📸 Rasm — daftarga tarjimasini yozib, rasmga olib yuboring (lotin/kirill harflarida)\n`;
-  message += `✍️ Matn — tarjimasini yozib yuboring\n\n`;
-  message += `Istalgan usulda yuboring — barchasi qabul qilinadi!`;
+  message += `✍️ Matn — tarjimasini yozib yuboring`;
 
   await bot.sendMessage(Number(chatId), message);
 }
