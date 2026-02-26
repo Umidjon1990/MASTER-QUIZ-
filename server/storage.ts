@@ -192,6 +192,7 @@ export interface IStorage {
   createAiSubmission(data: InsertAiSubmission): Promise<AiSubmission>;
   getAiSubmissions(aiStudentId: string): Promise<AiSubmission[]>;
   getAiSubmissionsByClass(aiClassId: string): Promise<AiSubmission[]>;
+  getAiSubmissionByStudentAndTask(aiStudentId: string, aiTaskId: string): Promise<AiSubmission | undefined>;
   updateAiSubmission(id: string, data: Partial<InsertAiSubmission>): Promise<AiSubmission | undefined>;
 }
 
@@ -932,6 +933,14 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(aiSubmissions)
       .where(inArray(aiSubmissions.aiStudentId, db.select({ id: aiStudents.id }).from(aiStudents).where(eq(aiStudents.aiClassId, aiClassId))))
       .orderBy(desc(aiSubmissions.submittedAt));
+  }
+
+  async getAiSubmissionByStudentAndTask(aiStudentId: string, aiTaskId: string): Promise<AiSubmission | undefined> {
+    const [found] = await db.select().from(aiSubmissions)
+      .where(and(eq(aiSubmissions.aiStudentId, aiStudentId), eq(aiSubmissions.aiTaskId, aiTaskId)))
+      .orderBy(desc(aiSubmissions.submittedAt))
+      .limit(1);
+    return found;
   }
 
   async updateAiSubmission(id: string, data: Partial<InsertAiSubmission>): Promise<AiSubmission | undefined> {

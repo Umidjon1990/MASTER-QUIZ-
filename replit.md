@@ -87,9 +87,10 @@ Preferred communication style: Simple, everyday language.
   - `quiz_likes` — Quiz like tracking (quizId, userId)
   - `live_lessons` — Live lesson sessions with lessonType (pdf/voice), title, pdfUrl (nullable for voice), teacher, status, code, requireCode
   - `ai_classes` — AI nazorat sinflari (name, teacherId, telegramBotToken, instructions, status)
-  - `ai_class_tasks` — AI sinf vazifalari (title, orderIndex, prompt, referenceText, type: audio/text)
+  - `ai_class_tasks` — AI sinf darslar/vazifalari (title, orderIndex, prompt, referenceText, type: audio/text). Wizard auto-generates numbered lessons ("1-dars", "2-dars"...) from count input.
   - `ai_students` — AI sinf o'quvchilari (name, phone, telegramChatId — bot orqali ulanadi)
-  - `ai_submissions` — O'quvchi topshiriqlari (submissionType: audio/image/text, audioFileId, imageFileId, ocrText, transcription via Whisper, aiResponse via GPT-4o-mini, score 1-10, status)
+  - `ai_submissions` — O'quvchi topshiriqlari (submissionType: audio/image/text, audioFileId, imageFileId, ocrText, transcription via Whisper, aiResponse via GPT-4o-mini, score 5-10, status). **1 attempt per lesson limit** enforced via `getAiSubmissionByStudentAndTask()`.
+  - **Bot flow**: Students select lessons via inline keyboard buttons (1-dars, 2-dars... with status icons ✅/⏳/📝), not sequential. Each lesson can only be submitted once.
 
 ### Storage Layer
 - `server/storage.ts` defines an `IStorage` interface with a concrete implementation using Drizzle queries

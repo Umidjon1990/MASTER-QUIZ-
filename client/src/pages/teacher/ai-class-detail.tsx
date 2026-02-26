@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Plus, Trash2, Power, PowerOff, Users, ListChecks, Settings, BarChart3, X, Phone, Wifi, WifiOff } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Power, PowerOff, Users, ListChecks, Settings, BarChart3, X, Phone, Wifi, WifiOff, Pencil, Check } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function AiClassDetail() {
@@ -28,6 +28,10 @@ export default function AiClassDetail() {
   const [newTaskRef, setNewTaskRef] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<any>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editPrompt, setEditPrompt] = useState("");
+  const [editRef, setEditRef] = useState("");
 
   const { data: aiClass, isLoading } = useQuery<any>({
     queryKey: ["/api/ai-classes", classId],
@@ -105,8 +109,22 @@ export default function AiClassDetail() {
       setNewTaskTitle("");
       setNewTaskPrompt("");
       setNewTaskRef("");
-      toast({ title: "Vazifa qo'shildi" });
+      toast({ title: "Dars qo'shildi" });
     },
+  });
+
+  const updateTaskMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const res = await apiRequest("PATCH", `/api/ai-tasks/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId, "results"] });
+      setEditingTaskId(null);
+      toast({ title: "Dars yangilandi" });
+    },
+    onError: (err: any) => toast({ title: "Xatolik", description: err.message, variant: "destructive" }),
   });
 
   const deleteTaskMutation = useMutation({
@@ -118,6 +136,20 @@ export default function AiClassDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId, "results"] });
     },
   });
+
+  function startEditing(task: any) {
+    setEditingTaskId(task.id);
+    setEditTitle(task.title);
+    setEditPrompt(task.prompt || "");
+    setEditRef(task.referenceText || "");
+  }
+
+  function saveEdit(taskId: string) {
+    updateTaskMutation.mutate({
+      id: taskId,
+      data: { title: editTitle, prompt: editPrompt, referenceText: editRef },
+    });
+  }
 
   if (isLoading) return <div className="p-6"><div className="h-8 bg-muted animate-pulse rounded w-48 mb-4" /></div>;
   if (!aiClass) return <div className="p-6">AI sinf topilmadi</div>;
@@ -159,7 +191,7 @@ export default function AiClassDetail() {
         <TabsList className="grid w-full grid-cols-4 sm:w-auto sm:inline-grid" data-testid="ai-class-tabs">
           <TabsTrigger value="results"><BarChart3 className="w-3.5 h-3.5 mr-1 hidden sm:inline" />Natijalar</TabsTrigger>
           <TabsTrigger value="students"><Users className="w-3.5 h-3.5 mr-1 hidden sm:inline" />O'quvchilar</TabsTrigger>
-          <TabsTrigger value="tasks"><ListChecks className="w-3.5 h-3.5 mr-1 hidden sm:inline" />Vazifalar</TabsTrigger>
+          <TabsTrigger value="tasks"><ListChecks className="w-3.5 h-3.5 mr-1 hidden sm:inline" />Darslar</TabsTrigger>
           <TabsTrigger value="settings"><Settings className="w-3.5 h-3.5 mr-1 hidden sm:inline" />Sozlamalar</TabsTrigger>
         </TabsList>
 
@@ -170,7 +202,7 @@ export default function AiClassDetail() {
                 <table className="w-full text-xs sm:text-sm" data-testid="ai-results-table">
                   <thead>
                     <tr className="border-b bg-muted/20">
-                      <th className="text-center p-2 font-medium w-[32px] sticky left-0 bg-muted/20 z-10">№</th>
+                      <th className="text-center p-2 font-medium w-[32px] sticky left-0 bg-muted/20 z-10">N</th>
                       <th className="text-left p-2 font-medium min-w-[120px] sticky left-[32px] bg-muted/20 z-10">O'quvchi</th>
                       {results.tasks?.map((t: any, idx: number) => (
                         <th key={idx} className="text-center p-2 font-medium border-l min-w-[70px]">{t.title}</th>
@@ -244,22 +276,46 @@ export default function AiClassDetail() {
 
         <TabsContent value="tasks" className="mt-4">
           <div className="flex justify-between items-center mb-4">
-            <p className="text-sm text-muted-foreground">{aiClass.tasks?.length || 0} ta vazifa</p>
+            <p className="text-sm text-muted-foreground">{aiClass.tasks?.length || 0} ta dars</p>
             <Button size="sm" onClick={() => setAddTaskOpen(true)} data-testid="button-add-ai-task">
-              <Plus className="w-3.5 h-3.5 mr-1" /> Vazifa qo'shish
+              <Plus className="w-3.5 h-3.5 mr-1" /> Dars qo'shish
             </Button>
           </div>
           <div className="space-y-2">
             {aiClass.tasks?.map((t: any, idx: number) => (
               <Card key={t.id} className="p-3" data-testid={`card-ai-task-${t.id}`}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-medium text-sm">{idx + 1}. {t.title}</span>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => deleteTaskMutation.mutate(t.id)}>
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-                {t.referenceText && <p className="text-xs text-muted-foreground line-clamp-2">📖 {t.referenceText}</p>}
-                {t.prompt && <p className="text-xs text-muted-foreground mt-1">💡 {t.prompt}</p>}
+                {editingTaskId === t.id ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-muted-foreground w-5">{idx + 1}.</span>
+                      <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="Dars nomi" className="flex-1" data-testid={`input-edit-task-title-${t.id}`} />
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600" onClick={() => saveEdit(t.id)} disabled={updateTaskMutation.isPending}>
+                        <Check className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingTaskId(null)}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <Textarea value={editRef} onChange={e => setEditRef(e.target.value)} placeholder="Mavzu matni" rows={3} data-testid={`input-edit-task-ref-${t.id}`} />
+                    <Input value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="AI ga ko'rsatma" data-testid={`input-edit-task-prompt-${t.id}`} />
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-sm">{idx + 1}. {t.title}</span>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" onClick={() => startEditing(t)} data-testid={`button-edit-task-${t.id}`}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => deleteTaskMutation.mutate(t.id)} data-testid={`button-delete-task-${t.id}`}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                    {t.referenceText && <p className="text-xs text-muted-foreground line-clamp-2">📖 {t.referenceText}</p>}
+                    {t.prompt && <p className="text-xs text-muted-foreground mt-1">💡 {t.prompt}</p>}
+                  </>
+                )}
               </Card>
             ))}
           </div>
@@ -308,11 +364,11 @@ export default function AiClassDetail() {
 
       <Dialog open={addTaskOpen} onOpenChange={setAddTaskOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Vazifa qo'shish</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Dars qo'shish</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label>Vazifa nomi</Label>
-              <Input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Grammatika" data-testid="input-new-task-title" />
+              <Label>Dars nomi</Label>
+              <Input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="1-dars" data-testid="input-new-task-title" />
             </div>
             <div>
               <Label>Mavzu matni (ixtiyoriy)</Label>
