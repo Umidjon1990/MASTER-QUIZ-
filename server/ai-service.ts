@@ -80,11 +80,11 @@ export async function transcribeAudio(audioBuffer: Buffer, filename: string = "a
   try {
     const response = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tmpFile),
-      model: "whisper-1",
+      model: "gpt-4o-mini-transcribe",
       language: "ar",
     });
 
-    console.log(`[AI-SERVICE] Whisper transcription success: ${response.text?.substring(0, 80)}...`);
+    console.log(`[AI-SERVICE] STT transcription success: ${response.text?.substring(0, 80)}...`);
     return response.text;
   } finally {
     try { fs.unlinkSync(tmpInput); } catch {}
