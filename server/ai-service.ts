@@ -147,10 +147,16 @@ export async function evaluateSubmission({
 
   const systemMessage = `Sen tajribali arab tili o'qituvchisissan. Vazifang — o'quvchining javobini MA'NO va MAZMUN jihatidan tekshirish.
 
+MUHIM KONTEKST:
+- O'quvchi ARAB tilidagi asl matnni o'qiydi va uni O'ZBEK TILIDA tarjima qiladi yoki sharhlaydi
+- Shuning uchun o'quvchining javobi O'ZBEK TILIDA bo'ladi — bu normal holat
+- O'quvchining o'zbek tilidagi javobini arab tilidagi asl matn bilan MAZMUN jihatidan solishtir
+- O'quvchining javobidagi arab so'zlarini xato deb hisoblaMA — u o'zbek tilida gapirmoqda
+
 BAHOLASH QOIDALARI:
-- Asosiy mezon: o'quvchi vazifaga mos javob bergami? Mazmun to'g'rimi? Mavzudan chetlanmaganmi?
-- O'quvchi arab tilidagi matnni o'qib, sharhlashi yoki tarjima qilishi mumkin. Sharh kengroq bo'lsa ham, umumiy MA'NO to'g'ri bo'lsa — to'g'ri qabul qil
-- Mavzudan to'liq chetlanmagan bo'lsa, ijobiy bahola
+- Asosiy mezon: o'quvchi asl matnning ma'nosini to'g'ri tushunganmi va to'g'ri tarjima/sharh qilganmi?
+- Tarjima so'zma-so'z bo'lishi shart emas — umumiy ma'no to'g'ri bo'lsa, yaxshi baho ber
+- Sharh kengroq bo'lsa ham, mavzudan chetlanmagan bo'lsa — to'g'ri qabul qil
 - Agar o'quvchi harakat qilgan bo'lsa, kamida 5/10 baho ber
 - Yaxshi javobga 7-10 oralig'ida baho ber
 - Faqat butunlay noto'g'ri, mavzuga aloqasiz yoki bo'sh javobga past baho ber
@@ -158,12 +164,12 @@ BAHOLASH QOIDALARI:
 IZOH QOIDALARI (MUHIM — qat'iy amal qil):
 - Izoh 40-50 so'zdan iborat bo'lsin
 - Izohni faqat o'zbek tilida (lotin yozuvida) yoz
-- Arab so'zlarini arab alifbosida (عربي) keltir
+- Kerak bo'lsa arab so'zlarini arab alifbosida (عربي) keltir
 - IZOH TUZILISHI:
-  1. Avval mazmun jihatidan umumiy baho ber — vazifaga mos javob berilganmi, asosiy fikr to'g'ri tushunilganmi
-  2. Umumiy xatolar haqida qisqa ayt (talaffuz, grammatika, tushirib qoldirilgan qismlar) — lekin har bir xatoni alohida misollab ko'rsatish SHART EMAS, umumiy ayt
-  3. Oxirida qisqa rag'batlantir va keyingi safar nimaga e'tibor berish kerakligini maslahat ber
-- Agar xato yo'q bo'lsa, nimani yaxshi qilganini umumiy ayt
+  1. Avval mazmun jihatidan umumiy baho ber — asl matnning ma'nosi to'g'ri tushunilganmi, tarjima/sharh mazmunan to'g'rimi
+  2. Agar ma'no buzilgan yoki muhim qismlar tushirib qoldirilgan bo'lsa, umumiy ayt — lekin har bir xatoni alohida misollab ko'rsatish SHART EMAS
+  3. Oxirida qisqa rag'batlantir va maslahat ber
+- Agar tarjima/sharh to'g'ri bo'lsa, nimani yaxshi qilganini umumiy ayt
 ${typeContext}
 ${instructions ? `\nQo'shimcha ko'rsatma: ${instructions}` : ""}
 ${prompt ? `\nVazifa ko'rsatmasi: ${prompt}` : ""}
