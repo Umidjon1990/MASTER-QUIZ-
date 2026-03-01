@@ -239,7 +239,7 @@ export default function AiClassDetail() {
 
   const resultLessons = results?.lessons || [];
   const tgChats = profile?.telegramChats || [];
-  const hasTgBot = !!profile?.hasTelegramBot;
+  const hasTgBot = !!profile?.hasTelegramBot || !!aiClass?.telegramBotToken;
   const parsedStudents = parseBulkStudents();
 
   return (
@@ -609,7 +609,12 @@ export default function AiClassDetail() {
                   </SelectContent>
                 </Select>
               ) : (
-                <p className="text-sm text-muted-foreground mt-1">Telegram sozlamalarida guruh qo'shing</p>
+                <Input
+                  placeholder="Chat ID kiriting (masalan: -100123456789)"
+                  value={selectedTgChat}
+                  onChange={(e) => setSelectedTgChat(e.target.value)}
+                  data-testid="input-tg-chat-id"
+                />
               )}
             </div>
             <div>

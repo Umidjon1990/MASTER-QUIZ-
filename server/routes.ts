@@ -4055,8 +4055,9 @@ export async function registerRoutes(
       }
 
       const profile = await storage.getUserProfile(req.userId);
-      if (!profile?.telegramBotToken) {
-        return res.status(400).json({ message: "Avval Telegram bot sozlamalarida tokenni saqlang" });
+      const botToken = aiClass.telegramBotToken || profile?.telegramBotToken;
+      if (!botToken) {
+        return res.status(400).json({ message: "Avval Telegram bot tokenini saqlang" });
       }
 
       const students = await storage.getAiStudents(req.params.id);
@@ -4106,7 +4107,7 @@ export async function registerRoutes(
       message += `\n👥 Jami: ${studentResults.length} o'quvchi`;
 
       const TelegramBot = (await import("node-telegram-bot-api")).default;
-      const bot = new TelegramBot(profile.telegramBotToken);
+      const bot = new TelegramBot(botToken);
       const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
 
       await bot.sendMessage(targetChat, message, { parse_mode: "HTML" });
