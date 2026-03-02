@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Plus, Trash2, Power, PowerOff, Users, ListChecks, Settings, BarChart3, X, Phone, Wifi, WifiOff, Pencil, Check, ChevronDown, ChevronRight, Send, Upload, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Power, PowerOff, Users, ListChecks, Settings, BarChart3, X, Phone, Wifi, WifiOff, Pencil, Check, ChevronDown, ChevronRight, Send, Upload, Loader2, Download } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function AiClassDetail() {
@@ -356,6 +356,24 @@ export default function AiClassDetail() {
           <div className="flex justify-between items-center mb-4">
             <p className="text-sm text-muted-foreground">{aiClass.students?.length || 0} ta o'quvchi</p>
             <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={async () => {
+                const students = aiClass.students || [];
+                if (students.length === 0) return;
+                const XLSX = await import("xlsx");
+                const data = students.map((s: any, i: number) => ({
+                  "№": i + 1,
+                  "Ism": s.name,
+                  "Telefon": s.phone || "",
+                  "Holat": s.telegramChatId ? "Ulangan" : "Kutilmoqda",
+                }));
+                const ws = XLSX.utils.json_to_sheet(data);
+                ws["!cols"] = [{ wch: 5 }, { wch: 30 }, { wch: 15 }, { wch: 12 }];
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "O'quvchilar");
+                XLSX.writeFile(wb, `${aiClass.name || "sinf"}_o'quvchilar.xlsx`);
+              }} data-testid="button-download-students">
+                <Download className="w-3.5 h-3.5 mr-1" /> Yuklab olish
+              </Button>
               <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)} data-testid="button-bulk-add-students">
                 <Upload className="w-3.5 h-3.5 mr-1" /> Bulk qo'shish
               </Button>
