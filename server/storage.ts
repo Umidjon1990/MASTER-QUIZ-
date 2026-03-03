@@ -195,6 +195,7 @@ export interface IStorage {
   getAiSubmissionByStudentAndTask(aiStudentId: string, aiTaskId: string): Promise<AiSubmission | undefined>;
   updateAiSubmission(id: string, data: Partial<InsertAiSubmission>): Promise<AiSubmission | undefined>;
   deleteAiSubmission(id: string): Promise<void>;
+  deleteAiSubmissionsByLesson(aiClassId: string, lessonNumber: number): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -951,6 +952,21 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAiSubmission(id: string): Promise<void> {
     await db.delete(aiSubmissions).where(eq(aiSubmissions.id, id));
+  }
+
+  async deleteAiSubmissionsByLesson(aiClassId: string, lessonNumber: number): Promise<number> {
+    const taskIds = await db.select({ id: aiClassTasks.id }).from(aiClassTasks)
+      .where(and(eq(aiClassTasks.aiClassId, aiClassId), eq(aiClassTasks.lessonNumber, lessonNumber)));
+    if (taskIds.length === 0) return 0;
+    const studentIds = await db.select({ id: aiStudents.id }).from(aiStudents)
+      .where(eq(aiStudents.aiClassId, aiClassId));
+    if (studentIds.length === 0) return 0;
+    const result = await db.delete(aiSubmissions)
+      .where(and(
+        inArray(aiSubmissions.aiTaskId, taskIds.map(t => t.id)),
+        inArray(aiSubmissions.aiStudentId, studentIds.map(s => s.id))
+      )).returning();
+    return result.length;
   }
 }
 

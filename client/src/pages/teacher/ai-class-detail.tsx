@@ -177,6 +177,17 @@ export default function AiClassDetail() {
     onError: (err: any) => toast({ title: "Xatolik", description: err.message, variant: "destructive" }),
   });
 
+  const resetLessonMutation = useMutation({
+    mutationFn: async (lessonNumber: number) => {
+      await apiRequest("DELETE", `/api/ai-classes/${classId}/lessons/${lessonNumber}/submissions`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId, "results"] });
+      toast({ title: "Dars natijalari bekor qilindi. O'quvchilar qayta topshira oladi." });
+    },
+    onError: (err: any) => toast({ title: "Xatolik", description: err.message, variant: "destructive" }),
+  });
+
   const sendResultsMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/ai-classes/${classId}/send-results`, {
@@ -312,7 +323,22 @@ export default function AiClassDetail() {
                               colSpan={lesson.tasks.length}
                               className="text-center p-1 text-xs font-bold border-l text-purple-700 dark:text-purple-300"
                             >
-                              {lesson.lessonNumber}-dars
+                              <div className="flex items-center justify-center gap-1">
+                                <span>{lesson.lessonNumber}-dars</span>
+                                <button
+                                  className="text-red-400 hover:text-red-600 transition-colors p-0.5 rounded hover:bg-red-50 dark:hover:bg-red-950/30"
+                                  title={`${lesson.lessonNumber}-dars natijalarini bekor qilish`}
+                                  disabled={resetLessonMutation.isPending}
+                                  onClick={() => {
+                                    if (confirm(`${lesson.lessonNumber}-dars barcha natijalarini bekor qilasizmi? Barcha o'quvchilar qayta topshira oladi.`)) {
+                                      resetLessonMutation.mutate(lesson.lessonNumber);
+                                    }
+                                  }}
+                                  data-testid={`button-reset-lesson-${lesson.lessonNumber}`}
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
                             </th>
                           ))}
                           <th className="p-1 border-l bg-purple-50 dark:bg-purple-950/20" />

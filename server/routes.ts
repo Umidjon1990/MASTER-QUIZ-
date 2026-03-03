@@ -3983,6 +3983,19 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/ai-classes/:id/lessons/:lessonNumber/submissions", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const aiClass = await storage.getAiClass(req.params.id);
+      if (!aiClass || (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const count = await storage.deleteAiSubmissionsByLesson(req.params.id, parseInt(req.params.lessonNumber));
+      res.json({ success: true, deleted: count });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.delete("/api/ai-students/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       await storage.deleteAiStudent(req.params.id);
