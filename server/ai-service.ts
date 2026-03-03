@@ -90,6 +90,7 @@ export async function transcribeAudio(audioBuffer: Buffer, filename: string = "a
     const response = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tmpFile),
       model: "gpt-4o-mini-transcribe",
+      prompt: "O'quvchi arab tilidagi matnni o'qiydi va o'zbek tiliga tarjima qiladi. Audioda arabcha va o'zbekcha aralash bo'ladi. O'zbek tili lotin alifbosida yoziladi. Arab tili arab alifbosida yoziladi.",
     });
 
     console.log(`[AI-SERVICE] STT transcription success: ${response.text?.substring(0, 80)}...`);
