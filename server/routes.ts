@@ -4133,7 +4133,23 @@ export async function registerRoutes(
       const bot = new TelegramBot(botToken);
       const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
 
-      await bot.sendMessage(targetChat, message, { parse_mode: "HTML" });
+      const MAX_LEN = 4000;
+      if (message.length <= MAX_LEN) {
+        await bot.sendMessage(targetChat, message, { parse_mode: "HTML" });
+      } else {
+        const lines = message.split("\n");
+        let chunk = "";
+        for (const line of lines) {
+          if ((chunk + line + "\n").length > MAX_LEN && chunk.length > 0) {
+            await bot.sendMessage(targetChat, chunk.trim(), { parse_mode: "HTML" });
+            chunk = "";
+          }
+          chunk += line + "\n";
+        }
+        if (chunk.trim()) {
+          await bot.sendMessage(targetChat, chunk.trim(), { parse_mode: "HTML" });
+        }
+      }
 
       const PDFDocument = (await import("pdfkit")).default;
       const chunks: Buffer[] = [];
