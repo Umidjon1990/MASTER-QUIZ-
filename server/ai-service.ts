@@ -90,7 +90,7 @@ export async function transcribeAudio(audioBuffer: Buffer, filename: string = "a
     const response = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tmpFile),
       model: "gpt-4o-mini-transcribe",
-      prompt: "O'quvchi arab tilidagi matnni o'qiydi va o'zbek tiliga tarjima qiladi. Audioda arabcha va o'zbekcha aralash bo'ladi. O'zbek tili lotin alifbosida yoziladi. Arab tili arab alifbosida yoziladi.",
+      prompt: "Bu audioda o'quvchi arab tilidagi matnni o'qiydi va o'zbek tiliga tarjima qiladi. Audioda arabcha va o'zbekcha aralash bo'ladi. O'zbek tilidagi qismlarni ALBATTA lotin alifbosida yoz (masalan: bu kitob foydali, tarjima qilish kerak). Arab tilidagi qismlarni arab alifbosida yoz. Hech qachon o'zbek tilini arab yoki kirill harflarida yozma — faqat lotin. Misol: 'الكتاب المفيد — bu foydali kitob, o'qish uchun yaxshi'.",
     });
 
     console.log(`[AI-SERVICE] STT transcription success: ${response.text?.substring(0, 80)}...`);
