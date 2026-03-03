@@ -3974,6 +3974,15 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/ai-submissions/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      await storage.deleteAiSubmission(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.delete("/api/ai-students/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       await storage.deleteAiStudent(req.params.id);
@@ -4012,6 +4021,7 @@ export async function registerRoutes(
             taskId: task.id,
             taskTitle: task.title,
             lessonNumber: task.lessonNumber,
+            submissionId: sub?.id || null,
             score: sub?.score || null,
             status: sub?.status || "pending",
             transcription: sub?.transcription || null,

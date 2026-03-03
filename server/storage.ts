@@ -194,6 +194,7 @@ export interface IStorage {
   getAiSubmissionsByClass(aiClassId: string): Promise<AiSubmission[]>;
   getAiSubmissionByStudentAndTask(aiStudentId: string, aiTaskId: string): Promise<AiSubmission | undefined>;
   updateAiSubmission(id: string, data: Partial<InsertAiSubmission>): Promise<AiSubmission | undefined>;
+  deleteAiSubmission(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -946,6 +947,10 @@ export class DatabaseStorage implements IStorage {
   async updateAiSubmission(id: string, data: Partial<InsertAiSubmission>): Promise<AiSubmission | undefined> {
     const [updated] = await db.update(aiSubmissions).set(data as any).where(eq(aiSubmissions.id, id)).returning();
     return updated;
+  }
+
+  async deleteAiSubmission(id: string): Promise<void> {
+    await db.delete(aiSubmissions).where(eq(aiSubmissions.id, id));
   }
 }
 

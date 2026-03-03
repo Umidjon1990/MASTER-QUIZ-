@@ -165,6 +165,18 @@ export default function AiClassDetail() {
     },
   });
 
+  const resetSubmissionMutation = useMutation({
+    mutationFn: async (submissionId: string) => {
+      await apiRequest("DELETE", `/api/ai-submissions/${submissionId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId, "results"] });
+      setDetailOpen(false);
+      toast({ title: "Natija bekor qilindi. O'quvchi qayta topshira oladi." });
+    },
+    onError: (err: any) => toast({ title: "Xatolik", description: err.message, variant: "destructive" }),
+  });
+
   const sendResultsMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/ai-classes/${classId}/send-results`, {
@@ -594,7 +606,7 @@ export default function AiClassDetail() {
               {selectedDetail.transcription && (
                 <div>
                   <Label className="text-xs text-muted-foreground">O'quvchi javobi (transkripsiya)</Label>
-                  <p className="text-sm bg-muted/50 p-2 rounded mt-1">{selectedDetail.transcription}</p>
+                  <p className="text-sm bg-muted/50 p-2 rounded mt-1 max-h-[150px] overflow-y-auto">{selectedDetail.transcription}</p>
                 </div>
               )}
               {selectedDetail.aiResponse && (
@@ -605,6 +617,22 @@ export default function AiClassDetail() {
               )}
               {selectedDetail.status === "pending" && (
                 <p className="text-sm text-muted-foreground">Hali topshirilmagan</p>
+              )}
+              {selectedDetail.submissionId && selectedDetail.status === "completed" && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="w-full"
+                  disabled={resetSubmissionMutation.isPending}
+                  onClick={() => {
+                    if (confirm("Natijani bekor qilasizmi? O'quvchi qayta topshira oladi.")) {
+                      resetSubmissionMutation.mutate(selectedDetail.submissionId);
+                    }
+                  }}
+                  data-testid="button-reset-submission"
+                >
+                  {resetSubmissionMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Bekor qilinmoqda...</> : <><Trash2 className="w-3.5 h-3.5 mr-1" /> Natijani bekor qilish</>}
+                </Button>
               )}
             </div>
           )}
