@@ -1402,7 +1402,7 @@ export async function registerRoutes(
       const bot = new TelegramBot(profile.telegramBotToken);
 
       let sent = 0;
-      const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
+      const targetChat = chatId.startsWith("@") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
       const shouldShuffle = quiz.shuffleOptions === true || quiz.shuffleOptions === "true" as any;
       console.log(`[TG] Quiz "${quiz.title}" shuffleOptions=${quiz.shuffleOptions} (type: ${typeof quiz.shuffleOptions}), shouldShuffle=${shouldShuffle}`);
 
@@ -1589,7 +1589,7 @@ export async function registerRoutes(
 
       const TelegramBot = (await import("node-telegram-bot-api")).default;
       const bot = new TelegramBot(profile.telegramBotToken);
-      const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
+      const targetChat = chatId.startsWith("@") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
 
       let quizChannelLink: string | undefined;
       if (quiz.scheduledTelegramQuizChatId) {
@@ -1786,7 +1786,7 @@ export async function registerRoutes(
       }
       const TelegramBot = (await import("node-telegram-bot-api")).default;
       const bot = new TelegramBot(profile.telegramBotToken);
-      const targetChat = chatId.trim().startsWith("@") || chatId.trim().startsWith("-") ? chatId.trim() : (isNaN(Number(chatId.trim())) ? `@${chatId.trim()}` : Number(chatId.trim()));
+      const targetChat = chatId.trim().startsWith("@") ? chatId.trim() : (isNaN(Number(chatId.trim())) ? `@${chatId.trim()}` : Number(chatId.trim()));
       const chatInfo = await bot.getChat(targetChat);
       const newChat = {
         chatId: String(chatInfo.id),
@@ -3285,7 +3285,7 @@ export async function registerRoutes(
 
       const TelegramBot = (await import("node-telegram-bot-api")).default;
       const bot = new TelegramBot(profile.telegramBotToken);
-      const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
+      const targetChat = chatId.startsWith("@") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
 
       const sendOneMessage = async (text: string) => {
         try {
@@ -4155,7 +4155,7 @@ export async function registerRoutes(
 
       const TelegramBot = (await import("node-telegram-bot-api")).default;
       const bot = new TelegramBot(botToken);
-      const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
+      const targetChat = chatId.startsWith("@") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
 
       const sendOneHtml = async (text: string) => {
         try {
