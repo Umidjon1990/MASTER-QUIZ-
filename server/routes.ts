@@ -4157,21 +4157,30 @@ export async function registerRoutes(
       const bot = new TelegramBot(botToken);
       const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
 
+      const sendOneHtml = async (text: string) => {
+        try {
+          await bot.sendMessage(targetChat, text, { parse_mode: "HTML" });
+        } catch (htmlErr: any) {
+          console.log("[AI-TG] HTML failed, trying plain:", htmlErr.message?.substring(0, 120));
+          const plain = text.replace(/<\/?b>/g, "").replace(/<\/?i>/g, "");
+          await bot.sendMessage(targetChat, plain);
+        }
+      };
       const MAX_LEN = 4000;
       if (message.length <= MAX_LEN) {
-        await bot.sendMessage(targetChat, message, { parse_mode: "HTML" });
+        await sendOneHtml(message);
       } else {
         const lines = message.split("\n");
         let chunk = "";
         for (const line of lines) {
           if ((chunk + line + "\n").length > MAX_LEN && chunk.length > 0) {
-            await bot.sendMessage(targetChat, chunk.trim(), { parse_mode: "HTML" });
+            await sendOneHtml(chunk.trim());
             chunk = "";
           }
           chunk += line + "\n";
         }
         if (chunk.trim()) {
-          await bot.sendMessage(targetChat, chunk.trim(), { parse_mode: "HTML" });
+          await sendOneHtml(chunk.trim());
         }
       }
 
@@ -4254,8 +4263,13 @@ export async function registerRoutes(
 
       res.json({ success: true, message: "Natijalar yuborildi" });
     } catch (error: any) {
-      console.error("AI class send results error:", error);
-      res.status(500).json({ message: error.message || "Xatolik yuz berdi" });
+      console.error("AI class send results error:", error?.message || error);
+      const msg = error?.message || "Xatolik yuz berdi";
+      if (msg.includes("chat not found")) {
+        res.status(400).json({ message: "Chat topilmadi. Bot shu guruhga qo'shilganligini tekshiring yoki Chat ID ni tekshiring." });
+      } else {
+        res.status(500).json({ message: msg });
+      }
     }
   });
 
