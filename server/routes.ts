@@ -3287,23 +3287,32 @@ export async function registerRoutes(
       const bot = new TelegramBot(profile.telegramBotToken);
       const targetChat = chatId.startsWith("@") || chatId.startsWith("-") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
 
+      const sendOneMessage = async (text: string) => {
+        try {
+          await bot.sendMessage(targetChat, text, { parse_mode: "Markdown" });
+        } catch (mdErr: any) {
+          console.log("[TG] Markdown failed, sending plain text:", mdErr.message?.substring(0, 100));
+          const plain = text.replace(/\*/g, "").replace(/\\/g, "");
+          await bot.sendMessage(targetChat, plain);
+        }
+      };
       const sendLongMessage = async (text: string) => {
         const MAX_LEN = 4000;
         if (text.length <= MAX_LEN) {
-          await bot.sendMessage(targetChat, text, { parse_mode: "Markdown" });
+          await sendOneMessage(text);
           return;
         }
         const lines = text.split("\n");
         let chunk = "";
         for (const line of lines) {
           if ((chunk + line + "\n").length > MAX_LEN && chunk.length > 0) {
-            await bot.sendMessage(targetChat, chunk.trim(), { parse_mode: "Markdown" });
+            await sendOneMessage(chunk.trim());
             chunk = "";
           }
           chunk += line + "\n";
         }
         if (chunk.trim()) {
-          await bot.sendMessage(targetChat, chunk.trim(), { parse_mode: "Markdown" });
+          await sendOneMessage(chunk.trim());
         }
       };
 
@@ -3763,9 +3772,10 @@ export async function registerRoutes(
         await sendLongMessage(text);
         res.json({ success: true, message: `${periodLabel} hisobot yuborildi` });
       }
-    } catch (error) {
-      console.error("Telegram notify error:", error);
-      res.status(500).json({ message: "Telegram xabar yuborishda xatolik" });
+    } catch (error: any) {
+      console.error("Telegram notify error:", error?.message || error);
+      const errMsg = error?.message || "Noma'lum xatolik";
+      res.status(500).json({ message: `Telegram xabar yuborishda xatolik: ${errMsg}` });
     }
   });
 
