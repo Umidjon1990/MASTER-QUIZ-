@@ -3497,8 +3497,8 @@ export async function registerRoutes(
         const colHeaders = lessonTasks.map(lt => columnMap.get(lt.taskColumnId) || "?");
         text += `📝 Vazifalar: ${escMd(colHeaders.join(" | "))}\n\n`;
 
-        let allDone = 0;
-        let hasDebt = 0;
+        const doneStudents: string[] = [];
+        const debtStudents: string[] = [];
         for (const m of members) {
           const name = profileMap.get(m.userId) || "Noma'lum";
           const statuses: string[] = [];
@@ -3510,15 +3510,28 @@ export async function registerRoutes(
             if (status === "submitted") studentDone++;
           }
           const scoreStr = lessonTasks.length > 0 ? ` (${studentDone}/${lessonTasks.length})` : "";
-          const line = `${statuses.join(" ")} — ${escMd(name)}${scoreStr}\n`;
-          text += line;
-          if (studentDone === lessonTasks.length) allDone++;
-          else hasDebt++;
+          const line = `${statuses.join(" ")} — ${escMd(name)}${scoreStr}`;
+          if (studentDone === lessonTasks.length && lessonTasks.length > 0) {
+            doneStudents.push(line);
+          } else {
+            debtStudents.push(line);
+          }
         }
 
-        text += `\n📊 Jami: ${members.length} ta o'quvchi\n`;
-        text += `✅ Barchasi bajarilgan: ${allDone}\n`;
-        text += `❌ Qarzdor: ${hasDebt}\n`;
+        if (doneStudents.length > 0) {
+          text += `✅ *Bajarganlar (${doneStudents.length}):*\n`;
+          doneStudents.forEach((s, i) => { text += `${i + 1}. ${s}\n`; });
+          text += `\n`;
+        }
+        if (debtStudents.length > 0) {
+          text += `❌ *Bajarmaganlar (${debtStudents.length}):*\n`;
+          debtStudents.forEach((s, i) => { text += `${i + 1}. ${s}\n`; });
+          text += `\n`;
+        }
+
+        text += `📊 Jami: ${members.length} ta o'quvchi\n`;
+        text += `✅ Bajarganlar: ${doneStudents.length}\n`;
+        text += `❌ Bajarmaganlar: ${debtStudents.length}\n`;
 
         const statusLabel = (st: string) => st === "submitted" ? "+" : st === "missing" ? "-" : st === "pending" ? "?" : "R";
         const statusColor = (st: string) => st === "submitted" ? "#dcfce7" : st === "missing" ? "#fecaca" : st === "pending" ? "#fef9c3" : "#dbeafe";
@@ -4100,25 +4113,19 @@ export async function registerRoutes(
         const totalScore = scores.reduce((s, v) => s + v, 0);
         const maxScore = filteredTasks.length * 10;
         const percent = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
-        return { name: student.name, scores, totalScore, maxScore, percent };
-      }).sort((a, b) => b.totalScore - a.totalScore);
+        const hasAnyScore = scores.some(s => s > 0);
+        return { name: student.name, scores, totalScore, maxScore, percent, hasAnyScore };
+      });
+
+      const completed = studentResults.filter(r => r.hasAnyScore).sort((a, b) => b.totalScore - a.totalScore);
+      const notCompleted = studentResults.filter(r => !r.hasAnyScore).sort((a, b) => a.name.localeCompare(b.name));
 
       const title = lessonNumber ? `${aiClass.name} — ${lessonNumber}-dars natijalari` : `${aiClass.name} — barcha natijalar`;
       let message = `📊 <b>${title}</b>\n\n`;
 
-      const top3 = studentResults.slice(0, 3);
-      const medals = ["🥇", "🥈", "🥉"];
-      top3.forEach((r, i) => {
-        const taskDetails = filteredTasks.map((t, ti) => {
-          const score = r.scores[ti] || 0;
-          return `${t.title}: ${score}/10`;
-        }).join(" | ");
-        message += `${medals[i]} <b>${r.name}</b>\n   ${taskDetails}\n   📈 ${r.totalScore}/${r.maxScore} (${r.percent}%)\n\n`;
-      });
-
-      if (studentResults.length > 3) {
-        message += `📋 <b>Barcha natijalar:</b>\n`;
-        studentResults.forEach((r, i) => {
+      if (completed.length > 0) {
+        message += `✅ <b>Bajarganlar (${completed.length}):</b>\n`;
+        completed.forEach((r, i) => {
           const taskDetails = filteredTasks.map((t, ti) => {
             const score = r.scores[ti] || 0;
             return `${t.title}: ${score}`;
@@ -4127,7 +4134,14 @@ export async function registerRoutes(
         });
       }
 
-      message += `\n👥 Jami: ${studentResults.length} o'quvchi`;
+      if (notCompleted.length > 0) {
+        message += `\n❌ <b>Bajarmaganlar (${notCompleted.length}):</b>\n`;
+        notCompleted.forEach((r, i) => {
+          message += `${i + 1}. ${r.name}\n`;
+        });
+      }
+
+      message += `\n👥 Jami: ${studentResults.length} o'quvchi | ✅ ${completed.length} | ❌ ${notCompleted.length}`;
 
       const TelegramBot = (await import("node-telegram-bot-api")).default;
       const bot = new TelegramBot(botToken);

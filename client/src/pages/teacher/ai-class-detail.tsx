@@ -671,7 +671,7 @@ export default function AiClassDetail() {
           <div className="space-y-4">
             <div>
               <Label>Telegram guruh/kanal</Label>
-              {tgChats.length > 0 ? (
+              {tgChats.length > 0 && (
                 <Select value={selectedTgChat} onValueChange={setSelectedTgChat}>
                   <SelectTrigger data-testid="select-tg-chat"><SelectValue placeholder="Guruh tanlang" /></SelectTrigger>
                   <SelectContent>
@@ -680,14 +680,14 @@ export default function AiClassDetail() {
                     ))}
                   </SelectContent>
                 </Select>
-              ) : (
-                <Input
-                  placeholder="Chat ID kiriting (masalan: -100123456789)"
-                  value={selectedTgChat}
-                  onChange={(e) => setSelectedTgChat(e.target.value)}
-                  data-testid="input-tg-chat-id"
-                />
               )}
+              <p className="text-xs text-muted-foreground mt-1">{tgChats.length > 0 ? "yoki" : ""} AI bot qo'shilgan guruh ID sini qo'lda kiriting:</p>
+              <Input
+                placeholder="Chat ID (masalan: -100123456789 yoki @guruh_nomi)"
+                value={selectedTgChat}
+                onChange={(e) => setSelectedTgChat(e.target.value)}
+                data-testid="input-tg-chat-id"
+              />
             </div>
             <div>
               <Label>Qaysi natijalarni yuborish</Label>
