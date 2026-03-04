@@ -3565,8 +3565,8 @@ export async function registerRoutes(
           rows: pdfRows,
           stats: [
             { label: "Jami o'quvchilar", value: `${members.length}` },
-            { label: "Barchasi bajarilgan", value: `${allDone}` },
-            { label: "Qarzdor", value: `${hasDebt}` },
+            { label: "Barchasi bajarilgan", value: `${doneStudents.length}` },
+            { label: "Qarzdor", value: `${debtStudents.length}` },
           ],
         });
 
