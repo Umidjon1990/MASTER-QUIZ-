@@ -326,6 +326,16 @@ export default function AiClassDetail() {
                               <div className="flex items-center justify-center gap-1">
                                 <span>{lesson.lessonNumber}-dars</span>
                                 <button
+                                  className="text-blue-400 hover:text-blue-600 transition-colors p-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                                  title={`${lesson.lessonNumber}-dars natijalarini PDF yuklab olish`}
+                                  onClick={() => {
+                                    window.open(`/api/ai-classes/${classId}/download-lesson/${lesson.lessonNumber}`, "_blank");
+                                  }}
+                                  data-testid={`button-download-lesson-${lesson.lessonNumber}`}
+                                >
+                                  <Download className="w-3 h-3" />
+                                </button>
+                                <button
                                   className="text-red-400 hover:text-red-600 transition-colors p-0.5 rounded hover:bg-red-50 dark:hover:bg-red-950/30"
                                   title={`${lesson.lessonNumber}-dars natijalarini bekor qilish`}
                                   disabled={resetLessonMutation.isPending}
@@ -671,17 +681,7 @@ export default function AiClassDetail() {
           <div className="space-y-4">
             <div>
               <Label>Telegram guruh/kanal</Label>
-              {tgChats.length > 0 && (
-                <Select value={selectedTgChat} onValueChange={setSelectedTgChat}>
-                  <SelectTrigger data-testid="select-tg-chat"><SelectValue placeholder="Guruh tanlang" /></SelectTrigger>
-                  <SelectContent>
-                    {tgChats.map((chat: any) => (
-                      <SelectItem key={chat.chatId} value={chat.chatId}>{chat.title || chat.chatId}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              <p className="text-xs text-muted-foreground mt-1">{tgChats.length > 0 ? "yoki" : ""} AI bot qo'shilgan guruh ID sini qo'lda kiriting:</p>
+              <p className="text-xs text-muted-foreground mb-1">AI bot qo'shilgan guruh ID sini kiriting. Botni guruhga admin qilib qo'shing.</p>
               <Input
                 placeholder="Chat ID (masalan: -100123456789 yoki @guruh_nomi)"
                 value={selectedTgChat}

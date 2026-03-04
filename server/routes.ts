@@ -4090,6 +4090,130 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/ai-classes/:id/download-lesson/:lessonNumber", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const aiClass = await storage.getAiClass(req.params.id);
+      if (!aiClass || (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const lessonNumber = parseInt(req.params.lessonNumber);
+      const students = await storage.getAiStudents(req.params.id);
+      const tasks = await storage.getAiTasks(req.params.id);
+      const submissions = await storage.getAiSubmissionsByClass(req.params.id);
+
+      const lessonTasks = tasks.filter(t => t.lessonNumber === lessonNumber).sort((a, b) => a.orderIndex - b.orderIndex);
+
+      const studentResults = students.map(student => {
+        const studentSubs = submissions.filter(s => s.aiStudentId === student.id);
+        const taskScores = lessonTasks.map(task => {
+          const sub = studentSubs.find(s => s.aiTaskId === task.id);
+          return { score: sub?.score || 0, status: sub?.status || "pending" };
+        });
+        const totalScore = taskScores.reduce((s, v) => s + v.score, 0);
+        const maxScore = lessonTasks.length * 10;
+        const percent = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+        const hasAnyScore = taskScores.some(s => s.score > 0);
+        return { name: student.name, phone: student.phone || "", taskScores, totalScore, maxScore, percent, hasAnyScore };
+      });
+
+      const completed = studentResults.filter(r => r.hasAnyScore).sort((a, b) => b.totalScore - a.totalScore);
+      const notCompleted = studentResults.filter(r => !r.hasAnyScore).sort((a, b) => a.name.localeCompare(b.name));
+      const sortedResults = [...completed, ...notCompleted];
+
+      const PDFDocument = (await import("pdfkit")).default;
+      const chunks: Buffer[] = [];
+      const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 30 });
+      doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+
+      const fontPath = path.join(process.cwd(), "server", "fonts");
+      const regularFont = path.join(fontPath, "NotoSans-Regular.ttf");
+      const boldFont = path.join(fontPath, "NotoSans-Bold.ttf");
+      const hasCustomFonts = fs.existsSync(regularFont) && fs.existsSync(boldFont);
+      if (hasCustomFonts) {
+        doc.registerFont("Regular", regularFont);
+        doc.registerFont("Bold", boldFont);
+      }
+      const fontR = hasCustomFonts ? "Regular" : "Helvetica";
+      const fontB = hasCustomFonts ? "Bold" : "Helvetica-Bold";
+
+      const title = `${aiClass.name} — ${lessonNumber}-dars natijalari`;
+      doc.font(fontB).fontSize(14).text(title, { align: "center" });
+      doc.moveDown(0.3);
+      doc.font(fontR).fontSize(8).text(`Sana: ${new Date().toLocaleDateString("uz-UZ")}`, { align: "center" });
+      doc.moveDown(0.3);
+      doc.font(fontR).fontSize(8).text(`✅ Topshirganlar: ${completed.length} | ❌ Topshirmaganlar: ${notCompleted.length} | Jami: ${students.length}`, { align: "center" });
+      doc.moveDown(0.8);
+
+      const colStart = 30;
+      const nameW = 140;
+      const taskW = Math.min(60, Math.max(40, Math.floor((doc.page.width - 60 - nameW - 50 - 50) / Math.max(lessonTasks.length, 1))));
+      const totalW_col = 50;
+      const pctW = 50;
+      const totalW = nameW + lessonTasks.length * taskW + totalW_col + pctW + 30;
+
+      doc.font(fontB).fontSize(7);
+      let y = doc.y;
+      doc.rect(colStart, y, totalW, 18).fill("#7c3aed");
+      doc.fill("#ffffff");
+      doc.text("№", colStart + 2, y + 5, { width: 25, align: "center" });
+      doc.text("O'quvchi", colStart + 30, y + 5, { width: nameW - 30 });
+      lessonTasks.forEach((task, i) => {
+        doc.text(task.title, colStart + nameW + i * taskW, y + 5, { width: taskW, align: "center" });
+      });
+      doc.text("Jami", colStart + nameW + lessonTasks.length * taskW, y + 5, { width: totalW_col, align: "center" });
+      doc.text("%", colStart + nameW + lessonTasks.length * taskW + totalW_col, y + 5, { width: pctW, align: "center" });
+      y += 18;
+
+      doc.fill("#000000");
+      let sectionLabelDrawn = false;
+
+      sortedResults.forEach((r, idx) => {
+        if (!sectionLabelDrawn && idx === completed.length && notCompleted.length > 0) {
+          doc.font(fontB).fontSize(7).fill("#dc2626");
+          doc.text("❌ Topshirmaganlar:", colStart + 2, y + 3);
+          doc.fill("#000000");
+          y += 14;
+          sectionLabelDrawn = true;
+        }
+        if (idx === 0 && completed.length > 0) {
+          doc.font(fontB).fontSize(7).fill("#16a34a");
+          doc.text("✅ Topshirganlar:", colStart + 2, y + 3);
+          doc.fill("#000000");
+          y += 14;
+        }
+
+        if (y > 550) { doc.addPage(); y = 30; }
+        const bgColor = r.hasAnyScore ? (idx % 2 === 0 ? "#f0fdf4" : "#ffffff") : (idx % 2 === 0 ? "#fef2f2" : "#fff5f5");
+        doc.rect(colStart, y, totalW, 16).fill(bgColor);
+        doc.fill("#000000").font(fontR).fontSize(7);
+        doc.text(String(idx + 1), colStart + 2, y + 4, { width: 25, align: "center" });
+        doc.text(r.name, colStart + 30, y + 4, { width: nameW - 35 });
+        r.taskScores.forEach((ts, i) => {
+          const color = ts.score >= 8 ? "#16a34a" : ts.score >= 5 ? "#ca8a04" : ts.score > 0 ? "#dc2626" : "#9ca3af";
+          doc.fill(color).text(ts.score > 0 ? String(ts.score) : "—", colStart + nameW + i * taskW, y + 4, { width: taskW, align: "center" });
+        });
+        doc.fill("#000000").font(fontB);
+        doc.text(r.totalScore > 0 ? String(r.totalScore) : "—", colStart + nameW + lessonTasks.length * taskW, y + 4, { width: totalW_col, align: "center" });
+        doc.text(r.percent > 0 ? `${r.percent}%` : "—", colStart + nameW + lessonTasks.length * taskW + totalW_col, y + 4, { width: pctW, align: "center" });
+        y += 16;
+      });
+
+      const pdfBuffer = await new Promise<Buffer>((resolve) => {
+        doc.on("end", () => resolve(Buffer.concat(chunks)));
+        doc.end();
+      });
+
+      const safeFileName = `${aiClass.name.replace(/[^\w\s-]/g, "")}_${lessonNumber}_dars.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(safeFileName)}"`);
+      res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error("AI lesson PDF download error:", error?.message || error);
+      res.status(500).json({ message: "PDF yaratishda xatolik" });
+    }
+  });
+
   app.post("/api/ai-classes/:id/send-results", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const { chatId, lessonNumber } = req.body;
