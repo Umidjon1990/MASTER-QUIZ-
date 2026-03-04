@@ -209,7 +209,7 @@ async function sendLessonList(bot: TelegramBot, chatId: string, session: any, st
   }
 
   const allLessonNumbers = getLessonNumbers(tasks);
-  const lessonNumbers = allLessonNumbers.filter(num => tasks.some(t => t.lessonNumber === num && t.prompt));
+  const lessonNumbers = allLessonNumbers.filter(num => tasks.some(t => t.lessonNumber === num && (t.prompt || t.referenceText)));
 
   if (lessonNumbers.length === 0) {
     await bot.sendMessage(Number(chatId), "Hozircha vazifalar tayyor emas. O'qituvchi vazifalarni biriktirishi kerak.");
