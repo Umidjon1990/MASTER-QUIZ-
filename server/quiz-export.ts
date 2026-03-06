@@ -170,9 +170,15 @@ export async function generateQuizPDF(
       doc.moveDown(0.3);
 
       if (q.options && q.options.length > 0) {
+        const correctIdx = q.correctAnswer !== undefined && q.correctAnswer !== null
+          ? (q.options.indexOf(q.correctAnswer) >= 0
+            ? q.options.indexOf(q.correctAnswer)
+            : (!isNaN(Number(q.correctAnswer)) ? Number(q.correctAnswer) : -1))
+          : -1;
+
         q.options.forEach((opt, optIdx) => {
           const letter = getLetterForIndex(optIdx);
-          const isCorrect = includeAnswers && opt === q.correctAnswer;
+          const isCorrect = includeAnswers && (optIdx === correctIdx || opt === q.correctAnswer);
           const optRtl = isRtlText(opt);
           const prefix = isCorrect ? `★ ${letter}) ` : `   ${letter}) `;
 
@@ -382,9 +388,15 @@ export async function generateQuizDOCX(
     );
 
     if (q.options && q.options.length > 0) {
+      const correctIdx = q.correctAnswer !== undefined && q.correctAnswer !== null
+        ? (q.options.indexOf(q.correctAnswer) >= 0
+          ? q.options.indexOf(q.correctAnswer)
+          : (!isNaN(Number(q.correctAnswer)) ? Number(q.correctAnswer) : -1))
+        : -1;
+
       q.options.forEach((opt, optIdx) => {
         const letter = getLetterForIndex(optIdx);
-        const isCorrect = includeAnswers && opt === q.correctAnswer;
+        const isCorrect = includeAnswers && (optIdx === correctIdx || opt === q.correctAnswer);
 
         const optRuns: TextRun[] = [];
         if (isCorrect) {
