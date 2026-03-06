@@ -176,19 +176,19 @@ export async function generateQuizPDF(
             : (!isNaN(Number(q.correctAnswer)) ? Number(q.correctAnswer) : -1))
           : -1;
 
-        const optLine = q.options.map((opt, optIdx) => {
+        q.options.forEach((opt, optIdx) => {
           const letter = getLetterForIndex(optIdx);
           const isCorrect = includeAnswers && (optIdx === correctIdx || opt === q.correctAnswer);
-          return `${letter}) ${opt}${isCorrect ? " *" : ""}`;
-        }).join("  ");
+          const optText = `${letter}) ${opt}${isCorrect ? " *" : ""}`;
+          const optRtl = isRtlText(opt);
 
-        const optRtl = isRtlText(optLine);
-        if (optRtl && hasArabicFont) {
-          doc.fontSize(11).font("NotoArabic");
-          doc.text(optLine, { align: "right", indent: 15 });
-        } else {
-          writeMixedLine(`   ${optLine}`, 11, { align: "left", indent: 15 });
-        }
+          if (optRtl && hasArabicFont) {
+            doc.fontSize(11).font("NotoArabic");
+            doc.text(optText, { align: "right", indent: 15 });
+          } else {
+            writeMixedLine(`   ${optText}`, 11, { align: "left", indent: 15 });
+          }
+        });
       }
 
       doc.moveDown(0.6);
@@ -386,20 +386,16 @@ export async function generateQuizDOCX(
           : (!isNaN(Number(q.correctAnswer)) ? Number(q.correctAnswer) : -1))
         : -1;
 
-      const optionRuns: TextRun[] = [];
       q.options.forEach((opt, optIdx) => {
         const letter = getLetterForIndex(optIdx);
         const isCorrect = includeAnswers && (optIdx === correctIdx || opt === q.correctAnswer);
 
-        if (optIdx > 0) {
-          optionRuns.push(new TextRun({ text: " ", size: 22, font: "Arial" }));
-        }
-
-        optionRuns.push(new TextRun({ text: `${letter}) `, size: 22, font: "Arial" }));
+        const optRuns: TextRun[] = [];
+        optRuns.push(new TextRun({ text: `${letter}) `, size: 22, font: "Arial" }));
 
         const optParts = splitArabicLatin(opt);
         for (const part of optParts) {
-          optionRuns.push(new TextRun({
+          optRuns.push(new TextRun({
             text: part.text,
             size: 22,
             font: "Arial",
@@ -408,18 +404,18 @@ export async function generateQuizDOCX(
         }
 
         if (isCorrect) {
-          optionRuns.push(new TextRun({ text: " *", size: 22, font: "Arial", bold: true }));
+          optRuns.push(new TextRun({ text: " *", size: 22, font: "Arial", bold: true }));
         }
-      });
 
-      children.push(
-        new Paragraph({
-          children: optionRuns,
-          alignment: AlignmentType.LEFT,
-          indent: { left: 400 },
-          spacing: { after: 40 },
-        })
-      );
+        children.push(
+          new Paragraph({
+            children: optRuns,
+            alignment: AlignmentType.LEFT,
+            indent: { left: 400 },
+            spacing: { after: 40 },
+          })
+        );
+      });
     }
   });
 
