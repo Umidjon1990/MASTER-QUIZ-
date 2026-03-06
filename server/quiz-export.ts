@@ -176,27 +176,19 @@ export async function generateQuizPDF(
             : (!isNaN(Number(q.correctAnswer)) ? Number(q.correctAnswer) : -1))
           : -1;
 
-        q.options.forEach((opt, optIdx) => {
+        const optLine = q.options.map((opt, optIdx) => {
           const letter = getLetterForIndex(optIdx);
           const isCorrect = includeAnswers && (optIdx === correctIdx || opt === q.correctAnswer);
-          const optRtl = isRtlText(opt);
-          const prefix = isCorrect ? `★ ${letter}) ` : `   ${letter}) `;
+          return `${letter}) ${opt}${isCorrect ? " *" : ""}`;
+        }).join("  ");
 
-          if (isCorrect) {
-            doc.fillColor("#008000");
-          }
-
-          if (optRtl && hasArabicFont) {
-            doc.fontSize(11).font("NotoArabic");
-            doc.text(`${isCorrect ? "★ " : ""}${letter}) ${opt}`, { align: "right", indent: 15 });
-          } else {
-            writeMixedLine(`${prefix}${opt}`, 11, { align: "left", indent: 15 });
-          }
-
-          if (isCorrect) {
-            doc.fillColor("#000000");
-          }
-        });
+        const optRtl = isRtlText(optLine);
+        if (optRtl && hasArabicFont) {
+          doc.fontSize(11).font("NotoArabic");
+          doc.text(optLine, { align: "right", indent: 15 });
+        } else {
+          writeMixedLine(`   ${optLine}`, 11, { align: "left", indent: 15 });
+        }
       }
 
       doc.moveDown(0.6);
@@ -394,37 +386,40 @@ export async function generateQuizDOCX(
           : (!isNaN(Number(q.correctAnswer)) ? Number(q.correctAnswer) : -1))
         : -1;
 
+      const optionRuns: TextRun[] = [];
       q.options.forEach((opt, optIdx) => {
         const letter = getLetterForIndex(optIdx);
         const isCorrect = includeAnswers && (optIdx === correctIdx || opt === q.correctAnswer);
 
-        const optRuns: TextRun[] = [];
-        if (isCorrect) {
-          optRuns.push(new TextRun({ text: "★ ", size: 22, font: "Arial", bold: true, color: "008000" }));
+        if (optIdx > 0) {
+          optionRuns.push(new TextRun({ text: " ", size: 22, font: "Arial" }));
         }
-        optRuns.push(new TextRun({ text: `${letter}) `, size: 22, font: "Arial", bold: isCorrect, color: isCorrect ? "008000" : undefined }));
+
+        optionRuns.push(new TextRun({ text: `${letter}) `, size: 22, font: "Arial" }));
 
         const optParts = splitArabicLatin(opt);
         for (const part of optParts) {
-          optRuns.push(new TextRun({
+          optionRuns.push(new TextRun({
             text: part.text,
             size: 22,
             font: "Arial",
             rightToLeft: part.rtl,
-            bold: isCorrect,
-            color: isCorrect ? "008000" : undefined,
           }));
         }
 
-        children.push(
-          new Paragraph({
-            children: optRuns,
-            alignment: AlignmentType.LEFT,
-            indent: { left: 400 },
-            spacing: { after: 40 },
-          })
-        );
+        if (isCorrect) {
+          optionRuns.push(new TextRun({ text: " *", size: 22, font: "Arial", bold: true }));
+        }
       });
+
+      children.push(
+        new Paragraph({
+          children: optionRuns,
+          alignment: AlignmentType.LEFT,
+          indent: { left: 400 },
+          spacing: { after: 40 },
+        })
+      );
     }
   });
 
