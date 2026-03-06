@@ -2155,8 +2155,19 @@ export async function registerRoutes(
         const classList = await storage.getClassesByTeacher(userId);
         res.json(classList);
       } else {
-        const classList = await storage.getClassesByStudent(userId);
-        res.json(classList);
+        const studentClasses = await storage.getClassesByStudent(userId);
+        const assistantEntries = await storage.getAssistantClasses(userId);
+        if (assistantEntries.length > 0) {
+          const assistantClassIds = new Set(assistantEntries.map(a => a.classId));
+          const existingIds = new Set(studentClasses.map((c: any) => c.id));
+          for (const entry of assistantEntries) {
+            if (!existingIds.has(entry.classId)) {
+              const cls = await storage.getClass(entry.classId);
+              if (cls) studentClasses.push({ ...cls, isAssistant: true } as any);
+            }
+          }
+        }
+        res.json(studentClasses);
       }
     } catch (error) {
       res.status(500).json({ message: "Server error" });

@@ -10,7 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, GraduationCap, Users } from "lucide-react";
+import { Plus, GraduationCap, Users, ClipboardList, Shield } from "lucide-react";
+import { Link } from "wouter";
 import type { Class } from "@shared/schema";
 
 export default function StudentClasses() {
@@ -103,17 +104,32 @@ export default function StudentClasses() {
           variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}
           className="grid md:grid-cols-2 lg:grid-cols-3 gap-4"
         >
-          {classes.map((c) => (
+          {classes.map((c: any) => (
             <motion.div key={c.id} variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}>
               <Card className="p-5 hover-elevate" data-testid={`card-student-class-${c.id}`}>
                 <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
                   <h3 className="font-semibold" data-testid={`text-class-name-${c.id}`}>{c.name}</h3>
-                  <Badge variant="secondary">
-                    <GraduationCap className="w-3 h-3 mr-1" /> Sinf
-                  </Badge>
+                  {c.isAssistant ? (
+                    <Badge variant="outline" className="border-purple-500/30 text-purple-600 dark:text-purple-400">
+                      <Shield className="w-3 h-3 mr-1" /> Yordamchi
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary">
+                      <GraduationCap className="w-3 h-3 mr-1" /> Sinf
+                    </Badge>
+                  )}
                 </div>
                 {c.description && (
                   <p className="text-sm text-muted-foreground line-clamp-2" data-testid={`text-class-desc-${c.id}`}>{c.description}</p>
+                )}
+                {c.isAssistant && (
+                  <div className="flex gap-2 mt-3">
+                    <Link href={`/teacher/classes/${c.id}/tracker`}>
+                      <Button size="sm" variant="outline" data-testid={`button-tracker-${c.id}`}>
+                        <ClipboardList className="w-3.5 h-3.5 mr-1" /> Tracker
+                      </Button>
+                    </Link>
+                  </div>
                 )}
               </Card>
             </motion.div>
