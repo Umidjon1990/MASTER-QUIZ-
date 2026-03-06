@@ -172,13 +172,23 @@ export async function generateQuizPDF(
       if (q.options && q.options.length > 0) {
         q.options.forEach((opt, optIdx) => {
           const letter = getLetterForIndex(optIdx);
+          const isCorrect = includeAnswers && opt === q.correctAnswer;
           const optRtl = isRtlText(opt);
+          const prefix = isCorrect ? `★ ${letter}) ` : `   ${letter}) `;
+
+          if (isCorrect) {
+            doc.fillColor("#008000");
+          }
 
           if (optRtl && hasArabicFont) {
             doc.fontSize(11).font("NotoArabic");
-            doc.text(`${letter}) ${opt}`, { align: "right", indent: 15 });
+            doc.text(`${isCorrect ? "★ " : ""}${letter}) ${opt}`, { align: "right", indent: 15 });
           } else {
-            writeMixedLine(`   ${letter}) ${opt}`, 11, { align: "left", indent: 15 });
+            writeMixedLine(`${prefix}${opt}`, 11, { align: "left", indent: 15 });
+          }
+
+          if (isCorrect) {
+            doc.fillColor("#000000");
           }
         });
       }
@@ -374,9 +384,13 @@ export async function generateQuizDOCX(
     if (q.options && q.options.length > 0) {
       q.options.forEach((opt, optIdx) => {
         const letter = getLetterForIndex(optIdx);
+        const isCorrect = includeAnswers && opt === q.correctAnswer;
 
         const optRuns: TextRun[] = [];
-        optRuns.push(new TextRun({ text: `${letter}) `, size: 22, font: "Arial" }));
+        if (isCorrect) {
+          optRuns.push(new TextRun({ text: "★ ", size: 22, font: "Arial", bold: true, color: "008000" }));
+        }
+        optRuns.push(new TextRun({ text: `${letter}) `, size: 22, font: "Arial", bold: isCorrect, color: isCorrect ? "008000" : undefined }));
 
         const optParts = splitArabicLatin(opt);
         for (const part of optParts) {
@@ -385,6 +399,8 @@ export async function generateQuizDOCX(
             size: 22,
             font: "Arial",
             rightToLeft: part.rtl,
+            bold: isCorrect,
+            color: isCorrect ? "008000" : undefined,
           }));
         }
 
