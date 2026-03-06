@@ -1304,43 +1304,45 @@ export default function ClassTracker() {
                         </form>
                       ) : (
                         <span
-                          className="text-sm font-medium cursor-pointer hover:text-primary transition-colors flex-1"
-                          onClick={() => { setEditingColId(col.taskColumnId); setEditingColTitle(col.colTitle); }}
-                          title="Nomini o'zgartirish uchun bosing"
+                          className={`text-sm font-medium flex-1 ${!isAssistantUser ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
+                          onClick={!isAssistantUser ? () => { setEditingColId(col.taskColumnId); setEditingColTitle(col.colTitle); } : undefined}
+                          title={!isAssistantUser ? "Nomini o'zgartirish uchun bosing" : undefined}
                           data-testid={`text-col-title-${col.taskColumnId}`}
                         >
                           {col.colTitle}
                         </span>
                       )}
-                      <div className="flex items-center gap-0.5 shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
-                          onClick={() => { setEditingColId(col.taskColumnId); setEditingColTitle(col.colTitle); }}
-                          data-testid={`btn-edit-col-${col.taskColumnId}`}
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => removeLessonTaskMutation.mutate(col.lessonTaskId)}
-                          disabled={removeLessonTaskMutation.isPending}
-                          title="Bu darsdan olib tashlash"
-                          data-testid={`btn-remove-task-${col.lessonTaskId}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
+                      {!isAssistantUser && (
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
+                            onClick={() => { setEditingColId(col.taskColumnId); setEditingColTitle(col.colTitle); }}
+                            data-testid={`btn-edit-col-${col.taskColumnId}`}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => removeLessonTaskMutation.mutate(col.lessonTaskId)}
+                            disabled={removeLessonTaskMutation.isPending}
+                            title="Bu darsdan olib tashlash"
+                            data-testid={`btn-remove-task-${col.lessonTaskId}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            {availableColumnsForLesson.length > 0 && selectedLesson && (
+            {!isAssistantUser && availableColumnsForLesson.length > 0 && selectedLesson && (
               <div>
                 <Label className="text-xs text-muted-foreground mb-2 block">Vazifa qo'shish</Label>
                 <div className="flex flex-wrap gap-2">
@@ -1362,7 +1364,7 @@ export default function ClassTracker() {
               </div>
             )}
 
-            {availableColumnsForLesson.length === 0 && selectedLessonColumns.length > 0 && (
+            {!isAssistantUser && availableColumnsForLesson.length === 0 && selectedLessonColumns.length > 0 && (
               <p className="text-xs text-muted-foreground text-center py-1">Barcha vazifa turlari allaqachon qo'shilgan</p>
             )}
 
