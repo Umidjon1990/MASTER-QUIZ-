@@ -1,0 +1,499 @@
+"فُرْصَةٌ" so‘zining o‘zbekcha ma’nosi nima?
+
+A) millat
+
+B) fursat *
+
+C) shahar
+
+D) ibora
+
+"baxtli" so‘zining arabchasi qaysi?
+
+A) وَدَاعٌ
+
+B) لُغَةٌ
+
+C) سَعِيدَةٌ *
+
+D) عَاصِمَةٌ
+
+"تَحِيَّةٌ" so‘zining ma’nosi nima?
+
+A) salomlashish *
+
+B) yashash joyi
+
+C) poytaxt
+
+D) ism
+
+"o‘zaro tanishish" arabchada qanday bo‘ladi?
+
+A) جِنْسِيَّةٌ
+
+B) بَلَدٌ
+
+C) أَيْنَ
+
+D) تَعَارُفٌ *
+
+"سَكَنٌ" so‘zining o‘zbekcha tarjimasi qaysi?
+
+A) davlat
+
+B) yashash joyi *
+
+C) shahar
+
+D) til
+
+"xayrlashish" so‘zining arabchasi qaysi?
+
+A) عِبَارَةٌ
+
+B) تَحِيَّةٌ
+
+C) وَدَاعٌ *
+
+D) فُرْصَةٌ
+
+"عِبَارَةٌ" nimani bildiradi?
+
+A) ibora *
+
+B) millat
+
+C) poytaxt
+
+D) lahza
+
+"mintaqa / shahar" ma’nosiga mos arabcha so‘zni toping.
+
+A) مَدِينَةٌ
+
+B) دَوْلَةٌ
+
+C) اسْمٌ
+
+D) بَلَدٌ *
+
+"جِنْسِيَّةٌ" so‘zining ma’nosi nima?
+
+A) til
+
+B) millat *
+
+C) davlat
+
+D) yashash joyi
+
+"davlat" so‘zining arabchasi qaysi?
+
+A) دَوْلَةٌ *
+
+B) عَاصِمَةٌ
+
+C) مَا
+
+D) أَنْتَ
+
+"عَاصِمَةٌ" nimani anglatadi?
+
+A) tanishish
+
+B) ibora
+
+C) poytaxt *
+
+D) shahar
+
+"til" so‘zining arabchasini toping.
+
+A) مَدِينَةٌ
+
+B) سَكَنٌ
+
+C) وَدَاعٌ
+
+D) لُغَةٌ *
+
+"اسْمٌ" so‘zining o‘zbekcha ma’nosi nima?
+
+A) ism *
+
+B) davlat
+
+C) lahza
+
+D) salomlashish
+
+"shahar" so‘zining arabchasi qaysi?
+
+A) بَلَدٌ
+
+B) مَدِينَةٌ *
+
+C) عَاصِمَةٌ
+
+D) تَعَارُفٌ
+
+"مِنْ" ma’nosi qaysi?
+
+A) qayerda
+
+B) nima
+
+C) ...dan *
+
+D) men
+
+"أَيْنَ" so‘zi nimani bildiradi?
+
+A) kim
+
+B) qachon
+
+C) nima
+
+D) qayerda *
+
+"men" so‘zining arabchasi qaysi?
+
+A) أَيْنَ
+
+B) أَنَا *
+
+C) أَنْتَ
+
+D) مِنْ
+
+"أَنْتِ" so‘zining ma’nosi nima?
+
+A) sen (ayol) *
+
+B) sen (erkak)
+
+C) men
+
+D) qayerda
+
+"sen" (erkak) arabchada qanday aytiladi?
+
+A) أَنْتِ
+
+B) أَنَا
+
+C) أَنْتَ *
+
+D) مَا
+
+"مَا" so‘zining o‘zbekcha ma’nosi nima?
+
+A) qayerda
+
+B) kim
+
+C) qaysi
+
+D) nima *
+
+"فُرْصَةٌ" so‘zining ko‘plik shakli qaysi?
+
+A) فُرَصٌ *
+
+B) أَسْمَاءٌ
+
+C) دُوَلٌ
+
+D) بُلْدانٌ
+
+"تَحِيَّةٌ" so‘zining ko‘plik shakli qaysi?
+
+A) عِبَارَاتٌ
+
+B) تَحِيَّاتٌ *
+
+C) مُدُنٌ
+
+D) لُغَاتٌ
+
+"عِبَارَةٌ" so‘zining ko‘plik shakli qaysi?
+
+A) أَسْكِنَةٌ
+
+B) عَوَاصِمُ
+
+C) عِبَارَاتٌ *
+
+D) دُوَلٌ
+
+"بَلَدٌ" so‘zining ko‘plik shakli qaysi?
+
+A) مُدُنٌ
+
+B) فُرَصٌ
+
+C) تَحِيَّاتٌ
+
+D) بُلْدانٌ *
+
+"دَوْلَةٌ" so‘zining ko‘plik shakli qaysi?
+
+A) دُوَلٌ *
+
+B) أَسْمَاءٌ
+
+C) لُغَاتٌ
+
+D) وَدَاعَاتٌ
+
+"عَاصِمَةٌ" so‘zining ko‘plik shakli qaysi?
+
+A) أَسْكِنَةٌ
+
+B) بُلْدانٌ
+
+C) عَوَاصِمُ *
+
+D) فُرَصٌ
+
+"لُغَةٌ" so‘zining ko‘plik shakli qaysi?
+
+A) أَسْمَاءٌ
+
+B) لُغَاتٌ *
+
+C) مُدُنٌ
+
+D) دُوَلٌ
+
+"اسْمٌ" so‘zining ko‘plik shakli qaysi?
+
+A) دُوَلٌ
+
+B) فُرَصٌ
+
+C) مُدُنٌ
+
+D) أَسْمَاءٌ *
+
+"مَدِينَةٌ" so‘zining ko‘plik shakli qaysi?
+
+A) مُدُنٌ *
+
+B) بُلْدانٌ
+
+C) تَحِيَّاتٌ
+
+D) عِبَارَاتٌ
+
+"سَكَنٌ" so‘zining ko‘plik shakli qaysi?
+
+A) عَوَاصِمُ
+
+B) أَسْكِنَةٌ *
+
+C) دُوَلٌ
+
+D) لُغَاتٌ
+
+Gapni to‘ldiring: "عِنْدِي ________ لِلتَّعَارُفِ."
+
+A) وَدَاعٌ
+
+B) لُغَةٌ
+
+C) فُرْصَةٌ *
+
+D) مَدِينَةٌ
+
+Gapni to‘ldiring: "أَنَا ________ فِي هٰذَا الْيَوْمِ."
+
+A) سَعِيدَةٌ *
+
+B) وَدَاعٌ
+
+C) بَلَدٌ
+
+D) اسْمٌ
+
+Gapni to‘ldiring: "هٰذِهِ ________ جَمِيلَةٌ."
+
+A) عَاصِمَةٌ
+
+B) مَدِينَةٌ
+
+C) فُرْصَةٌ
+
+D) تَحِيَّةٌ *
+
+Gapni to‘ldiring: "نُحِبُّ ________ فِي الصَّفِّ."
+
+A) الْوَدَاعَ
+
+B) التَّعَارُفَ *
+
+C) الْعَاصِمَةَ
+
+D) السَّكَنَ
+
+Gapni to‘ldiring: "هٰذَا ________ قَرِيبٌ."
+
+A) بَلَدٌ
+
+B) وَدَاعٌ
+
+C) سَكَنٌ *
+
+D) لُغَةٌ
+
+Gapni to‘ldiring: "هٰذِهِ ________ مُفِيدَةٌ."
+
+A) عِبَارَةٌ *
+
+B) جِنْسِيَّةٌ
+
+C) مَدِينَةٌ
+
+D) تَحِيَّةٌ
+
+Gapni to‘ldiring: "أَنَا مِنْ ________ أُزْبَكِسْتَانَ."
+
+A) مَدِينَةِ
+
+B) لُغَةِ
+
+C) عَاصِمَةِ
+
+D) دَوْلَةِ *
+
+Gapni to‘ldiring: "اللُّغَةُ ________ جَمِيلَةٌ."
+
+A) الْأُزْبَكِيَّةُ
+
+B) الْعَرَبِيَّةُ *
+
+C) الْبَعِيدَةُ
+
+D) الْكَبِيرَةُ
+
+Gapni to‘ldiring: "طَاشْكَنْتُ ________ أُزْبَكِسْتَانَ."
+
+A) مَدِينَةُ
+
+B) دَوْلَةُ
+
+C) عَاصِمَةُ *
+
+D) لُغَةُ
+
+Gapni to‘ldiring: "أَنَا مِنْ ________ كَبِيرَةٍ."
+
+A) مَدِينَةٍ *
+
+B) لُغَةٍ
+
+C) جِنْسِيَّةٍ
+
+D) عِبَارَةٍ
+
+Matnga ko‘ra, talaba qanday edi?
+
+A) مُتْعَبًا
+
+B) غَائِبًا
+
+C) حَزِينًا
+
+D) سَعِيدًا *
+
+Matnga ko‘ra, Ahmad qaysi davlatdan edi?
+
+A) Qozog‘istondan
+
+B) O‘zbekistondan *
+
+C) Turkiyadan
+
+D) Misrdan
+
+Matnga ko‘ra, talabaning millati nima edi?
+
+A) Arabcha
+
+B) Tojikcha
+
+C) O‘zbekcha *
+
+D) Turkcha
+
+Matnga ko‘ra, "السَّكَن" nimaga yaqin edi?
+
+A) طَاشْكَنْتُ عَاصِمَةٌ ga *
+
+B) bozorga
+
+C) maktabga
+
+D) masjidga
+
+Matnga ko‘ra, oxirida nima aytildi?
+
+A) ism so‘zlari
+
+B) shahar nomlari
+
+C) til darsi
+
+D) xayrlashish iboralari *
+
+"مَا اِسْمُكَ؟" gapining tarjimasi qaysi?
+
+A) Qayerdansan?
+
+B) Isming nima? *
+
+C) Millating nima?
+
+D) Bu nima?
+
+"أَنَا مِنْ بُخَارَى." gapining tarjimasi qaysi?
+
+A) Men Toshkentdaman.
+
+B) Men baxtliman.
+
+C) Men Buxorodanman. *
+
+D) Men muallimman.
+
+To‘g‘ri juftlikni toping.
+
+A) أَنْتَ — sen (erkak) *
+
+B) أَنَا — sen (ayol)
+
+C) مَا — qayerda
+
+D) أَيْنَ — nima
+
+Mazmunga mos gapni toping.
+
+A) Biz xayrlashishni yoqtiramiz.
+
+B) Bu mening davlatim.
+
+C) Men poytaxtni ko‘rdim.
+
+D) Biz tanishishni yoqtiramiz. *
+
+"أَيْنَ الْمَسْجِدُ؟" gapining tarjimasi qaysi?
+
+A) Masjid katta.
+
+B) Masjid qayerda? *
+
+C) Men masjidda.
+
+D) Bu masjid.

@@ -960,10 +960,8 @@ export async function registerRoutes(
         const line = rawLines[li].replace(/^\s+/, "").replace(/\s+$/, "");
 
         if (!line) {
-          if (currentQ && currentQ.options.length >= 2) {
-            await saveCurrentQ();
-            currentQ = null;
-          }
+          // Bo'sh qatorni e'tiborsiz qoldiramiz — variantlar orasida bo'sh qator bo'lishi mumkin
+          // Savolni faqat yangi savol boshlanganida yoki fayl oxirida saqlaymiz
           continue;
         }
 
@@ -979,7 +977,12 @@ export async function registerRoutes(
           currentQ = { questionText: qText, options: [], correctAnswer: "" };
         } else if (!optMatch) {
           if (currentQ && currentQ.options.length === 0) {
+            // Savol matni davomi
             currentQ.questionText += " " + line;
+          } else if (currentQ && currentQ.options.length > 0) {
+            // Variantlar tugagandan keyin yangi savol matni
+            await saveCurrentQ();
+            currentQ = { questionText: line, options: [], correctAnswer: "" };
           } else {
             await saveCurrentQ();
             currentQ = { questionText: line, options: [], correctAnswer: "" };
