@@ -383,9 +383,14 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
 
   const existing = await storage.getAiSubmissionByStudentAndTask(session.aiStudentId, task.id);
   if (existing && existing.status === "completed") {
-    await bot.sendMessage(Number(chatId), "⚠️ Bu vazifa allaqachon topshirilgan.");
+    await bot.sendMessage(Number(chatId), "⚠️ Bu vazifa allaqachon muvaffaqiyatli topshirilgan.");
     await advanceToNextTask(bot, chatId, session, storage);
     return;
+  }
+
+  // "processing" holatida qolib ketgan bo'lsa "failed" ga o'tkazamiz (qayta urinish uchun)
+  if (existing && existing.status === "processing") {
+    await storage.updateAiSubmission(existing.id, { status: "failed", aiResponse: "Avvalgi urinish tugallanmagan" });
   }
 
   const fileId = msg.voice?.file_id || msg.audio?.file_id;
@@ -450,9 +455,16 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
     await bot.sendMessage(Number(chatId), responseMsg);
     await advanceToNextTask(bot, chatId, session, storage);
   } catch (error: any) {
-    console.error("[AI-BOT] Audio submission error:", error);
-    await storage.updateAiSubmission(submission.id, { status: "failed", aiResponse: error.message });
-    await bot.sendMessage(Number(chatId), "❌ Xatolik yuz berdi. Qaytadan urinib ko'ring.");
+    console.error("[AI-BOT] Audio submission error:", error?.message || error);
+    const errMsg = error?.message || "";
+    let userMsg = "❌ Xatolik yuz berdi. Iltimos, keyinroq qaytadan urinib ko'ring.";
+    if (errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("billing")) {
+      userMsg = "⚠️ Tizim vaqtincha band. Bir necha daqiqadan so'ng qaytadan urinib ko'ring. Ovozingizni saqlab qoling — audio qayta yuborilsa qabul qilinadi.";
+    } else if (errMsg.includes("timeout") || errMsg.includes("ECONNREFUSED") || errMsg.includes("network")) {
+      userMsg = "⚠️ Internet ulanishida muammo. Qaytadan urinib ko'ring.";
+    }
+    await storage.updateAiSubmission(submission.id, { status: "failed", aiResponse: errMsg.substring(0, 500) });
+    await bot.sendMessage(Number(chatId), userMsg + "\n\n🔄 Qayta yuborish uchun ovozli xabar yuboring.");
   }
 }
 
