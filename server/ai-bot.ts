@@ -457,14 +457,30 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
   } catch (error: any) {
     console.error("[AI-BOT] Audio submission error:", error?.message || error);
     const errMsg = error?.message || "";
-    let userMsg = "❌ Xatolik yuz berdi. Iltimos, keyinroq qaytadan urinib ko'ring.";
-    if (errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("billing")) {
-      userMsg = "⚠️ Tizim vaqtincha band. Bir necha daqiqadan so'ng qaytadan urinib ko'ring. Ovozingizni saqlab qoling — audio qayta yuborilsa qabul qilinadi.";
-    } else if (errMsg.includes("timeout") || errMsg.includes("ECONNREFUSED") || errMsg.includes("network")) {
-      userMsg = "⚠️ Internet ulanishida muammo. Qaytadan urinib ko'ring.";
-    }
     await storage.updateAiSubmission(submission.id, { status: "failed", aiResponse: errMsg.substring(0, 500) });
-    await bot.sendMessage(Number(chatId), userMsg + "\n\n🔄 Qayta yuborish uchun ovozli xabar yuboring.");
+
+    const lessonNum = session.selectedLessonNumber;
+    const taskTitle = task?.title || "vazifa";
+
+    let reason = "texnik xatolik";
+    if (errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("billing")) {
+      reason = "tizim vaqtincha band";
+    } else if (errMsg.includes("timeout") || errMsg.includes("ECONNREFUSED") || errMsg.includes("network")) {
+      reason = "internet muammo";
+    }
+
+    const retryMsg =
+      `❌ ${lessonNum}-dars "${taskTitle}" yuklanmadi (${reason}).\n\n` +
+      `🔄 Ovozli xabaringizni hoziroq qayta yuboring — /vazifa buyrug'i shart emas, to'g'ridan-to'g'ri yuboring!`;
+
+    await bot.sendMessage(Number(chatId), retryMsg, {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "🔄 Qayta urinish", callback_data: `lesson_${lessonNum}` },
+          { text: "⬅️ Darslar ro'yxati", callback_data: "back_to_lessons" },
+        ]],
+      },
+    });
   }
 }
 
