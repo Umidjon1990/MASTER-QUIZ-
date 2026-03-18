@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ArrowLeft, Users, BookOpen, CheckCircle2, Clock, XCircle, RotateCcw, AlertTriangle, Send, CalendarCheck, FileText, BarChart3, ChevronRight, Calendar, MoreVertical, Plus, Pencil, Copy, Trash2 } from "lucide-react";
+import { ArrowLeft, Users, BookOpen, CheckCircle2, Clock, XCircle, RotateCcw, AlertTriangle, Send, CalendarCheck, FileText, BarChart3, ChevronRight, Calendar, MoreVertical, Plus, Pencil, Copy, Trash2, Download } from "lucide-react";
 import { Link } from "wouter";
 import type { Class, ClassLesson, TaskColumn, LessonTask, TaskSubmission, UserProfile, TelegramChat, AssistantPermissions } from "@shared/schema";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1051,30 +1051,60 @@ export default function ClassTracker() {
                   </Card>
                 )}
 
-                {students.length > 0 && selLessonIds.length > 0 && (
-                  <Card className="p-4">
-                    <h3 className="font-semibold mb-3">O'quvchi bo'yicha statistika</h3>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left py-2 pr-4 font-medium sticky left-0 bg-card">O'quvchi</th>
-                            {selLessonIds.map(l => (
-                              <th key={l.id} className="text-center py-2 px-1 font-medium min-w-[55px]">{l.lessonNo}-d</th>
-                            ))}
-                            <th className="text-center py-2 px-2 font-medium">Foiz</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {students.map((st, idx) => {
-                            let stDone = 0;
-                            selLessonIds.forEach(l => {
-                              const { submitted, total } = getStudentLessonStats(st.userId, l.id);
-                              if (total > 0 && submitted === total) stDone++;
-                            });
-                            const stPct = selLessonIds.length > 0 ? Math.round((stDone / selLessonIds.length) * 100) : 0;
-                            return (
+                {students.length > 0 && selLessonIds.length > 0 && (() => {
+                  const sortedStudents = [...students].map(st => {
+                    let stDone = 0;
+                    selLessonIds.forEach(l => {
+                      const { submitted, total } = getStudentLessonStats(st.userId, l.id);
+                      if (total > 0 && submitted === total) stDone++;
+                    });
+                    const stPct = selLessonIds.length > 0 ? Math.round((stDone / selLessonIds.length) * 100) : 0;
+                    return { ...st, stDone, stPct };
+                  }).sort((a, b) => b.stPct - a.stPct);
+
+                  const downloadXlsx = async () => {
+                    const XLSX = await import("xlsx");
+                    const header = ["#", "O'quvchi", ...selLessonIds.map(l => `${l.lessonNo}-dars`), "Foiz"];
+                    const rows = sortedStudents.map((st, idx) => {
+                      const cells: any = { "#": idx + 1, "O'quvchi": st.userName || st.userId };
+                      selLessonIds.forEach(l => {
+                        const { submitted, total } = getStudentLessonStats(st.userId, l.id);
+                        cells[`${l.lessonNo}-dars`] = total === 0 ? "—" : submitted === total ? "✅" : submitted > 0 ? `${submitted}/${total}` : "❌";
+                      });
+                      cells["Foiz"] = `${st.stPct}%`;
+                      return cells;
+                    });
+                    const ws = XLSX.utils.json_to_sheet(rows, { header });
+                    ws["!cols"] = [{ wch: 4 }, { wch: 25 }, ...selLessonIds.map(() => ({ wch: 10 })), { wch: 8 }];
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, "Statistika");
+                    XLSX.writeFile(wb, `statistika.xlsx`);
+                  };
+
+                  return (
+                    <Card className="p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold">O'quvchi bo'yicha statistika</h3>
+                        <Button size="sm" variant="outline" onClick={downloadXlsx} data-testid="button-download-stats">
+                          <Download className="w-3.5 h-3.5 mr-1" /> Yuklab olish
+                        </Button>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-2 pr-1 font-medium w-8">#</th>
+                              <th className="text-left py-2 pr-4 font-medium sticky left-0 bg-card">O'quvchi</th>
+                              {selLessonIds.map(l => (
+                                <th key={l.id} className="text-center py-2 px-1 font-medium min-w-[55px]">{l.lessonNo}-d</th>
+                              ))}
+                              <th className="text-center py-2 px-2 font-medium">Foiz</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sortedStudents.map((st, idx) => (
                               <tr key={st.userId} className="border-b last:border-0 hover:bg-muted/30" data-testid={`row-stat-student-${idx}`}>
+                                <td className="py-2 pr-1 text-muted-foreground text-xs">{idx + 1}</td>
                                 <td className="py-2 pr-4 sticky left-0 bg-card">
                                   <div className="font-medium truncate max-w-[140px]">{st.userName || st.userId}</div>
                                 </td>
@@ -1082,29 +1112,24 @@ export default function ClassTracker() {
                                   const { submitted, total } = getStudentLessonStats(st.userId, l.id);
                                   return (
                                     <td key={l.id} className="text-center py-2 px-1" data-testid={`cell-stat-${idx}-${l.id}`}>
-                                      {total === 0 ? (
-                                        <span className="text-muted-foreground">—</span>
-                                      ) : submitted === total ? (
-                                        <span className="text-green-600 font-bold">✅</span>
-                                      ) : submitted > 0 ? (
-                                        <span className="text-yellow-600 text-xs">{submitted}/{total}</span>
-                                      ) : (
-                                        <span className="text-red-500">❌</span>
-                                      )}
+                                      {total === 0 ? <span className="text-muted-foreground">—</span>
+                                        : submitted === total ? <span className="text-green-600">✅</span>
+                                        : submitted > 0 ? <span className="text-yellow-600 text-xs">{submitted}/{total}</span>
+                                        : <span className="text-red-500">❌</span>}
                                     </td>
                                   );
                                 })}
                                 <td className="text-center py-2 px-2">
-                                  <span className={`font-semibold ${stPct >= 70 ? "text-green-600" : stPct >= 40 ? "text-yellow-600" : "text-red-500"}`}>{stPct}%</span>
+                                  <span className={`font-semibold ${st.stPct >= 70 ? "text-green-600" : st.stPct >= 40 ? "text-yellow-600" : "text-red-500"}`}>{st.stPct}%</span>
                                 </td>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </Card>
-                )}
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+                  );
+                })()}
 
                 {students.length === 0 && (
                   <Card className="p-12 text-center text-muted-foreground">

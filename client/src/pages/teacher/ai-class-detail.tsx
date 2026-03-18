@@ -635,15 +635,49 @@ export default function AiClassDetail() {
                   </Card>
                 )}
 
-                {students.length > 0 && selLessons.length > 0 && (
+                {students.length > 0 && selLessons.length > 0 && (() => {
+                  const sortedStudents = [...students].map((st: any) => {
+                    let stDone = 0; let stScore = 0;
+                    selLessons.forEach(ln => { const cell = getCellData(st.id, ln); if (cell.done) stDone++; stScore += cell.score; });
+                    const stPct = selLessons.length > 0 ? Math.round((stDone / selLessons.length) * 100) : 0;
+                    return { ...st, stDone, stScore, stPct };
+                  }).sort((a: any, b: any) => b.stPct - a.stPct);
+
+                  const downloadStatXlsx = async () => {
+                    const XLSX = await import("xlsx");
+                    const header = ["#", "O'quvchi", ...selLessons.map((ln: number) => `${ln}-dars`), "Ball", "Foiz"];
+                    const rows = sortedStudents.map((st: any, idx: number) => {
+                      const cells: any = { "#": idx + 1, "O'quvchi": st.name };
+                      selLessons.forEach((ln: number) => {
+                        const cell = getCellData(st.id, ln);
+                        cells[`${ln}-dars`] = cell.total === 0 ? "—" : cell.done ? "✅" : cell.score > 0 ? `${cell.score}` : "❌";
+                      });
+                      cells["Ball"] = st.stScore;
+                      cells["Foiz"] = `${st.stPct}%`;
+                      return cells;
+                    });
+                    const ws = XLSX.utils.json_to_sheet(rows, { header });
+                    ws["!cols"] = [{ wch: 4 }, { wch: 28 }, ...selLessons.map(() => ({ wch: 10 })), { wch: 8 }, { wch: 8 }];
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, "Statistika");
+                    XLSX.writeFile(wb, `${aiClass?.name || "sinf"}_statistika.xlsx`);
+                  };
+
+                  return (
                   <Card className="p-4">
-                    <h3 className="font-semibold mb-3">O'quvchi bo'yicha statistika</h3>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold">O'quvchi bo'yicha statistika</h3>
+                      <Button size="sm" variant="outline" onClick={downloadStatXlsx} data-testid="button-download-ai-stats">
+                        <Download className="w-3.5 h-3.5 mr-1" /> Yuklab olish
+                      </Button>
+                    </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b">
+                            <th className="text-left py-2 pr-1 font-medium w-8">#</th>
                             <th className="text-left py-2 pr-4 font-medium sticky left-0 bg-card">O'quvchi</th>
-                            {selLessons.map(ln => (
+                            {selLessons.map((ln: number) => (
                               <th key={ln} className="text-center py-2 px-1 font-medium min-w-[60px]">{ln}-d</th>
                             ))}
                             <th className="text-center py-2 px-2 font-medium">Ball</th>
@@ -651,22 +685,15 @@ export default function AiClassDetail() {
                           </tr>
                         </thead>
                         <tbody>
-                          {students.map((st: any, idx: number) => {
-                            let stDone = 0;
-                            let stScore = 0;
-                            selLessons.forEach(ln => {
-                              const cell = getCellData(st.id, ln);
-                              if (cell.done) stDone++;
-                              stScore += cell.score;
-                            });
-                            const stPct = selLessons.length > 0 ? Math.round((stDone / selLessons.length) * 100) : 0;
+                          {sortedStudents.map((st: any, idx: number) => {
                             return (
                               <tr key={st.id} className="border-b last:border-0 hover:bg-muted/30" data-testid={`row-stat-student-${idx}`}>
+                                <td className="py-2 pr-1 text-muted-foreground text-xs">{idx + 1}</td>
                                 <td className="py-2 pr-4 sticky left-0 bg-card">
                                   <div className="font-medium truncate max-w-[140px]">{st.name}</div>
                                   {!st.telegramChatId && <div className="text-xs text-muted-foreground">Ulanmagan</div>}
                                 </td>
-                                {selLessons.map(ln => {
+                                {selLessons.map((ln: number) => {
                                   const cell = getCellData(st.id, ln);
                                   return (
                                     <td key={ln} className="text-center py-2 px-1" data-testid={`cell-stat-${idx}-${ln}`}>
@@ -682,9 +709,9 @@ export default function AiClassDetail() {
                                     </td>
                                   );
                                 })}
-                                <td className="text-center py-2 px-2 font-medium">{stScore}</td>
+                                <td className="text-center py-2 px-2 font-medium">{st.stScore}</td>
                                 <td className="text-center py-2 px-2">
-                                  <span className={`font-semibold ${stPct >= 70 ? "text-green-600" : stPct >= 40 ? "text-yellow-600" : "text-red-500"}`}>{stPct}%</span>
+                                  <span className={`font-semibold ${st.stPct >= 70 ? "text-green-600" : st.stPct >= 40 ? "text-yellow-600" : "text-red-500"}`}>{st.stPct}%</span>
                                 </td>
                               </tr>
                             );
@@ -693,7 +720,8 @@ export default function AiClassDetail() {
                       </table>
                     </div>
                   </Card>
-                )}
+                  );
+                })()}
 
                 {students.length === 0 && (
                   <Card className="p-12 text-center text-muted-foreground">
