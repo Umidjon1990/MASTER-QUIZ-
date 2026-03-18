@@ -107,6 +107,7 @@ export default function ClassTracker() {
   const [taskEditOpen, setTaskEditOpen] = useState(false);
   const [editingColId, setEditingColId] = useState<string | null>(null);
   const [editingColTitle, setEditingColTitle] = useState("");
+  const [statSelectedLessonIds, setStatSelectedLessonIds] = useState<Set<string>>(new Set());
   const [assistantDialogOpen, setAssistantDialogOpen] = useState(false);
   const [assistantPassword, setAssistantPassword] = useState("");
   const [assistantPerms, setAssistantPerms] = useState<AssistantPermissions>({
@@ -617,6 +618,10 @@ export default function ClassTracker() {
                 <Badge variant="destructive" className="ml-1.5">{uniqueDebtorStudents}</Badge>
               )}
             </TabsTrigger>
+            <TabsTrigger value="statistics" data-testid="tab-statistics">
+              <BarChart3 className="w-4 h-4 mr-1.5" />
+              Statistika
+            </TabsTrigger>
             {!isAssistantUser && (
               <TabsTrigger value="assistants" data-testid="tab-assistants">
                 <Users className="w-4 h-4 mr-1.5" />
@@ -916,6 +921,200 @@ export default function ClassTracker() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="statistics" className="mt-4">
+          {(() => {
+            const lessons: ClassLesson[] = tracker?.lessons || [];
+            const taskColumns: TaskColumn[] = tracker?.taskColumns || [];
+            const lessonTasks: LessonTask[] = tracker?.lessonTasks || [];
+            const submissions: TaskSubmission[] = tracker?.submissions || [];
+            const students: ClassMemberInfo[] = tracker?.students || [];
+
+            const toggleStatLesson = (id: string) => {
+              setStatSelectedLessonIds(prev => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id); else next.add(id);
+                return next;
+              });
+            };
+            const selLessonIds = lessons
+              .filter(l => statSelectedLessonIds.size === 0 || statSelectedLessonIds.has(l.id))
+              .sort((a, b) => (a.lessonNo || 0) - (b.lessonNo || 0));
+
+            const getStudentLessonStats = (studentId: string, lessonId: string) => {
+              const lTasks = lessonTasks.filter(lt => lt.lessonId === lessonId);
+              if (lTasks.length === 0) return { submitted: 0, total: 0 };
+              let submitted = 0;
+              lTasks.forEach(lt => {
+                const sub = submissions.find(s => s.studentId === studentId && s.lessonTaskId === lt.id);
+                if (sub && (sub.status === "submitted" || sub.status === "rework")) submitted++;
+              });
+              return { submitted, total: lTasks.length };
+            };
+
+            const totalPossible = students.length * selLessonIds.length;
+            let totalSubmitted = 0;
+            students.forEach(st => selLessonIds.forEach(l => {
+              const { submitted, total } = getStudentLessonStats(st.userId, l.id);
+              if (total > 0 && submitted === total) totalSubmitted++;
+            }));
+            const overallPct = totalPossible > 0 ? Math.round((totalSubmitted / totalPossible) * 100) : 0;
+
+            return (
+              <div className="space-y-4">
+                <Card className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold">Darslarni tanlang</h3>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setStatSelectedLessonIds(new Set())} data-testid="button-stat-all">Hammasi</Button>
+                      <Button size="sm" variant="outline" onClick={() => setStatSelectedLessonIds(new Set(lessons.map(l => l.id)))} data-testid="button-stat-none">Hech biri</Button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {lessons.sort((a,b) => (a.lessonNo||0)-(b.lessonNo||0)).map(l => (
+                      <button key={l.id} onClick={() => toggleStatLesson(l.id)}
+                        className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${statSelectedLessonIds.size === 0 || statSelectedLessonIds.has(l.id) ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary"}`}
+                        data-testid={`button-stat-lesson-${l.id}`}>
+                        {l.lessonNo}-dars {l.title ? `(${l.title})` : ""}
+                      </button>
+                    ))}
+                  </div>
+                  {statSelectedLessonIds.size > 0 && (
+                    <p className="text-xs text-muted-foreground mt-2">{statSelectedLessonIds.size} ta dars tanlandi</p>
+                  )}
+                </Card>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <Card className="p-4 text-center">
+                    <div className="text-2xl font-bold">{students.length}</div>
+                    <div className="text-xs text-muted-foreground mt-1">Jami o'quvchi</div>
+                  </Card>
+                  <Card className="p-4 text-center">
+                    <div className="text-2xl font-bold text-green-600">{totalSubmitted}</div>
+                    <div className="text-xs text-muted-foreground mt-1">To'liq topshirdi</div>
+                  </Card>
+                  <Card className="p-4 text-center">
+                    <div className="text-2xl font-bold text-red-500">{totalPossible - totalSubmitted}</div>
+                    <div className="text-xs text-muted-foreground mt-1">Topshirilmadi</div>
+                  </Card>
+                  <Card className="p-4 text-center">
+                    <div className="text-2xl font-bold text-blue-600">{overallPct}%</div>
+                    <div className="text-xs text-muted-foreground mt-1">Umumiy foiz</div>
+                  </Card>
+                </div>
+
+                {selLessonIds.length > 0 && (
+                  <Card className="p-4">
+                    <h3 className="font-semibold mb-3">Dars bo'yicha statistika</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-2 pr-4 font-medium">Dars</th>
+                            <th className="text-center py-2 px-2 font-medium">Vazifalar</th>
+                            <th className="text-center py-2 px-2 font-medium text-green-600">Topshirdi</th>
+                            <th className="text-center py-2 px-2 font-medium text-red-500">Topshirmadi</th>
+                            <th className="text-center py-2 px-2 font-medium text-blue-600">Foiz</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selLessonIds.map(lesson => {
+                            const lTasks = lessonTasks.filter(lt => lt.lessonId === lesson.id);
+                            const doneSt = students.filter(st => {
+                              const { submitted, total } = getStudentLessonStats(st.userId, lesson.id);
+                              return total > 0 && submitted === total;
+                            }).length;
+                            const partSt = students.filter(st => {
+                              const { submitted, total } = getStudentLessonStats(st.userId, lesson.id);
+                              return submitted > 0 && submitted < total;
+                            }).length;
+                            const pct = students.length > 0 ? Math.round((doneSt / students.length) * 100) : 0;
+                            return (
+                              <tr key={lesson.id} className="border-b last:border-0 hover:bg-muted/30" data-testid={`row-stat-lesson-${lesson.id}`}>
+                                <td className="py-2 pr-4 font-medium">{lesson.lessonNo}-dars {lesson.title ? `— ${lesson.title}` : ""}</td>
+                                <td className="text-center py-2 px-2">{lTasks.length * taskColumns.length > 0 ? lTasks.length : taskColumns.length}</td>
+                                <td className="text-center py-2 px-2 text-green-600 font-medium">{doneSt}</td>
+                                <td className="text-center py-2 px-2 text-red-500 font-medium">
+                                  {students.length - doneSt}
+                                  {partSt > 0 && <span className="text-yellow-600 text-xs ml-1">({partSt} qisman)</span>}
+                                </td>
+                                <td className="text-center py-2 px-2">
+                                  <span className={`font-semibold ${pct >= 70 ? "text-green-600" : pct >= 40 ? "text-yellow-600" : "text-red-500"}`}>{pct}%</span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                )}
+
+                {students.length > 0 && selLessonIds.length > 0 && (
+                  <Card className="p-4">
+                    <h3 className="font-semibold mb-3">O'quvchi bo'yicha statistika</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-2 pr-4 font-medium sticky left-0 bg-card">O'quvchi</th>
+                            {selLessonIds.map(l => (
+                              <th key={l.id} className="text-center py-2 px-1 font-medium min-w-[55px]">{l.lessonNo}-d</th>
+                            ))}
+                            <th className="text-center py-2 px-2 font-medium">Foiz</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {students.map((st, idx) => {
+                            let stDone = 0;
+                            selLessonIds.forEach(l => {
+                              const { submitted, total } = getStudentLessonStats(st.userId, l.id);
+                              if (total > 0 && submitted === total) stDone++;
+                            });
+                            const stPct = selLessonIds.length > 0 ? Math.round((stDone / selLessonIds.length) * 100) : 0;
+                            return (
+                              <tr key={st.userId} className="border-b last:border-0 hover:bg-muted/30" data-testid={`row-stat-student-${idx}`}>
+                                <td className="py-2 pr-4 sticky left-0 bg-card">
+                                  <div className="font-medium truncate max-w-[140px]">{st.userName || st.userId}</div>
+                                </td>
+                                {selLessonIds.map(l => {
+                                  const { submitted, total } = getStudentLessonStats(st.userId, l.id);
+                                  return (
+                                    <td key={l.id} className="text-center py-2 px-1" data-testid={`cell-stat-${idx}-${l.id}`}>
+                                      {total === 0 ? (
+                                        <span className="text-muted-foreground">—</span>
+                                      ) : submitted === total ? (
+                                        <span className="text-green-600 font-bold">✅</span>
+                                      ) : submitted > 0 ? (
+                                        <span className="text-yellow-600 text-xs">{submitted}/{total}</span>
+                                      ) : (
+                                        <span className="text-red-500">❌</span>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                                <td className="text-center py-2 px-2">
+                                  <span className={`font-semibold ${stPct >= 70 ? "text-green-600" : stPct >= 40 ? "text-yellow-600" : "text-red-500"}`}>{stPct}%</span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                )}
+
+                {students.length === 0 && (
+                  <Card className="p-12 text-center text-muted-foreground">
+                    <Users className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                    <p>O'quvchilar yo'q</p>
+                  </Card>
+                )}
+              </div>
+            );
+          })()}
         </TabsContent>
 
         {!isAssistantUser && (
