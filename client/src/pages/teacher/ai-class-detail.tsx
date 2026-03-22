@@ -43,7 +43,9 @@ export default function AiClassDetail() {
   const [statSelectedLessons, setStatSelectedLessons] = useState<Set<number>>(new Set());
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentStudent, setPaymentStudent] = useState<any>(null);
-  const [payStatus, setPayStatus] = useState<"paid"|"unpaid"|"partial">("unpaid");
+  const [payStatus, setPayStatus] = useState<"paid"|"unpaid"|"partial"|"nasiya">("unpaid");
+  const [studentSearch, setStudentSearch] = useState("");
+  const [payFilter, setPayFilter] = useState<"all"|"paid"|"nasiya"|"partial"|"unpaid">("all");
   const [payAmount, setPayAmount] = useState("");
   const [payLessons, setPayLessons] = useState("");
   const [payUntil, setPayUntil] = useState("");
@@ -497,7 +499,7 @@ export default function AiClassDetail() {
         </TabsContent>
 
         <TabsContent value="students" className="mt-4">
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex justify-between items-center mb-3">
             <p className="text-sm text-muted-foreground">{aiClass.students?.length || 0} ta o'quvchi</p>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={async () => {
@@ -526,15 +528,53 @@ export default function AiClassDetail() {
               </Button>
             </div>
           </div>
+          <div className="flex flex-wrap gap-2 mb-3">
+            <Input
+              placeholder="Ism bo'yicha qidirish..."
+              value={studentSearch}
+              onChange={e => setStudentSearch(e.target.value)}
+              className="h-8 text-sm max-w-[220px]"
+              data-testid="input-student-search"
+            />
+            <div className="flex gap-1 flex-wrap">
+              {([
+                { key: "all", label: "Barchasi" },
+                { key: "paid", label: "✅ To'langan" },
+                { key: "nasiya", label: "🔵 Nasiya" },
+                { key: "partial", label: "⏳ Qisman" },
+                { key: "unpaid", label: "❌ To'lanmagan" },
+              ] as const).map(f => (
+                <button key={f.key} onClick={() => setPayFilter(f.key)}
+                  className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${payFilter === f.key ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted/50"}`}
+                  data-testid={`button-filter-${f.key}`}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="space-y-2">
-            {aiClass.students?.map((s: any, idx: number) => {
+            {(aiClass.students || [])
+              .filter((s: any) => {
+                const matchSearch = !studentSearch || s.name.toLowerCase().includes(studentSearch.toLowerCase());
+                const st = s.paymentInfo?.status;
+                const matchPay = payFilter === "all"
+                  || (payFilter === "unpaid" && (!st || st === "unpaid"))
+                  || (payFilter !== "unpaid" && st === payFilter);
+                return matchSearch && matchPay;
+              })
+              .map((s: any, idx: number) => {
               const pay = s.paymentInfo;
               const payBadgeClass = !pay || pay.status === "unpaid"
                 ? "border-red-300 text-red-600 bg-red-50 dark:bg-red-950/30 dark:text-red-400"
                 : pay.status === "partial"
                 ? "border-yellow-300 text-yellow-700 bg-yellow-50 dark:bg-yellow-950/30 dark:text-yellow-400"
+                : pay.status === "nasiya"
+                ? "border-blue-400 text-blue-700 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-400"
                 : "border-green-300 text-green-700 bg-green-50 dark:bg-green-950/30 dark:text-green-400";
-              const payLabel = !pay || pay.status === "unpaid" ? "To'lanmagan" : pay.status === "partial" ? "Qisman" : "To'langan";
+              const payLabel = !pay || pay.status === "unpaid" ? "To'lanmagan"
+                : pay.status === "partial" ? "Qisman"
+                : pay.status === "nasiya" ? "Nasiya"
+                : "To'langan";
               return (
                 <Card key={s.id} className="p-3" data-testid={`card-ai-student-${s.id}`}>
                   <div className="flex items-center justify-between gap-2">
@@ -1105,16 +1145,17 @@ export default function AiClassDetail() {
           <div className="space-y-4">
             <div>
               <Label className="text-sm font-medium mb-2 block">To'lov holati</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {(["paid", "partial", "unpaid"] as const).map(s => (
-                  <button key={s} onClick={() => setPayStatus(s)}
-                    className={`py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${payStatus === s
-                      ? s === "paid" ? "bg-green-100 border-green-400 text-green-700 dark:bg-green-950/50 dark:text-green-300"
-                        : s === "partial" ? "bg-yellow-100 border-yellow-400 text-yellow-700 dark:bg-yellow-950/50 dark:text-yellow-300"
-                        : "bg-red-100 border-red-400 text-red-700 dark:bg-red-950/50 dark:text-red-300"
-                      : "border-border hover:bg-muted/40"}`}
-                    data-testid={`button-pay-status-${s}`}>
-                    {s === "paid" ? "✅ To'langan" : s === "partial" ? "⏳ Qisman" : "❌ To'lanmagan"}
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { key: "paid", label: "✅ To'langan", active: "bg-green-100 border-green-400 text-green-700 dark:bg-green-950/50 dark:text-green-300" },
+                  { key: "nasiya", label: "🔵 Nasiya", active: "bg-blue-100 border-blue-400 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300" },
+                  { key: "partial", label: "⏳ Qisman", active: "bg-yellow-100 border-yellow-400 text-yellow-700 dark:bg-yellow-950/50 dark:text-yellow-300" },
+                  { key: "unpaid", label: "❌ To'lanmagan", active: "bg-red-100 border-red-400 text-red-700 dark:bg-red-950/50 dark:text-red-300" },
+                ] as const).map(s => (
+                  <button key={s.key} onClick={() => setPayStatus(s.key)}
+                    className={`py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${payStatus === s.key ? s.active : "border-border hover:bg-muted/40"}`}
+                    data-testid={`button-pay-status-${s.key}`}>
+                    {s.label}
                   </button>
                 ))}
               </div>
