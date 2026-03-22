@@ -4042,6 +4042,19 @@ export async function registerRoutes(
     }
   });
 
+  app.put("/api/ai-students/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { name, phone } = req.body;
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ message: "Ism kiritilishi shart" });
+      }
+      const updated = await storage.updateAiStudent(req.params.id, { name: name.trim(), phone: phone?.trim() || "" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.put("/api/ai-students/:id/payment", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const { paymentInfo } = req.body;

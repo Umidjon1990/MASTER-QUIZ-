@@ -48,6 +48,10 @@ export default function AiClassDetail() {
   const [payLessons, setPayLessons] = useState("");
   const [payUntil, setPayUntil] = useState("");
   const [payNote, setPayNote] = useState("");
+  const [editStudentOpen, setEditStudentOpen] = useState(false);
+  const [editStudentId, setEditStudentId] = useState<string | null>(null);
+  const [editStudentName, setEditStudentName] = useState("");
+  const [editStudentPhone, setEditStudentPhone] = useState("");
   const [showHiddenInNatija, setShowHiddenInNatija] = useState(false);
 
   const { data: aiClass, isLoading } = useQuery<any>({
@@ -99,6 +103,19 @@ export default function AiClassDetail() {
       setNewStudentName("");
       setNewStudentPhone("");
       toast({ title: "O'quvchi qo'shildi" });
+    },
+    onError: (err: any) => toast({ title: "Xatolik", description: err.message, variant: "destructive" }),
+  });
+
+  const updateStudentMutation = useMutation({
+    mutationFn: async ({ id, name, phone }: { id: string; name: string; phone: string }) => {
+      const res = await apiRequest("PUT", `/api/ai-students/${id}`, { name, phone });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
+      setEditStudentOpen(false);
+      toast({ title: "O'quvchi ma'lumotlari yangilandi" });
     },
     onError: (err: any) => toast({ title: "Xatolik", description: err.message, variant: "destructive" }),
   });
@@ -548,6 +565,11 @@ export default function AiClassDetail() {
                         <CreditCard className="w-3 h-3" />
                         {payLabel}
                       </button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500"
+                        onClick={() => { setEditStudentId(s.id); setEditStudentName(s.name); setEditStudentPhone(s.phone || ""); setEditStudentOpen(true); }}
+                        data-testid={`button-edit-student-${s.id}`}>
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
                       <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => deleteStudentMutation.mutate(s.id)} data-testid={`button-delete-student-${s.id}`}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
@@ -915,6 +937,44 @@ export default function AiClassDetail() {
               data-testid="button-confirm-bulk-add"
             >
               {bulkStudentMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Qo'shilmoqda...</> : `${parsedStudents.length} ta qo'shish`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editStudentOpen} onOpenChange={setEditStudentOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>O'quvchini tahrirlash</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label>Ism familiya</Label>
+              <Input
+                value={editStudentName}
+                onChange={e => setEditStudentName(e.target.value)}
+                placeholder="Ism Familiya"
+                className="mt-1"
+                data-testid="input-edit-student-name"
+              />
+            </div>
+            <div>
+              <Label>Telefon raqam</Label>
+              <Input
+                value={editStudentPhone}
+                onChange={e => setEditStudentPhone(e.target.value)}
+                placeholder="998901234567"
+                className="mt-1"
+                data-testid="input-edit-student-phone"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditStudentOpen(false)}>Bekor qilish</Button>
+            <Button
+              onClick={() => editStudentId && updateStudentMutation.mutate({ id: editStudentId, name: editStudentName, phone: editStudentPhone })}
+              disabled={!editStudentName.trim() || updateStudentMutation.isPending}
+              data-testid="button-confirm-edit-student"
+            >
+              {updateStudentMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Saqlanmoqda...</> : "Saqlash"}
             </Button>
           </DialogFooter>
         </DialogContent>
