@@ -404,6 +404,7 @@ export const aiClasses = pgTable("ai_classes", {
   telegramBotToken: varchar("telegram_bot_token", { length: 255 }),
   instructions: text("instructions"),
   status: varchar("status", { length: 20 }).notNull().default("active"),
+  hiddenLessons: jsonb("hidden_lessons").$type<number[]>().default([]),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -427,6 +428,15 @@ export const insertAiClassTaskSchema = createInsertSchema(aiClassTasks).omit({ i
 export type InsertAiClassTask = z.infer<typeof insertAiClassTaskSchema>;
 export type AiClassTask = typeof aiClassTasks.$inferSelect;
 
+export type PaymentInfo = {
+  status: "paid" | "unpaid" | "partial";
+  amount?: number;
+  lessonsCount?: number;
+  untilDate?: string;
+  note?: string;
+  updatedAt?: string;
+};
+
 export const aiStudents = pgTable("ai_students", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   aiClassId: varchar("ai_class_id").notNull(),
@@ -434,6 +444,7 @@ export const aiStudents = pgTable("ai_students", {
   phone: varchar("phone", { length: 20 }).notNull(),
   telegramChatId: varchar("telegram_chat_id"),
   status: varchar("status", { length: 20 }).notNull().default("active"),
+  paymentInfo: jsonb("payment_info").$type<PaymentInfo>(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

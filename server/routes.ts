@@ -4042,6 +4042,30 @@ export async function registerRoutes(
     }
   });
 
+  app.put("/api/ai-students/:id/payment", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { paymentInfo } = req.body;
+      const updated = await storage.updateAiStudent(req.params.id, { paymentInfo });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.put("/api/ai-classes/:id/hidden-lessons", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const aiClass = await storage.getAiClass(req.params.id);
+      if (!aiClass || (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const { hiddenLessons } = req.body;
+      const updated = await storage.updateAiClass(req.params.id, { hiddenLessons });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.get("/api/ai-classes/:id/results", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const aiClass = await storage.getAiClass(req.params.id);

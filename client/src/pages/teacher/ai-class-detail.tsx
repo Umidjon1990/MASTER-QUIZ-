@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Plus, Trash2, Power, PowerOff, Users, ListChecks, Settings, BarChart3, X, Phone, Wifi, WifiOff, Pencil, Check, ChevronDown, ChevronRight, Send, Upload, Loader2, Download } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Power, PowerOff, Users, ListChecks, Settings, BarChart3, X, Phone, Wifi, WifiOff, Pencil, Check, ChevronDown, ChevronRight, Send, Upload, Loader2, Download, DollarSign, EyeOff, Eye, CreditCard } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function AiClassDetail() {
@@ -41,6 +41,14 @@ export default function AiClassDetail() {
   const [selectedTgChat, setSelectedTgChat] = useState("");
   const [selectedTgLesson, setSelectedTgLesson] = useState<string>("all");
   const [statSelectedLessons, setStatSelectedLessons] = useState<Set<number>>(new Set());
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentStudent, setPaymentStudent] = useState<any>(null);
+  const [payStatus, setPayStatus] = useState<"paid"|"unpaid"|"partial">("unpaid");
+  const [payAmount, setPayAmount] = useState("");
+  const [payLessons, setPayLessons] = useState("");
+  const [payUntil, setPayUntil] = useState("");
+  const [payNote, setPayNote] = useState("");
+  const [showHiddenInNatija, setShowHiddenInNatija] = useState(false);
 
   const { data: aiClass, isLoading } = useQuery<any>({
     queryKey: ["/api/ai-classes", classId],
@@ -119,6 +127,63 @@ export default function AiClassDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId, "results"] });
     },
   });
+
+  const paymentMutation = useMutation({
+    mutationFn: async ({ studentId, paymentInfo }: { studentId: string; paymentInfo: any }) => {
+      const res = await apiRequest("PUT", `/api/ai-students/${studentId}/payment`, { paymentInfo });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
+      setPaymentOpen(false);
+      toast({ title: "To'lov ma'lumoti saqlandi!" });
+    },
+    onError: () => toast({ title: "Xatolik", variant: "destructive" }),
+  });
+
+  const hiddenLessonsMutation = useMutation({
+    mutationFn: async (hiddenLessons: number[]) => {
+      const res = await apiRequest("PUT", `/api/ai-classes/${classId}/hidden-lessons`, { hiddenLessons });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
+    },
+  });
+
+  function openPaymentDialog(student: any) {
+    setPaymentStudent(student);
+    const p = student.paymentInfo;
+    setPayStatus(p?.status || "unpaid");
+    setPayAmount(p?.amount?.toString() || "");
+    setPayLessons(p?.lessonsCount?.toString() || "");
+    setPayUntil(p?.untilDate || "");
+    setPayNote(p?.note || "");
+    setPaymentOpen(true);
+  }
+
+  function savePayment() {
+    if (!paymentStudent) return;
+    paymentMutation.mutate({
+      studentId: paymentStudent.id,
+      paymentInfo: {
+        status: payStatus,
+        amount: payAmount ? parseInt(payAmount) : undefined,
+        lessonsCount: payLessons ? parseInt(payLessons) : undefined,
+        untilDate: payUntil || undefined,
+        note: payNote || undefined,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  }
+
+  function toggleHideLesson(lessonNum: number) {
+    const current: number[] = aiClass?.hiddenLessons || [];
+    const next = current.includes(lessonNum)
+      ? current.filter((n: number) => n !== lessonNum)
+      : [...current, lessonNum];
+    hiddenLessonsMutation.mutate(next);
+  }
 
   const addTaskMutation = useMutation({
     mutationFn: async () => {
@@ -304,96 +369,108 @@ export default function AiClassDetail() {
         <TabsContent value="results" className="mt-4">
           {results?.results?.length > 0 ? (
             <>
-              {hasTgBot && (
-                <div className="flex justify-end mb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                {hasTgBot && (
                   <Button size="sm" variant="outline" onClick={() => setTelegramOpen(true)} data-testid="button-send-tg-results">
                     <Send className="w-3.5 h-3.5 mr-1" /> Telegram ga yuborish
                   </Button>
-                </div>
-              )}
-              <Card className="overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs sm:text-sm" data-testid="ai-results-table">
-                    <thead>
-                      {resultLessons.length > 0 && (
-                        <tr className="border-b bg-purple-50 dark:bg-purple-950/20">
-                          <th className="p-1 sticky left-0 bg-purple-50 dark:bg-purple-950/20 z-10" />
-                          <th className="p-1 sticky left-[32px] bg-purple-50 dark:bg-purple-950/20 z-10" />
-                          {resultLessons.map((lesson: any) => (
-                            <th
-                              key={lesson.lessonNumber}
-                              colSpan={lesson.tasks.length}
-                              className="text-center p-1 text-xs font-bold border-l text-purple-700 dark:text-purple-300"
-                            >
-                              <div className="flex items-center justify-center gap-1">
-                                <span>{lesson.lessonNumber}-dars</span>
-                                <button
-                                  className="text-blue-400 hover:text-blue-600 transition-colors p-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950/30"
-                                  title={`${lesson.lessonNumber}-dars natijalarini PDF yuklab olish`}
-                                  onClick={() => {
-                                    window.open(`/api/ai-classes/${classId}/download-lesson/${lesson.lessonNumber}`, "_blank");
-                                  }}
-                                  data-testid={`button-download-lesson-${lesson.lessonNumber}`}
-                                >
-                                  <Download className="w-3 h-3" />
-                                </button>
-                                <button
-                                  className="text-red-400 hover:text-red-600 transition-colors p-0.5 rounded hover:bg-red-50 dark:hover:bg-red-950/30"
-                                  title={`${lesson.lessonNumber}-dars natijalarini bekor qilish`}
-                                  disabled={resetLessonMutation.isPending}
-                                  onClick={() => {
-                                    if (confirm(`${lesson.lessonNumber}-dars barcha natijalarini bekor qilasizmi? Barcha o'quvchilar qayta topshira oladi.`)) {
-                                      resetLessonMutation.mutate(lesson.lessonNumber);
-                                    }
-                                  }}
-                                  data-testid={`button-reset-lesson-${lesson.lessonNumber}`}
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </div>
-                            </th>
-                          ))}
-                          <th className="p-1 border-l bg-purple-50 dark:bg-purple-950/20" />
-                        </tr>
-                      )}
-                      <tr className="border-b bg-muted/20">
-                        <th className="text-center p-2 font-medium w-[32px] sticky left-0 bg-muted/20 z-10">N</th>
-                        <th className="text-left p-2 font-medium min-w-[120px] sticky left-[32px] bg-muted/20 z-10">O'quvchi</th>
-                        {results.tasks?.map((t: any, idx: number) => (
-                          <th key={idx} className="text-center p-2 font-medium border-l min-w-[55px] text-[10px] sm:text-xs">{t.taskTitle || t.title}</th>
-                        ))}
-                        <th className="text-center p-2 font-medium border-l min-w-[50px] bg-muted/10">O'rtacha</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {results.results.map((r: any, idx: number) => (
-                        <tr key={r.studentId} className={`border-b ${idx % 2 ? "bg-muted/10" : ""}`}>
-                          <td className={`text-center p-2 text-xs text-muted-foreground sticky left-0 z-10 ${idx % 2 ? "bg-muted/10" : "bg-background"}`}>{idx + 1}</td>
-                          <td className={`p-2 font-medium sticky left-[32px] z-10 ${idx % 2 ? "bg-muted/10" : "bg-background"}`}>
-                            <div className="flex items-center gap-1">
-                              <span className="truncate max-w-[100px] sm:max-w-[140px]">{r.studentName}</span>
-                              {r.connected ? <Wifi className="w-3 h-3 text-green-500 flex-shrink-0" /> : <WifiOff className="w-3 h-3 text-gray-400 flex-shrink-0" />}
-                            </div>
-                          </td>
-                          {r.taskResults.map((tr: any, tIdx: number) => (
-                            <td
-                              key={tIdx}
-                              className={`text-center p-2 border-l cursor-pointer hover:opacity-80 transition-all ${scoreColor(tr.score)}`}
-                              onClick={() => { setSelectedDetail(tr); setDetailOpen(true); }}
-                              data-testid={`cell-result-${r.studentId}-${tr.taskId}`}
-                            >
-                              {tr.score ? <span className="font-semibold">{tr.score}</span> : <span className="text-muted-foreground">—</span>}
-                            </td>
-                          ))}
-                          <td className={`text-center p-2 border-l font-semibold ${scoreColor(Math.round(r.avgScore))}`}>
-                            {r.avgScore > 0 ? r.avgScore : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
+                )}
+                {(aiClass?.hiddenLessons?.length > 0) && (
+                  <Button size="sm" variant={showHiddenInNatija ? "secondary" : "outline"} onClick={() => setShowHiddenInNatija(v => !v)} data-testid="button-show-hidden-lessons">
+                    {showHiddenInNatija ? <Eye className="w-3.5 h-3.5 mr-1" /> : <EyeOff className="w-3.5 h-3.5 mr-1" />}
+                    {showHiddenInNatija ? "Barcha darslar" : `${aiClass.hiddenLessons.length} ta yashirilgan`}
+                  </Button>
+                )}
+              </div>
+              {(() => {
+                const hiddenNums: number[] = aiClass?.hiddenLessons || [];
+                const visibleLessons = resultLessons.filter((l: any) => showHiddenInNatija || !hiddenNums.includes(l.lessonNumber));
+                const visibleTaskIds = new Set(visibleLessons.flatMap((l: any) => l.tasks.map((t: any) => t.taskId)));
+                const visibleTasks = results.tasks?.filter((t: any) => visibleTaskIds.has(t.taskId)) || [];
+                return (
+                  <Card className="overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs sm:text-sm" data-testid="ai-results-table">
+                        <thead>
+                          {visibleLessons.length > 0 && (
+                            <tr className="border-b bg-purple-50 dark:bg-purple-950/30">
+                              <th className="p-1 sticky left-0 bg-purple-50 dark:bg-purple-950/30 z-20" />
+                              <th className="p-1 sticky left-[32px] bg-purple-50 dark:bg-purple-950/30 z-20" />
+                              {visibleLessons.map((lesson: any) => {
+                                const isHidden = hiddenNums.includes(lesson.lessonNumber);
+                                return (
+                                  <th key={lesson.lessonNumber} colSpan={lesson.tasks.length}
+                                    className={`text-center p-1 text-xs font-bold border-l ${isHidden ? "text-muted-foreground" : "text-purple-700 dark:text-purple-300"}`}>
+                                    <div className="flex items-center justify-center gap-1">
+                                      <span>{lesson.lessonNumber}-dars</span>
+                                      <button className="text-blue-400 hover:text-blue-600 p-0.5 rounded" title="PDF yuklab olish"
+                                        onClick={() => window.open(`/api/ai-classes/${classId}/download-lesson/${lesson.lessonNumber}`, "_blank")}
+                                        data-testid={`button-download-lesson-${lesson.lessonNumber}`}>
+                                        <Download className="w-3 h-3" />
+                                      </button>
+                                      <button className={`p-0.5 rounded transition-colors ${isHidden ? "text-gray-400 hover:text-green-600" : "text-gray-400 hover:text-orange-500"}`}
+                                        title={isHidden ? "Darsni ko'rsatish" : "Darsni yashirish"}
+                                        onClick={() => toggleHideLesson(lesson.lessonNumber)}
+                                        data-testid={`button-hide-lesson-${lesson.lessonNumber}`}>
+                                        {isHidden ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                                      </button>
+                                      <button className="text-red-400 hover:text-red-600 p-0.5 rounded" title="Natijalarni bekor qilish"
+                                        disabled={resetLessonMutation.isPending}
+                                        onClick={() => { if (confirm(`${lesson.lessonNumber}-dars barcha natijalarini bekor qilasizmi?`)) resetLessonMutation.mutate(lesson.lessonNumber); }}
+                                        data-testid={`button-reset-lesson-${lesson.lessonNumber}`}>
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </th>
+                                );
+                              })}
+                              <th className="p-1 border-l bg-purple-50 dark:bg-purple-950/30" />
+                            </tr>
+                          )}
+                          <tr className="border-b bg-muted/30">
+                            <th className="text-center p-2 font-medium w-[32px] sticky left-0 bg-muted/30 z-20">N</th>
+                            <th className="text-left p-2 font-medium min-w-[130px] sticky left-[32px] bg-muted/30 z-20">O'quvchi</th>
+                            {visibleTasks.map((t: any, idx: number) => (
+                              <th key={idx} className="text-center p-2 font-medium border-l min-w-[55px] text-[10px] sm:text-xs">{t.taskTitle || t.title}</th>
+                            ))}
+                            <th className="text-center p-2 font-medium border-l min-w-[50px]">O'rtacha</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {results.results.map((r: any, idx: number) => {
+                            const rowBg = idx % 2 ? "bg-muted/20" : "bg-card";
+                            const visibleTaskResults = r.taskResults.filter((tr: any) => visibleTaskIds.has(tr.taskId));
+                            const visibleAvg = visibleTaskResults.filter((tr: any) => tr.score).length > 0
+                              ? (visibleTaskResults.reduce((s: number, tr: any) => s + (tr.score || 0), 0) / visibleTaskResults.filter((tr: any) => tr.score).length).toFixed(1)
+                              : null;
+                            return (
+                              <tr key={r.studentId} className={`border-b ${rowBg}`}>
+                                <td className={`text-center p-2 text-xs text-muted-foreground sticky left-0 z-10 ${rowBg}`}>{idx + 1}</td>
+                                <td className={`p-2 font-medium sticky left-[32px] z-10 ${rowBg}`}>
+                                  <div className="flex items-center gap-1">
+                                    <span className="truncate max-w-[100px] sm:max-w-[140px]">{r.studentName}</span>
+                                    {r.connected ? <Wifi className="w-3 h-3 text-green-500 flex-shrink-0" /> : <WifiOff className="w-3 h-3 text-gray-400 flex-shrink-0" />}
+                                  </div>
+                                </td>
+                                {visibleTaskResults.map((tr: any, tIdx: number) => (
+                                  <td key={tIdx} className={`text-center p-2 border-l cursor-pointer hover:opacity-80 transition-all ${scoreColor(tr.score)}`}
+                                    onClick={() => { setSelectedDetail(tr); setDetailOpen(true); }}
+                                    data-testid={`cell-result-${r.studentId}-${tr.taskId}`}>
+                                    {tr.score ? <span className="font-semibold">{tr.score}</span> : <span className="text-muted-foreground">—</span>}
+                                  </td>
+                                ))}
+                                <td className={`text-center p-2 border-l font-semibold ${visibleAvg ? scoreColor(Math.round(parseFloat(visibleAvg))) : ""}`}>
+                                  {visibleAvg || "—"}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                );
+              })()}
             </>
           ) : (
             <Card className="p-8 text-center">
@@ -433,23 +510,52 @@ export default function AiClassDetail() {
             </div>
           </div>
           <div className="space-y-2">
-            {aiClass.students?.map((s: any, idx: number) => (
-              <Card key={s.id} className="p-3 flex items-center justify-between" data-testid={`card-ai-student-${s.id}`}>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground w-5">{idx + 1}</span>
-                  <div>
-                    <span className="font-medium text-sm">{s.name}</span>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Phone className="w-3 h-3" /> {s.phone}
-                      {s.telegramChatId ? <Badge variant="outline" className="text-[10px] px-1 py-0 text-green-600">Ulangan</Badge> : <Badge variant="outline" className="text-[10px] px-1 py-0">Kutilmoqda</Badge>}
+            {aiClass.students?.map((s: any, idx: number) => {
+              const pay = s.paymentInfo;
+              const payBadgeClass = !pay || pay.status === "unpaid"
+                ? "border-red-300 text-red-600 bg-red-50 dark:bg-red-950/30 dark:text-red-400"
+                : pay.status === "partial"
+                ? "border-yellow-300 text-yellow-700 bg-yellow-50 dark:bg-yellow-950/30 dark:text-yellow-400"
+                : "border-green-300 text-green-700 bg-green-50 dark:bg-green-950/30 dark:text-green-400";
+              const payLabel = !pay || pay.status === "unpaid" ? "To'lanmagan" : pay.status === "partial" ? "Qisman" : "To'langan";
+              return (
+                <Card key={s.id} className="p-3" data-testid={`card-ai-student-${s.id}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-xs text-muted-foreground w-5 flex-shrink-0">{idx + 1}</span>
+                      <div className="min-w-0">
+                        <span className="font-medium text-sm">{s.name}</span>
+                        <div className="flex items-center flex-wrap gap-2 text-xs text-muted-foreground mt-0.5">
+                          <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {s.phone}</span>
+                          {s.telegramChatId
+                            ? <Badge variant="outline" className="text-[10px] px-1 py-0 text-green-600">Ulangan</Badge>
+                            : <Badge variant="outline" className="text-[10px] px-1 py-0">Kutilmoqda</Badge>}
+                        </div>
+                        {pay && (pay.amount || pay.lessonsCount || pay.untilDate) && (
+                          <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-2">
+                            {pay.amount && <span>{pay.amount.toLocaleString()} so'm</span>}
+                            {pay.lessonsCount && <span>{pay.lessonsCount} dars</span>}
+                            {pay.untilDate && <span>— {pay.untilDate}</span>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        onClick={() => openPaymentDialog(s)}
+                        className={`text-[11px] px-2 py-0.5 rounded-full border font-medium transition-colors hover:opacity-80 flex items-center gap-1 ${payBadgeClass}`}
+                        data-testid={`button-payment-${s.id}`}>
+                        <CreditCard className="w-3 h-3" />
+                        {payLabel}
+                      </button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => deleteStudentMutation.mutate(s.id)} data-testid={`button-delete-student-${s.id}`}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
                     </div>
                   </div>
-                </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => deleteStudentMutation.mutate(s.id)} data-testid={`button-delete-student-${s.id}`}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         </TabsContent>
 
@@ -923,6 +1029,60 @@ export default function AiClassDetail() {
               data-testid="button-confirm-send-results"
             >
               {sendResultsMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Yuborilmoqda...</> : <><Send className="w-3.5 h-3.5 mr-1" /> Yuborish</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4" />
+              To'lov — {paymentStudent?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm font-medium mb-2 block">To'lov holati</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {(["paid", "partial", "unpaid"] as const).map(s => (
+                  <button key={s} onClick={() => setPayStatus(s)}
+                    className={`py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${payStatus === s
+                      ? s === "paid" ? "bg-green-100 border-green-400 text-green-700 dark:bg-green-950/50 dark:text-green-300"
+                        : s === "partial" ? "bg-yellow-100 border-yellow-400 text-yellow-700 dark:bg-yellow-950/50 dark:text-yellow-300"
+                        : "bg-red-100 border-red-400 text-red-700 dark:bg-red-950/50 dark:text-red-300"
+                      : "border-border hover:bg-muted/40"}`}
+                    data-testid={`button-pay-status-${s}`}>
+                    {s === "paid" ? "✅ To'langan" : s === "partial" ? "⏳ Qisman" : "❌ To'lanmagan"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">Summa (so'm)</Label>
+                <Input type="number" placeholder="masalan: 500000" value={payAmount} onChange={e => setPayAmount(e.target.value)} className="mt-1" data-testid="input-pay-amount" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Nechta dars uchun</Label>
+                <Input type="number" placeholder="masalan: 4" value={payLessons} onChange={e => setPayLessons(e.target.value)} className="mt-1" data-testid="input-pay-lessons" />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Qachongacha (sana)</Label>
+              <Input type="date" value={payUntil} onChange={e => setPayUntil(e.target.value)} className="mt-1" data-testid="input-pay-until" />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Izoh (ixtiyoriy)</Label>
+              <Input placeholder="Qo'shimcha izoh..." value={payNote} onChange={e => setPayNote(e.target.value)} className="mt-1" data-testid="input-pay-note" />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPaymentOpen(false)} data-testid="button-pay-cancel">Bekor</Button>
+            <Button onClick={savePayment} disabled={paymentMutation.isPending} data-testid="button-pay-save">
+              {paymentMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Check className="w-3.5 h-3.5 mr-1" />}
+              Saqlash
             </Button>
           </DialogFooter>
         </DialogContent>
