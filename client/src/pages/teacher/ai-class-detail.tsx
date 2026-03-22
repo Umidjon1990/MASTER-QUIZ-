@@ -54,6 +54,8 @@ export default function AiClassDetail() {
   const [editStudentId, setEditStudentId] = useState<string | null>(null);
   const [editStudentName, setEditStudentName] = useState("");
   const [editStudentPhone, setEditStudentPhone] = useState("");
+  const [payPdfOpen, setPayPdfOpen] = useState(false);
+  const [payPdfFilter, setPayPdfFilter] = useState<"all"|"paid"|"nasiya"|"partial"|"unpaid">("all");
   const [showHiddenInNatija, setShowHiddenInNatija] = useState(false);
 
   const { data: aiClass, isLoading } = useQuery<any>({
@@ -518,7 +520,10 @@ export default function AiClassDetail() {
                 XLSX.utils.book_append_sheet(wb, ws, "O'quvchilar");
                 XLSX.writeFile(wb, `${aiClass.name || "sinf"}_o'quvchilar.xlsx`);
               }} data-testid="button-download-students">
-                <Download className="w-3.5 h-3.5 mr-1" /> Yuklab olish
+                <Download className="w-3.5 h-3.5 mr-1" /> XLSX
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setPayPdfOpen(true)} data-testid="button-payment-pdf">
+                <Download className="w-3.5 h-3.5 mr-1" /> To'lov PDF
               </Button>
               <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)} data-testid="button-bulk-add-students">
                 <Upload className="w-3.5 h-3.5 mr-1" /> Bulk qo'shish
@@ -938,6 +943,38 @@ export default function AiClassDetail() {
           <DialogFooter>
             <Button onClick={() => addStudentMutation.mutate()} disabled={!newStudentName || !newStudentPhone || addStudentMutation.isPending} data-testid="button-confirm-add-student">
               {addStudentMutation.isPending ? "Qo'shilmoqda..." : "Qo'shish"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={payPdfOpen} onOpenChange={setPayPdfOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>To'lov hisobotini yuklab olish</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">Qaysi guruhni yuklab olmoqchisiz?</p>
+            <div className="grid grid-cols-1 gap-2">
+              {([
+                { key: "all", label: "📋 Barcha o'quvchilar", desc: "Hammasi bitta jadvaldahi" },
+                { key: "paid", label: "✅ To'lov qilganlar", desc: "Faqat to'langan o'quvchilar" },
+                { key: "nasiya", label: "🔵 Nasiya", desc: "Nasiyaga olinganlar" },
+                { key: "partial", label: "⏳ Qisman to'lov", desc: "Qisman to'laganlar" },
+                { key: "unpaid", label: "❌ To'lov qilmaganlar", desc: "Hali to'lamagan o'quvchilar" },
+              ] as const).map(f => (
+                <button key={f.key} onClick={() => setPayPdfFilter(f.key)}
+                  className={`text-left px-3 py-2.5 rounded-lg border transition-colors ${payPdfFilter === f.key ? "bg-primary/10 border-primary" : "border-border hover:bg-muted/40"}`}
+                  data-testid={`button-pdf-filter-${f.key}`}>
+                  <div className="font-medium text-sm">{f.label}</div>
+                  <div className="text-xs text-muted-foreground">{f.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayPdfOpen(false)}>Bekor qilish</Button>
+            <Button onClick={() => { window.open(`/api/ai-classes/${classId}/payment-pdf?filter=${payPdfFilter}`, "_blank"); setPayPdfOpen(false); }}
+              data-testid="button-confirm-payment-pdf">
+              <Download className="w-3.5 h-3.5 mr-1" /> PDF yuklab olish
             </Button>
           </DialogFooter>
         </DialogContent>

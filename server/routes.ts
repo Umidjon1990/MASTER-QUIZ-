@@ -4265,6 +4265,162 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/ai-classes/:id/payment-pdf", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const aiClass = await storage.getAiClass(req.params.id);
+      if (!aiClass || (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const filter = (req.query.filter as string) || "all";
+      const students = await storage.getAiStudents(req.params.id);
+
+      const filtered = students.filter(s => {
+        const status = (s.paymentInfo as any)?.status;
+        if (filter === "all") return true;
+        if (filter === "unpaid") return !status || status === "unpaid";
+        return status === filter;
+      });
+
+      const filterLabel: Record<string, string> = {
+        all: "Barcha o'quvchilar",
+        paid: "To'lov qilganlar",
+        nasiya: "Nasiya",
+        partial: "Qisman to'lov",
+        unpaid: "To'lov qilmaganlar",
+      };
+
+      const PDFDocument = (await import("pdfkit")).default;
+      const chunks: Buffer[] = [];
+      const doc = new PDFDocument({ size: "A4", margin: 36 });
+      doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+
+      const fontPath = path.join(process.cwd(), "server", "fonts");
+      const regularFont = path.join(fontPath, "NotoSans-Regular.ttf");
+      const boldFont = path.join(fontPath, "NotoSans-Bold.ttf");
+      const hasCustomFonts = fs.existsSync(regularFont) && fs.existsSync(boldFont);
+      if (hasCustomFonts) { doc.registerFont("Regular", regularFont); doc.registerFont("Bold", boldFont); }
+      const fontR = hasCustomFonts ? "Regular" : "Helvetica";
+      const fontB = hasCustomFonts ? "Bold" : "Helvetica-Bold";
+
+      const pageW = doc.page.width - 72;
+      const marginL = 36;
+
+      // Header
+      doc.rect(marginL - 6, 30, pageW + 12, 52).fill("#7c3aed");
+      doc.fill("#ffffff").font(fontB).fontSize(16).text(aiClass.name, marginL, 36, { width: pageW });
+      doc.font(fontR).fontSize(10).text(`To'lov hisoboti — ${filterLabel[filter] || filter}`, marginL, 54, { width: pageW });
+      doc.moveDown(0.2);
+
+      doc.fill("#000000");
+      const dateStr = new Date().toLocaleDateString("uz-UZ", { year: "numeric", month: "long", day: "numeric" });
+      doc.font(fontR).fontSize(8).text(`Sana: ${dateStr}   |   Jami: ${filtered.length} ta o'quvchi`, marginL, 88, { width: pageW });
+      doc.moveDown(0.6);
+
+      // Stats row
+      const paid = students.filter(s => (s.paymentInfo as any)?.status === "paid").length;
+      const nasiya = students.filter(s => (s.paymentInfo as any)?.status === "nasiya").length;
+      const partial = students.filter(s => (s.paymentInfo as any)?.status === "partial").length;
+      const unpaid = students.filter(s => { const st = (s.paymentInfo as any)?.status; return !st || st === "unpaid"; }).length;
+
+      const statY = doc.y + 4;
+      const statW = (pageW) / 4;
+      [
+        { label: "To'langan", count: paid, color: "#16a34a" },
+        { label: "Nasiya", count: nasiya, color: "#2563eb" },
+        { label: "Qisman", count: partial, color: "#ca8a04" },
+        { label: "To'lanmagan", count: unpaid, color: "#dc2626" },
+      ].forEach((st, i) => {
+        const x = marginL + i * statW;
+        doc.rect(x, statY, statW - 4, 32).fill(st.color + "22");
+        doc.rect(x, statY, 4, 32).fill(st.color);
+        doc.fill(st.color).font(fontB).fontSize(14).text(String(st.count), x + 10, statY + 4, { width: statW - 14, align: "left" });
+        doc.fill("#444444").font(fontR).fontSize(7).text(st.label, x + 10, statY + 20, { width: statW - 14 });
+      });
+      doc.fill("#000000");
+      doc.y = statY + 40;
+      doc.moveDown(0.5);
+
+      // Table header
+      const cols = { no: 24, name: 160, phone: 90, status: 68, amount: 66, lessons: 50, until: 62 };
+      const rowH = 20;
+      let y = doc.y;
+
+      doc.rect(marginL, y, pageW, rowH).fill("#7c3aed");
+      doc.fill("#ffffff").font(fontB).fontSize(7);
+      let cx = marginL + 3;
+      doc.text("№", cx, y + 6, { width: cols.no }); cx += cols.no;
+      doc.text("Ism familiya", cx, y + 6, { width: cols.name }); cx += cols.name;
+      doc.text("Telefon", cx, y + 6, { width: cols.phone }); cx += cols.phone;
+      doc.text("Holat", cx, y + 6, { width: cols.status }); cx += cols.status;
+      doc.text("Summa", cx, y + 6, { width: cols.amount, align: "right" }); cx += cols.amount;
+      doc.text("Dars", cx, y + 6, { width: cols.lessons, align: "center" }); cx += cols.lessons;
+      doc.text("Muddati", cx, y + 6, { width: cols.until });
+      y += rowH;
+
+      const statusInfo: Record<string, { label: string; color: string }> = {
+        paid: { label: "To'langan", color: "#16a34a" },
+        nasiya: { label: "Nasiya", color: "#2563eb" },
+        partial: { label: "Qisman", color: "#ca8a04" },
+        unpaid: { label: "To'lanmagan", color: "#dc2626" },
+      };
+
+      doc.fill("#000000").font(fontR).fontSize(7.5);
+      filtered.forEach((s, idx) => {
+        const pay = s.paymentInfo as any;
+        const st = pay?.status || "unpaid";
+        const info = statusInfo[st] || statusInfo.unpaid;
+        const rowFill = idx % 2 === 0 ? "#f9f7ff" : "#ffffff";
+
+        // Check page overflow
+        if (y + rowH > doc.page.height - 50) { doc.addPage(); y = 40; }
+
+        doc.rect(marginL, y, pageW, rowH).fill(rowFill);
+        doc.rect(marginL, y, pageW, rowH).stroke("#e5e7eb");
+        doc.fill("#555555").font(fontR).fontSize(7.5);
+        cx = marginL + 3;
+        doc.text(String(idx + 1), cx, y + 6, { width: cols.no }); cx += cols.no;
+        doc.fill("#000000").font(fontB).text(s.name, cx, y + 6, { width: cols.name - 4 }); cx += cols.name;
+        doc.fill("#555555").font(fontR).text(s.phone || "—", cx, y + 6, { width: cols.phone }); cx += cols.phone;
+
+        doc.rect(cx - 1, y + 4, cols.status - 6, rowH - 8).fill(info.color + "22");
+        doc.fill(info.color).font(fontB).text(info.label, cx, y + 6, { width: cols.status - 6, align: "center" });
+        cx += cols.status;
+
+        doc.fill("#000000").font(fontR);
+        const amtStr = pay?.amount ? pay.amount.toLocaleString("uz-UZ") : "—";
+        doc.text(amtStr, cx, y + 6, { width: cols.amount, align: "right" }); cx += cols.amount;
+        doc.text(pay?.lessonsCount ? `${pay.lessonsCount} ta` : "—", cx, y + 6, { width: cols.lessons, align: "center" }); cx += cols.lessons;
+        doc.text(pay?.untilDate || "—", cx, y + 6, { width: cols.until });
+        if (pay?.note) {
+          doc.fill("#888888").fontSize(6.5).text(`Izoh: ${pay.note}`, marginL + cols.no + cols.name, y + rowH - 4, { width: cols.phone + cols.status + cols.amount });
+        }
+        y += rowH;
+        doc.fill("#000000").fontSize(7.5);
+      });
+
+      if (filtered.length === 0) {
+        doc.font(fontR).fontSize(10).fill("#888888").text("Ushbu filter bo'yicha o'quvchilar topilmadi.", marginL, y + 10, { align: "center", width: pageW });
+      }
+
+      // Footer
+      const footerY = doc.page.height - 36;
+      doc.font(fontR).fontSize(7).fill("#aaaaaa").text(`Zamonaviy Ta'lim • ${dateStr}`, marginL, footerY, { width: pageW, align: "center" });
+
+      const pdfBuffer = await new Promise<Buffer>((resolve) => {
+        doc.on("end", () => resolve(Buffer.concat(chunks)));
+        doc.end();
+      });
+
+      const safeFileName = `${aiClass.name.replace(/[^\w\s-]/g, "")}_tolov.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(safeFileName)}"`);
+      res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error("Payment PDF error:", error?.message || error);
+      res.status(500).json({ message: "PDF yaratishda xatolik" });
+    }
+  });
+
   app.post("/api/ai-classes/:id/send-results", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const { chatId, lessonNumber } = req.body;
