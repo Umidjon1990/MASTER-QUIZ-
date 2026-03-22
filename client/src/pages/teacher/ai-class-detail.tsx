@@ -385,8 +385,8 @@ export default function AiClassDetail() {
               {(() => {
                 const hiddenNums: number[] = aiClass?.hiddenLessons || [];
                 const visibleLessons = resultLessons.filter((l: any) => showHiddenInNatija || !hiddenNums.includes(l.lessonNumber));
-                const visibleTaskIds = new Set(visibleLessons.flatMap((l: any) => l.tasks.map((t: any) => t.taskId)));
-                const visibleTasks = results.tasks?.filter((t: any) => visibleTaskIds.has(t.taskId)) || [];
+                const visibleTaskIds = new Set(visibleLessons.flatMap((l: any) => l.tasks.map((t: any) => t.id)));
+                const visibleTasks = results.tasks?.filter((t: any) => visibleTaskIds.has(t.id)) || [];
                 return (
                   <Card className="overflow-hidden">
                     <div className="overflow-x-auto">
