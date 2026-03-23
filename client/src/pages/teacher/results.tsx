@@ -41,7 +41,7 @@ export default function TeacherResults() {
     },
   });
 
-  const quizzesWithPlays = quizzes?.filter(q => (q.totalPlays || 0) > 0) || [];
+  const quizzesWithPlays = quizzes?.filter(q => (q.totalPlays || 0) > 0 && !q.practiceMode) || [];
 
   const folderQuizzesMap: Record<string, Quiz[]> = {};
   const unfiledQuizzes: Quiz[] = [];
