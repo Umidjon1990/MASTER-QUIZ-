@@ -1466,7 +1466,7 @@ export async function registerRoutes(
 
       results.forEach((r: any, i: number) => {
         const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
-        const maxSc = (r.totalQuestions || 0) * 100; const pct = maxSc > 0 ? Math.round(((r.totalScore || r.score || 0) / maxSc) * 100) : (r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0);
+        const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
         const line = `${i + 1}. ${name} — ${r.totalScore} ball — ${r.correctAnswers}/${r.totalQuestions} to'g'ri (${pct}%)`;
         const isBold = i < 3;
         resultRows.push(new Paragraph({ children: [makeRun(line, isBold, 22)], spacing: { after: 80 }, bidirectional: hasRtl(name) }));
@@ -1580,10 +1580,7 @@ export async function registerRoutes(
 
       results.forEach((r: any, i: number) => {
         const name = r.guestName || `O'yinchi #${r.participantId?.slice(-4) || "?"}`;
-        const maxScore = (r.totalQuestions || 0) * 100;
-        const pct = maxScore > 0
-          ? Math.round(((r.totalScore || 0) / maxScore) * 100)
-          : (r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0);
+        const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
 
         if (doc.y > 750) {
           doc.addPage();
@@ -1889,7 +1886,7 @@ export async function registerRoutes(
 
       results.forEach((r: any, i: number) => {
         const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
-        const maxSc = (r.totalQuestions || 0) * 100; const pct = maxSc > 0 ? Math.round(((r.totalScore || r.score || 0) / maxSc) * 100) : (r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0);
+        const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
         const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "";
         const line = `${medal} ${i + 1}. ${name} — ${r.totalScore} ball — ${r.correctAnswers}/${r.totalQuestions} to'g'ri (${pct}%)`;
         const isBold = i < 3;
@@ -1947,7 +1944,7 @@ export async function registerRoutes(
     const top3 = players.slice(0, 3);
     for (let i = 0; i < top3.length; i++) {
       const r = top3[i];
-      const maxSc = (r.totalQuestions || 0) * 100; const pct = maxSc > 0 ? Math.round(((r.totalScore || r.score || 0) / maxSc) * 100) : (r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0);
+      const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
       const barLen = Math.round(pct / 10);
       const bar = barFull.repeat(barLen) + barEmpty.repeat(10 - barLen);
 
@@ -1963,7 +1960,7 @@ export async function registerRoutes(
       const rest = players.slice(3, 10);
       for (let i = 0; i < rest.length; i++) {
         const r = rest[i];
-        const maxSc = (r.totalQuestions || 0) * 100; const pct = maxSc > 0 ? Math.round(((r.totalScore || r.score || 0) / maxSc) * 100) : (r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0);
+        const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
         msg += `${i + 4}. ${escFn(r.name)} \u{2014} <b>${r.score}</b> ball (${pct}%)\n`;
       }
       msg += `\n`;
