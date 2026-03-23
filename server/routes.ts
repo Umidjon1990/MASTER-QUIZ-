@@ -1029,8 +1029,8 @@ export async function registerRoutes(
           const pipeIdx = titleRaw.lastIndexOf("|");
           if (pipeIdx >= 0) {
             readingPassageTitle = titleRaw.slice(0, pipeIdx).trim();
-            const secNum = parseInt(titleRaw.slice(pipeIdx + 1).trim(), 10);
-            if (!isNaN(secNum) && secNum > 0) readingTimePerQuestion = secNum;
+            const minNum = parseInt(titleRaw.slice(pipeIdx + 1).trim(), 10);
+            if (!isNaN(minNum) && minNum > 0) readingTimePerQuestion = minNum * 60;
           } else {
             readingPassageTitle = titleRaw;
             readingTimePerQuestion = undefined;
@@ -1042,11 +1042,11 @@ export async function registerRoutes(
 
         // --- Latin reading: collecting passage ---
         if (inReading && !inSavollar) {
-          // "Vaqt: 60" or "Vaqt:60" sets timer for this reading block
+          // "Vaqt: 3" or "Vaqt:3" sets timer for this reading block (in MINUTES)
           const vaqtMatch = trimmed.match(/^vaqt\s*:\s*(\d+)/i);
           if (vaqtMatch) {
             const t = parseInt(vaqtMatch[1], 10);
-            if (!isNaN(t) && t > 0) readingTimePerQuestion = t;
+            if (!isNaN(t) && t > 0) readingTimePerQuestion = t * 60;
             continue;
           }
           if (matnMatch) {

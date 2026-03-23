@@ -508,14 +508,18 @@ export default function AiClassDetail() {
                 const students = aiClass.students || [];
                 if (students.length === 0) return;
                 const XLSX = await import("xlsx");
+                const payLabel: Record<string, string> = { paid: "To'langan", unpaid: "To'lanmagan", partial: "Qisman", nasiya: "Nasiya" };
                 const data = students.map((s: any, i: number) => ({
                   "№": i + 1,
                   "Ism": s.name,
                   "Telefon": s.phone || "",
-                  "Holat": s.telegramChatId ? "Ulangan" : "Kutilmoqda",
+                  "Telegram": s.telegramChatId ? "Ulangan" : "Kutilmoqda",
+                  "To'lov holati": payLabel[s.paymentInfo?.status] || "To'lanmagan",
+                  "Miqdor": s.paymentInfo?.amount || "",
+                  "Izoh": s.paymentInfo?.note || "",
                 }));
                 const ws = XLSX.utils.json_to_sheet(data);
-                ws["!cols"] = [{ wch: 5 }, { wch: 30 }, { wch: 15 }, { wch: 12 }];
+                ws["!cols"] = [{ wch: 5 }, { wch: 30 }, { wch: 15 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 20 }];
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, "O'quvchilar");
                 XLSX.writeFile(wb, `${aiClass.name || "sinf"}_o'quvchilar.xlsx`);

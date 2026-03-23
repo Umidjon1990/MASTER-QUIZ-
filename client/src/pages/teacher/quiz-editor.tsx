@@ -126,7 +126,7 @@ export default function QuizEditor() {
       toIndex: s.toIndex,
       passageTitle: s.passageTitle || "",
       passageText: s.passageText || "",
-      timePerQuestion: s.timePerQuestion || 0,
+      timePerQuestion: s.timePerQuestion ? Math.round(s.timePerQuestion / 60) : 0,
     })));
     if (qs.length > 0) setSectionsPanelOpen(true);
     setInitialized(true);
@@ -162,7 +162,7 @@ export default function QuizEditor() {
       const res = await fetch(`/api/quizzes/${quizId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, category: category === "__none" ? "" : category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, showCorrectAnswers, practiceMode, timePerQuestion, questionSections: sections.map(s => ({ id: s.id, fromIndex: s.fromIndex, toIndex: s.toIndex, passageTitle: s.passageTitle || undefined, passageText: s.passageText || undefined, timePerQuestion: s.timePerQuestion || undefined })) }),
+        body: JSON.stringify({ title, description, category: category === "__none" ? "" : category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, showCorrectAnswers, practiceMode, timePerQuestion, questionSections: sections.map(s => ({ id: s.id, fromIndex: s.fromIndex, toIndex: s.toIndex, passageTitle: s.passageTitle || undefined, passageText: s.passageText || undefined, timePerQuestion: s.timePerQuestion ? s.timePerQuestion * 60 : undefined })) }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed");
@@ -669,7 +669,7 @@ export default function QuizEditor() {
                         <Input type="number" min={1} className="h-8 text-xs" value={sec.toIndex} onChange={e => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, toIndex: Number(e.target.value) } : s))} data-testid={`input-section-to-${i}`} />
                       </div>
                       <div>
-                        <Label className="text-xs flex items-center gap-1"><Clock className="w-3 h-3" /> Vaqt (son.)</Label>
+                        <Label className="text-xs flex items-center gap-1"><Clock className="w-3 h-3" /> Vaqt (daqiqa)</Label>
                         <Input type="number" min={0} className="h-8 text-xs" placeholder="0=umumiy" value={sec.timePerQuestion || ""} onChange={e => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, timePerQuestion: Number(e.target.value) } : s))} data-testid={`input-section-time-${i}`} />
                       </div>
                     </div>
