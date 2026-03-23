@@ -1450,7 +1450,7 @@ export async function registerRoutes(
       const results: any[] = [...liveResults, ...sharedResults];
       if (results.length === 0) return res.status(400).json({ message: "Natijalar topilmadi" });
 
-      results.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+      results.sort((a, b) => { const pctA = (a.totalQuestions||0)>0 ? (a.correctAnswers||0)/(a.totalQuestions||1) : 0; const pctB = (b.totalQuestions||0)>0 ? (b.correctAnswers||0)/(b.totalQuestions||1) : 0; return pctB - pctA || (b.totalScore||0) - (a.totalScore||0); });
 
       const { Document, Packer, Paragraph, TextRun, AlignmentType } = await import("docx");
 
@@ -1525,7 +1525,7 @@ export async function registerRoutes(
       const results: any[] = [...liveResults, ...sharedResults];
       if (results.length === 0) return res.status(400).json({ message: "Natijalar topilmadi" });
 
-      results.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+      results.sort((a, b) => { const pctA = (a.totalQuestions||0)>0 ? (a.correctAnswers||0)/(a.totalQuestions||1) : 0; const pctB = (b.totalQuestions||0)>0 ? (b.correctAnswers||0)/(b.totalQuestions||1) : 0; return pctB - pctA || (b.totalScore||0) - (a.totalScore||0); });
 
       const PDFDocument = (await import("pdfkit")).default;
       const pathMod = await import("path");
@@ -1824,7 +1824,7 @@ export async function registerRoutes(
 
       if (results.length === 0) return res.status(400).json({ message: "Natijalar topilmadi" });
 
-      results.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+      results.sort((a, b) => { const pctA = (a.totalQuestions||0)>0 ? (a.correctAnswers||0)/(a.totalQuestions||1) : 0; const pctB = (b.totalQuestions||0)>0 ? (b.correctAnswers||0)/(b.totalQuestions||1) : 0; return pctB - pctA || (b.totalScore||0) - (a.totalScore||0); });
 
       const TelegramBot = (await import("node-telegram-bot-api")).default;
       const bot = new TelegramBot(profile.telegramBotToken);
