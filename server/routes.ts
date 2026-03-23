@@ -939,8 +939,12 @@ export async function registerRoutes(
       let inReading = false;
       let readingPassageTitle = "";
       let readingPassageLines: string[] = [];
-      let readingStartQIndex = -1; // 1-based
+      let readingStartQIndex = -1;
       let inSavollar = false;
+
+      // Arabic reading mode: collecting passage+question lines before seeing first option
+      let arabicReadingMode = false;
+      let arabicPendingLines: string[] = []; // lines before first option in arabic reading
 
       const saveCurrentQ = async () => {
         if (!currentQ || !currentQ.questionText) return;
@@ -981,28 +985,40 @@ export async function registerRoutes(
         readingStartQIndex = -1;
       };
 
+      // Arabic reading block markers (اقرأ النص / iqra an-nass)
+      const isArabicReadingMarker = (t: string) =>
+        /اقرأ|iqra|read the (text|passage)/i.test(t);
+
       for (let li = 0; li < rawLines.length; li++) {
         const line = rawLines[li].replace(/\s+$/, "");
         const trimmed = line.trim();
 
-        // --- Reading block detection ---
-        // "Reading:" yoki "READING:" yoki "Reading: Sarlavha"
-        const readingStart = trimmed.match(/^reading\s*:?\s*(.*)?$/i);
-        // "---" separator closes reading block
-        const isSeparator = /^-{3,}$/.test(trimmed);
-        // "Matn:" prefix for passage text
-        const matnMatch = trimmed.match(/^matn\s*:\s*(.*)/i);
-        // "Savollar:" marker
-        const savollarMatch = /^savollar\s*:?/i.test(trimmed);
+        // Skip empty lines and ::: markers
+        if (!trimmed || trimmed === ":::") {
+          if (arabicReadingMode && arabicPendingLines.length > 0) continue;
+          if (!trimmed) continue;
+        }
 
+        // --- Format markers ---
+        const readingStart = trimmed.match(/^reading\s*:?\s*(.*)?$/i);
+        const isSeparator = /^-{3,}$/.test(trimmed);
+        const matnMatch = trimmed.match(/^matn\s*:\s*(.*)/i);
+        const savollarMatch = /^savollar\s*:?/i.test(trimmed);
+        const optMatch = trimmed.match(/^([A-Da-d])[\.\)\s]\s*(.*)/);
+        const qMatch = trimmed.match(/^(\d+)\s*[\.\)\-\t]\s*(.*)/);
+
+        // --- Separator "---" closes reading block ---
         if (isSeparator) {
+          if (arabicReadingMode) arabicReadingMode = false;
           await saveCurrentQ();
           currentQ = null;
           closeReadingSection();
           continue;
         }
 
+        // --- Latin "Reading:" marker ---
         if (readingStart) {
+          if (arabicReadingMode) arabicReadingMode = false;
           await saveCurrentQ();
           currentQ = null;
           closeReadingSection();
@@ -1014,26 +1030,77 @@ export async function registerRoutes(
           continue;
         }
 
+        // --- Latin reading: collecting passage ---
         if (inReading && !inSavollar) {
           if (matnMatch) {
             const firstLine = matnMatch[1].trim();
             if (firstLine) readingPassageLines.push(firstLine);
             continue;
           }
-          if (savollarMatch) {
-            inSavollar = true;
-            continue;
-          }
+          if (savollarMatch) { inSavollar = true; continue; }
           if (!trimmed) continue;
-          // Still collecting passage text lines (after Matn: or without explicit Matn: keyword)
           readingPassageLines.push(trimmed);
           continue;
         }
 
+        // --- Arabic reading mode: numbered question starts with "اقرأ النص" ---
+        if (qMatch && isArabicReadingMarker(qMatch[2])) {
+          await saveCurrentQ();
+          currentQ = null;
+          closeReadingSection();
+          // Start new reading block — passage and first question collected until first option
+          inReading = true;
+          inSavollar = true; // we're already in questions section for latin flow
+          readingPassageTitle = "";
+          readingPassageLines = [];
+          readingStartQIndex = imported.length;
+          arabicReadingMode = true;
+          arabicPendingLines = [];
+          continue;
+        }
+
+        // --- In Arabic reading mode: collect lines until first option ---
+        if (arabicReadingMode) {
+          if (!optMatch && !qMatch) {
+            if (trimmed) arabicPendingLines.push(trimmed);
+            continue;
+          }
+          if (optMatch) {
+            // First option seen — last pending line is question text, rest is passage
+            if (arabicPendingLines.length > 0) {
+              const qText = arabicPendingLines.pop()!;
+              readingPassageLines = arabicPendingLines.slice();
+              currentQ = { questionText: qText, options: [], correctAnswer: "" };
+            }
+            arabicReadingMode = false;
+            if (currentQ) currentQ.options.push(optMatch[2].trim());
+            continue;
+          }
+          // If another numbered question appears before any option, treat pending as passage
+          if (qMatch) {
+            readingPassageLines = arabicPendingLines.slice();
+            arabicReadingMode = false;
+            arabicPendingLines = [];
+            // fall through to handle qMatch below
+          }
+        }
+
         if (!trimmed) continue;
 
-        const optMatch = trimmed.match(/^([A-Da-d])[\.\)\s]\s*(.*)/);
-        const qMatch = trimmed.match(/^(\d+)\s*[\.\)\-\t]\s*(.*)/);
+        // --- Another Arabic reading block inside already-open reading section ---
+        if (qMatch && isArabicReadingMarker(qMatch[2])) {
+          await saveCurrentQ();
+          currentQ = null;
+          closeReadingSection();
+          inReading = true;
+          inSavollar = true;
+          readingPassageTitle = "";
+          readingPassageLines = [];
+          readingStartQIndex = imported.length;
+          arabicReadingMode = true;
+          arabicPendingLines = [];
+          continue;
+        }
 
         if (optMatch && currentQ) {
           currentQ.options.push(optMatch[2].trim());
