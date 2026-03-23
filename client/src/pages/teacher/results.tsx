@@ -23,6 +23,7 @@ export default function TeacherResults() {
   const { data: quizzes, isLoading } = useQuery<Quiz[]>({ queryKey: ["/api/quizzes"] });
   const { data: profile } = useQuery<UserProfile>({ queryKey: ["/api/profile"] });
   const { data: folders } = useQuery<QuizFolder[]>({ queryKey: ["/api/quiz-folders"] });
+  const { data: quizIdsWithResults } = useQuery<string[]>({ queryKey: ["/api/quiz-results/has-results"] });
 
   const telegramChats = ((profile?.telegramChats as TelegramChat[]) || []);
   const hasTelegramBot = !!(profile as any)?.hasTelegramBot;
@@ -41,7 +42,10 @@ export default function TeacherResults() {
     },
   });
 
-  const quizzesWithPlays = quizzes?.filter(q => (q.totalPlays || 0) > 0 && !q.practiceMode) || [];
+  const resultsSet = new Set(quizIdsWithResults || []);
+  const quizzesWithPlays = quizzes?.filter(q =>
+    !q.practiceMode && ((q.totalPlays || 0) > 0 || resultsSet.has(q.id))
+  ) || [];
 
   const folderQuizzesMap: Record<string, Quiz[]> = {};
   const unfiledQuizzes: Quiz[] = [];
@@ -64,6 +68,7 @@ export default function TeacherResults() {
     onSuccess: (_, quizId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/quiz-results", quizId] });
       queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quiz-results/has-results"] });
       toast({ title: "O'chirildi", description: "Barcha natijalar o'chirildi" });
     },
     onError: () => {

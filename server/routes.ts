@@ -1343,6 +1343,26 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/quiz-results/has-results", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { db: dbInstance } = await import("./db");
+      const { sql: sqlOp } = await import("drizzle-orm");
+      const combined = await dbInstance.execute(sqlOp`
+        SELECT DISTINCT quiz_id FROM (
+          SELECT quiz_id FROM quiz_results WHERE quiz_id IS NOT NULL
+          UNION
+          SELECT sq.quiz_id FROM shared_quizzes sq
+          INNER JOIN shared_quiz_attempts a ON a.shared_quiz_id = sq.id
+          WHERE a.completed_at IS NOT NULL
+        ) t
+      `);
+      const rows: any[] = (combined as any).rows ?? (combined as any);
+      res.json(rows.map((r: any) => r.quiz_id).filter(Boolean));
+    } catch (error) {
+      res.json([]);
+    }
+  });
+
   app.delete("/api/quiz-results/bulk", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const { ids } = req.body as { ids: string[] };
