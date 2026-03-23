@@ -170,6 +170,8 @@ export default function QuizPlayPage() {
   const isRejoiningRef = useRef(false);
   const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const roomLostCountRef = useRef(0);
+  const [currentPassage, setCurrentPassage] = useState<{ title: string; text: string } | null>(null);
+  const [passageExpanded, setPassageExpanded] = useState(true);
 
   const { data, isLoading, error } = useQuery<QuizData>({
     queryKey: ["/api/quizzes", id, "play"],
@@ -362,6 +364,8 @@ export default function QuizPlayPage() {
       setLastAnswerResult(null);
       setAnsweredCount(0);
       setStage("playing");
+      setCurrentPassage(data.passage || null);
+      setPassageExpanded(true);
     });
 
     s.on("public:answer-result", (data) => {
@@ -1449,6 +1453,29 @@ export default function QuizPlayPage() {
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-start p-4 overflow-y-auto">
+          {currentPassage && (
+            <div className="w-full max-w-2xl mb-4">
+              <div className="rounded-xl bg-amber-900/40 border border-amber-500/30 shadow-lg overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-amber-200 hover:bg-amber-800/30 transition-colors"
+                  onClick={() => setPassageExpanded(v => !v)}
+                  data-testid="button-toggle-passage"
+                >
+                  <span className="font-semibold text-sm">
+                    📖 {currentPassage.title || "Reading matni"}
+                  </span>
+                  <span className="text-xs opacity-70">{passageExpanded ? "▲ Yig'ish" : "▼ Ko'rish"}</span>
+                </button>
+                {passageExpanded && (
+                  <div className="px-4 pb-4 max-h-48 overflow-y-auto">
+                    <p className="text-amber-100 text-sm leading-relaxed whitespace-pre-wrap" dir="auto" data-testid="text-passage">
+                      {currentPassage.text}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <AnimatePresence mode="wait">
             <motion.div
               key={currentQuestion.id}

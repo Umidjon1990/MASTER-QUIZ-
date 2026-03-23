@@ -13,6 +13,15 @@ export type TelegramChat = {
   username?: string;
 };
 
+export type QuestionSection = {
+  id: string;
+  fromIndex: number;
+  toIndex: number;
+  passageTitle?: string;
+  passageText?: string;
+  timePerQuestion?: number;
+};
+
 export const userProfiles = pgTable("user_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().unique(),
@@ -64,6 +73,7 @@ export const quizzes = pgTable("quizzes", {
   scheduledTelegramQuizChatId: varchar("scheduled_telegram_quiz_chat_id", { length: 100 }),
   practiceMode: boolean("practice_mode").notNull().default(false),
   allowReplay: boolean("allow_replay").notNull().default(false),
+  questionSections: jsonb("question_sections").$type<QuestionSection[]>().default([]),
   folderId: varchar("folder_id"),
   orderInFolder: integer("order_in_folder").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),

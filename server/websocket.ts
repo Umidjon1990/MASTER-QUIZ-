@@ -493,7 +493,12 @@ function sendPublicQuestion(roomId: string) {
 
   let questionOptions = q.options ? [...(q.options as string[])] : null;
 
-  const timeLimit = q.timeLimit || room.quiz.timePerQuestion || 30;
+  const questionIndex1Based = room.currentQuestionIndex + 1;
+  const sections: any[] = (room.quiz as any).questionSections || [];
+  const activeSection = sections.find((s: any) => questionIndex1Based >= s.fromIndex && questionIndex1Based <= s.toIndex);
+  const passage = activeSection?.passageText ? { title: activeSection.passageTitle || "", text: activeSection.passageText } : null;
+
+  const timeLimit = (activeSection?.timePerQuestion) || q.timeLimit || room.quiz.timePerQuestion || 30;
   room.currentEffectiveTimeLimit = timeLimit;
   room.questionStartTime = Date.now();
 
@@ -502,6 +507,7 @@ function sendPublicQuestion(roomId: string) {
   io.to(`pubroom:${roomId}`).emit("public:question", {
     index: room.currentQuestionIndex,
     total: room.questions.length,
+    passage,
     question: {
       id: q.id,
       type: q.type,
@@ -1795,7 +1801,11 @@ export function setupWebSocket(httpServer: HttpServer) {
         if ((isLateJoin || isRejoin) && room.currentQuestionIndex >= 0) {
           const q = room.questions[room.currentQuestionIndex];
           if (q) {
-            const timeLimit = q.timeLimit || 30;
+            const rejoinIdx1Based = room.currentQuestionIndex + 1;
+            const rejoinSections: any[] = (room.quiz as any).questionSections || [];
+            const rejoinSection = rejoinSections.find((s: any) => rejoinIdx1Based >= s.fromIndex && rejoinIdx1Based <= s.toIndex);
+            const rejoinPassage = rejoinSection?.passageText ? { title: rejoinSection.passageTitle || "", text: rejoinSection.passageText } : null;
+            const timeLimit = (rejoinSection?.timePerQuestion) || q.timeLimit || room.quiz.timePerQuestion || 30;
             const elapsed = Math.floor((Date.now() - room.questionStartTime) / 1000);
             const remainingTime = Math.max(0, timeLimit - elapsed);
 
@@ -1811,6 +1821,7 @@ export function setupWebSocket(httpServer: HttpServer) {
                 points: q.type === "poll" ? 0 : q.points,
                 mediaUrl: q.mediaUrl,
               },
+              passage: rejoinPassage,
               index: room.currentQuestionIndex,
               total: room.questions.length,
             });
