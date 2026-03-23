@@ -182,6 +182,7 @@ export default function QuizPlayPage() {
   const roomLostCountRef = useRef(0);
   const [currentPassage, setCurrentPassage] = useState<{ title: string; text: string } | null>(null);
   const [passageExpanded, setPassageExpanded] = useState(true);
+  const [passageFontSize, setPassageFontSize] = useState(14);
 
   const { data, isLoading, error } = useQuery<QuizData>({
     queryKey: ["/api/quizzes", id, "play"],
@@ -1477,19 +1478,21 @@ export default function QuizPlayPage() {
         {currentPassage && (
           <div className="flex-shrink-0 w-full bg-amber-950/80 border-b border-amber-500/30 shadow-lg z-40" data-testid="panel-passage">
             <div className="max-w-2xl mx-auto">
-              <button
-                className="w-full flex items-center justify-between px-4 py-2.5 text-amber-200 hover:bg-amber-800/30 transition-colors"
-                onClick={() => setPassageExpanded(v => !v)}
-                data-testid="button-toggle-passage"
-              >
-                <span className="font-semibold text-sm flex items-center gap-2">
-                  📖 {currentPassage.title || "Reading matni"}
-                </span>
-                <span className="text-xs opacity-70 shrink-0 ml-2">{passageExpanded ? "▲ Yig'ish" : "▼ Ko'rish"}</span>
-              </button>
+              <div className="flex items-center px-3 py-2 gap-1">
+                <button
+                  className="flex-1 flex items-center gap-2 text-amber-200 hover:bg-amber-800/30 transition-colors rounded px-1 py-0.5 text-left"
+                  onClick={() => setPassageExpanded(v => !v)}
+                  data-testid="button-toggle-passage"
+                >
+                  <span className="font-semibold text-sm">📖 {currentPassage.title || "Reading matni"}</span>
+                  <span className="text-xs opacity-70 ml-auto shrink-0">{passageExpanded ? "▲" : "▼"}</span>
+                </button>
+                <button onClick={() => setPassageFontSize(s => Math.max(11, s - 1))} className="text-amber-300 hover:bg-amber-800/40 rounded px-2 py-1 text-xs font-bold transition-colors" title="Kichiklashtirish" data-testid="button-passage-zoom-out">A−</button>
+                <button onClick={() => setPassageFontSize(s => Math.min(22, s + 1))} className="text-amber-300 hover:bg-amber-800/40 rounded px-2 py-1 text-sm font-bold transition-colors" title="Kattalashtirish" data-testid="button-passage-zoom-in">A+</button>
+              </div>
               {passageExpanded && (
-                <div className="px-4 pb-3 max-h-[38vh] overflow-y-auto">
-                  <p className="text-amber-100 text-sm leading-relaxed whitespace-pre-wrap" dir="auto" data-testid="text-passage">
+                <div className="px-4 pb-3 max-h-[42vh] overflow-y-auto">
+                  <p className="text-amber-100 leading-relaxed whitespace-pre-wrap" dir="auto" style={{ fontSize: passageFontSize }} data-testid="text-passage">
                     {currentPassage.text}
                   </p>
                 </div>
@@ -1753,17 +1756,21 @@ export default function QuizPlayPage() {
         {soloPassage && (
           <div className="flex-shrink-0 w-full bg-amber-950/80 border-b border-amber-500/30 shadow-lg z-40" data-testid="panel-solo-passage">
             <div className="max-w-2xl mx-auto">
-              <button
-                className="w-full flex items-center justify-between px-4 py-2.5 text-amber-200 hover:bg-amber-800/30 transition-colors"
-                onClick={() => setPassageExpanded(v => !v)}
-                data-testid="button-toggle-solo-passage"
-              >
-                <span className="font-semibold text-sm flex items-center gap-2">📖 {soloPassage.title || "Reading matni"}</span>
-                <span className="text-xs opacity-70 shrink-0 ml-2">{passageExpanded ? "▲ Yig'ish" : "▼ Ko'rish"}</span>
-              </button>
+              <div className="flex items-center px-3 py-2 gap-1">
+                <button
+                  className="flex-1 flex items-center gap-2 text-amber-200 hover:bg-amber-800/30 transition-colors rounded px-1 py-0.5 text-left"
+                  onClick={() => setPassageExpanded(v => !v)}
+                  data-testid="button-toggle-solo-passage"
+                >
+                  <span className="font-semibold text-sm">📖 {soloPassage.title || "Reading matni"}</span>
+                  <span className="text-xs opacity-70 ml-auto shrink-0">{passageExpanded ? "▲" : "▼"}</span>
+                </button>
+                <button onClick={() => setPassageFontSize(s => Math.max(11, s - 1))} className="text-amber-300 hover:bg-amber-800/40 rounded px-2 py-1 text-xs font-bold transition-colors" data-testid="button-solo-passage-zoom-out">A−</button>
+                <button onClick={() => setPassageFontSize(s => Math.min(22, s + 1))} className="text-amber-300 hover:bg-amber-800/40 rounded px-2 py-1 text-sm font-bold transition-colors" data-testid="button-solo-passage-zoom-in">A+</button>
+              </div>
               {passageExpanded && (
-                <div className="px-4 pb-3 max-h-[38vh] overflow-y-auto">
-                  <p className="text-amber-100 text-sm leading-relaxed whitespace-pre-wrap" dir="auto" data-testid="text-solo-passage">
+                <div className="px-4 pb-3 max-h-[42vh] overflow-y-auto">
+                  <p className="text-amber-100 leading-relaxed whitespace-pre-wrap" dir="auto" style={{ fontSize: passageFontSize }} data-testid="text-solo-passage">
                     {soloPassage.text}
                   </p>
                 </div>
