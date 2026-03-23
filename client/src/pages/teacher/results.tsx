@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -256,6 +257,8 @@ export default function TeacherResults() {
 
 function QuizResultsDetail({ quizId, onDeleteAll }: { quizId: string; onDeleteAll: () => void }) {
   const { toast } = useToast();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
   const { data: results, isLoading } = useQuery<QuizResult[]>({
     queryKey: ["/api/quiz-results", quizId],
     queryFn: async () => {
@@ -271,10 +274,25 @@ function QuizResultsDetail({ quizId, onDeleteAll }: { quizId: string; onDeleteAl
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/quiz-results", quizId] });
-      toast({ title: "O'chirildi", description: "Natija muvaffaqiyatli o'chirildi" });
+      toast({ title: "O'chirildi", description: "Natija o'chirildi" });
     },
     onError: () => {
-      toast({ title: "Xatolik", description: "O'chirishda xatolik yuz berdi", variant: "destructive" });
+      toast({ title: "Xatolik", description: "O'chirishda xatolik", variant: "destructive" });
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await apiRequest("DELETE", "/api/quiz-results/bulk", { ids });
+    },
+    onSuccess: (_, ids) => {
+      setSelected(new Set());
+      queryClient.invalidateQueries({ queryKey: ["/api/quiz-results", quizId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
+      toast({ title: "O'chirildi", description: `${ids.length} ta natija o'chirildi` });
+    },
+    onError: () => {
+      toast({ title: "Xatolik", description: "O'chirishda xatolik", variant: "destructive" });
     },
   });
 
@@ -290,36 +308,88 @@ function QuizResultsDetail({ quizId, onDeleteAll }: { quizId: string; onDeleteAl
     );
   }
 
+  const allIds = sorted.map(r => r.id);
+  const allSelected = allIds.length > 0 && allIds.every(id => selected.has(id));
+  const someSelected = selected.size > 0;
+
+  const toggleAll = () => {
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(allIds));
+  };
+
+  const toggleOne = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   return (
     <div className="mt-4 space-y-2">
-      <div className="flex items-center justify-between px-2 mb-1">
+      <div className="flex items-center justify-between px-2 mb-1 gap-2 flex-wrap">
         <span className="text-xs text-muted-foreground">{sorted.length} ta natija</span>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs text-destructive hover:text-destructive border-destructive/30"
-          onClick={onDeleteAll}
-          data-testid="button-delete-all-results"
-        >
-          <Trash2 className="w-3 h-3 mr-1" /> Barchasini o'chirish
-        </Button>
+        <div className="flex items-center gap-2">
+          {someSelected && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs text-destructive hover:text-destructive border-destructive/30"
+              onClick={() => {
+                if (confirm(`${selected.size} ta natijani o'chirmoqchimisiz?`)) {
+                  bulkDeleteMutation.mutate(Array.from(selected));
+                }
+              }}
+              disabled={bulkDeleteMutation.isPending}
+              data-testid="button-delete-selected-results"
+            >
+              {bulkDeleteMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Trash2 className="w-3 h-3 mr-1" />}
+              {selected.size} ta o'chirish
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs text-destructive hover:text-destructive border-destructive/30"
+            onClick={onDeleteAll}
+            data-testid="button-delete-all-results"
+          >
+            <Trash2 className="w-3 h-3 mr-1" /> Barchasini o'chirish
+          </Button>
+        </div>
       </div>
-      <div className="grid grid-cols-[2rem_1fr_4rem_5rem_2.5rem] gap-2 text-xs font-medium text-muted-foreground px-2">
+
+      <div className="grid grid-cols-[1.5rem_2rem_1fr_4rem_5rem_2.5rem] gap-2 text-xs font-medium text-muted-foreground px-2 items-center">
+        <Checkbox
+          checked={allSelected}
+          onCheckedChange={toggleAll}
+          data-testid="checkbox-select-all-results"
+        />
         <span>#</span>
         <span>Ism</span>
         <span className="text-center">Ball</span>
         <span className="text-center">To'g'ri</span>
         <span></span>
       </div>
+
       {sorted.map((r, i) => {
         const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
         const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
+        const isSelected = selected.has(r.id);
         return (
           <div
             key={r.id}
-            className={`grid grid-cols-[2rem_1fr_4rem_5rem_2.5rem] gap-2 items-center px-2 py-1.5 rounded-md text-sm ${i < 3 ? "font-semibold" : ""}`}
+            className={`grid grid-cols-[1.5rem_2rem_1fr_4rem_5rem_2.5rem] gap-2 items-center px-2 py-1.5 rounded-md text-sm cursor-pointer transition-colors ${isSelected ? "bg-destructive/5" : "hover:bg-muted/30"} ${i < 3 ? "font-semibold" : ""}`}
+            onClick={() => toggleOne(r.id)}
             data-testid={`row-result-${i}`}
           >
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={() => toggleOne(r.id)}
+              onClick={e => e.stopPropagation()}
+              data-testid={`checkbox-result-${r.id}`}
+            />
             <span className={i < 3 ? "text-foreground font-bold" : "text-muted-foreground"}>
               {i + 1}
             </span>
@@ -333,7 +403,7 @@ function QuizResultsDetail({ quizId, onDeleteAll }: { quizId: string; onDeleteAl
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-              onClick={() => deleteMutation.mutate(r.id)}
+              onClick={e => { e.stopPropagation(); deleteMutation.mutate(r.id); }}
               disabled={deleteMutation.isPending}
               title="O'chirish"
               data-testid={`button-delete-result-${r.id}`}

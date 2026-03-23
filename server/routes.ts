@@ -1343,6 +1343,21 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/quiz-results/bulk", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { ids } = req.body as { ids: string[] };
+      if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: "ids kerak" });
+      for (const id of ids) {
+        try { await storage.deleteResult(id); } catch (_) {
+          try { await storage.deleteSharedQuizAttempt(id); } catch (__) {}
+        }
+      }
+      res.json({ success: true, deleted: ids.length });
+    } catch (error) {
+      res.status(500).json({ message: "O'chirishda xatolik" });
+    }
+  });
+
   app.delete("/api/quiz-results/all/:quizId", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const quiz = await storage.getQuiz(req.params.quizId);
