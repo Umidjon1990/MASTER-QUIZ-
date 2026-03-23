@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, ListChecks, ToggleLeft, MessageSquare, Pencil, BarChart3, CheckSquare } from "lucide-react";
+import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, ListChecks, ToggleLeft, MessageSquare, Pencil, BarChart3, CheckSquare, ChevronDown, ChevronRight, BookOpen, Clock } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Quiz, Question, QuizCategory } from "@shared/schema";
 
@@ -62,6 +62,8 @@ export default function QuizEditor() {
   const [importText, setImportText] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [showNewCategory, setShowNewCategory] = useState(false);
+  const [sections, setSections] = useState<Array<{ id: string; fromIndex: number; toIndex: number; passageTitle: string; passageText: string; timePerQuestion: number }>>([]);
+  const [sectionsPanelOpen, setSectionsPanelOpen] = useState(false);
 
   const { data: categories } = useQuery<QuizCategory[]>({
     queryKey: ["/api/quiz-categories"],
@@ -117,6 +119,15 @@ export default function QuizEditor() {
     setShowCorrectAnswers(quiz.showCorrectAnswers ?? true);
     setPracticeMode(quiz.practiceMode ?? false);
     setTimePerQuestion(quiz.timePerQuestion);
+    const qs = (quiz as any).questionSections || [];
+    setSections(qs.map((s: any) => ({
+      id: s.id || crypto.randomUUID(),
+      fromIndex: s.fromIndex,
+      toIndex: s.toIndex,
+      passageTitle: s.passageTitle || "",
+      passageText: s.passageText || "",
+      timePerQuestion: s.timePerQuestion || 0,
+    })));
     setInitialized(true);
   }
 
@@ -150,7 +161,7 @@ export default function QuizEditor() {
       const res = await fetch(`/api/quizzes/${quizId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, category: category === "__none" ? "" : category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, showCorrectAnswers, practiceMode, timePerQuestion }),
+        body: JSON.stringify({ title, description, category: category === "__none" ? "" : category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, showCorrectAnswers, practiceMode, timePerQuestion, questionSections: sections.map(s => ({ id: s.id, fromIndex: s.fromIndex, toIndex: s.toIndex, passageTitle: s.passageTitle || undefined, passageText: s.passageText || undefined, timePerQuestion: s.timePerQuestion || undefined })) }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed");
@@ -619,6 +630,63 @@ export default function QuizEditor() {
           <Switch checked={practiceMode} onCheckedChange={setPracticeMode} data-testid="switch-practice-mode" />
           <Label>Mashq rejimi (natija saqlanmaydi)</Label>
         </div>
+        {!isNew && (
+          <div>
+            <button
+              type="button"
+              className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors w-full"
+              onClick={() => setSectionsPanelOpen(v => !v)}
+              data-testid="button-toggle-sections-panel"
+            >
+              {sectionsPanelOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              <BookOpen className="w-4 h-4" />
+              Reading & Vaqt sozlamalari ({sections.length} ta bo'lim)
+            </button>
+            {sectionsPanelOpen && (
+              <div className="mt-3 space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Savollar guruhlarini belgilang. Har bir guruh uchun reading matni va/yoki alohida vaqt sozlashingiz mumkin.
+                  <br />Masalan: 1–30 savollar uchun 30 soniya, 31–40 uchun reading matni + 1 daqiqa, 41–50 uchun 5 daqiqa.
+                </p>
+                {sections.map((sec, i) => (
+                  <Card key={sec.id} className="p-3 space-y-2 border border-primary/30 bg-primary/5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-primary">{i + 1}-bo'lim</span>
+                      <Button variant="ghost" size="icon" className="w-6 h-6 text-red-500" onClick={() => setSections(prev => prev.filter(s => s.id !== sec.id))} data-testid={`button-delete-section-${i}`}>
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <Label className="text-xs">Savoldan (N)</Label>
+                        <Input type="number" min={1} className="h-8 text-xs" value={sec.fromIndex} onChange={e => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, fromIndex: Number(e.target.value) } : s))} data-testid={`input-section-from-${i}`} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Gacha (N)</Label>
+                        <Input type="number" min={1} className="h-8 text-xs" value={sec.toIndex} onChange={e => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, toIndex: Number(e.target.value) } : s))} data-testid={`input-section-to-${i}`} />
+                      </div>
+                      <div>
+                        <Label className="text-xs flex items-center gap-1"><Clock className="w-3 h-3" /> Vaqt (son.)</Label>
+                        <Input type="number" min={0} className="h-8 text-xs" placeholder="0=umumiy" value={sec.timePerQuestion || ""} onChange={e => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, timePerQuestion: Number(e.target.value) } : s))} data-testid={`input-section-time-${i}`} />
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Reading matni sarlavhasi (ixtiyoriy)</Label>
+                      <Input className="h-8 text-xs" placeholder="Masalan: Passage 1" value={sec.passageTitle} onChange={e => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, passageTitle: e.target.value } : s))} data-testid={`input-section-title-${i}`} />
+                    </div>
+                    <div>
+                      <Label className="text-xs flex items-center gap-1"><BookOpen className="w-3 h-3" /> Reading matni (ixtiyoriy)</Label>
+                      <Textarea className="text-xs min-h-[80px]" placeholder="Reading matni shu yerga yozing... (bo'sh qoldirsangiz faqat vaqt qo'llaniladi)" value={sec.passageText} onChange={e => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, passageText: e.target.value } : s))} dir="auto" data-testid={`textarea-section-passage-${i}`} />
+                    </div>
+                  </Card>
+                ))}
+                <Button variant="outline" size="sm" className="w-full border-dashed" onClick={() => setSections(prev => [...prev, { id: crypto.randomUUID(), fromIndex: 1, toIndex: 10, passageTitle: "", passageText: "", timePerQuestion: 0 }])} data-testid="button-add-section">
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Bo'lim qo'shish
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
         <Button
           onClick={() => isNew ? createQuiz.mutate() : handleSaveQuiz()}
           disabled={createQuiz.isPending || updateQuiz.isPending || addQuestion.isPending}
