@@ -89,6 +89,15 @@ interface QuizQuestion {
   mediaType: string | null;
 }
 
+interface QuizSection {
+  id: string;
+  fromIndex: number;
+  toIndex: number;
+  passageTitle?: string;
+  passageText?: string;
+  timePerQuestion?: number;
+}
+
 interface QuizData {
   quiz: {
     id: string;
@@ -99,6 +108,7 @@ interface QuizData {
     practiceMode?: boolean;
   };
   questions: QuizQuestion[];
+  questionSections?: QuizSection[];
 }
 
 interface SubmitResult {
@@ -658,9 +668,20 @@ export default function QuizPlayPage() {
 
   const soloCurrentQuestion = data?.questions?.[currentIndex];
 
+  const soloPassage = (() => {
+    if (!data?.questionSections?.length || !soloCurrentQuestion) return null;
+    const q1Based = currentIndex + 1;
+    const section = data.questionSections.find(s => q1Based >= s.fromIndex && q1Based <= s.toIndex);
+    return section?.passageText ? { title: section.passageTitle || "", text: section.passageText } : null;
+  })();
+
   useEffect(() => {
     if (stage !== "playing" || !soloCurrentQuestion || gameMode !== "solo") return;
-    setTimeLeft(soloCurrentQuestion.timeLimit || 30);
+    const sections = data?.questionSections || [];
+    const q1Based = currentIndex + 1;
+    const section = sections.find(s => q1Based >= s.fromIndex && q1Based <= s.toIndex);
+    const effectiveTime = section?.timePerQuestion || soloCurrentQuestion.timeLimit || 30;
+    setTimeLeft(effectiveTime);
   }, [currentIndex, stage, soloCurrentQuestion, gameMode]);
 
   useEffect(() => {
@@ -1702,6 +1723,9 @@ export default function QuizPlayPage() {
     const soloAnswer = answers[soloCurrentQuestion.id];
     const soloIsLast = currentIndex === data.questions.length - 1;
     const progressPercent = ((currentIndex + 1) / data.questions.length) * 100;
+    const soloSections = data?.questionSections || [];
+    const soloActiveSection = soloSections.find(s => (currentIndex + 1) >= s.fromIndex && (currentIndex + 1) <= s.toIndex);
+    const soloEffectiveTime = soloActiveSection?.timePerQuestion || soloCurrentQuestion.timeLimit || 30;
 
     return (
       <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-950 via-violet-950 to-slate-950 overflow-hidden">
@@ -1713,7 +1737,7 @@ export default function QuizPlayPage() {
               </Badge>
               <span className="text-sm font-medium truncate text-white/80">{data.quiz.title}</span>
             </div>
-            <CircularTimer timeLeft={timeLeft} totalTime={soloCurrentQuestion.timeLimit || 30} />
+            <CircularTimer timeLeft={timeLeft} totalTime={soloEffectiveTime} />
           </div>
           <div className="max-w-2xl mx-auto mt-2">
             <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
@@ -1724,6 +1748,29 @@ export default function QuizPlayPage() {
             </div>
           </div>
         </div>
+
+        {/* Solo mode: sticky reading passage panel */}
+        {soloPassage && (
+          <div className="flex-shrink-0 w-full bg-amber-950/80 border-b border-amber-500/30 shadow-lg z-40" data-testid="panel-solo-passage">
+            <div className="max-w-2xl mx-auto">
+              <button
+                className="w-full flex items-center justify-between px-4 py-2.5 text-amber-200 hover:bg-amber-800/30 transition-colors"
+                onClick={() => setPassageExpanded(v => !v)}
+                data-testid="button-toggle-solo-passage"
+              >
+                <span className="font-semibold text-sm flex items-center gap-2">📖 {soloPassage.title || "Reading matni"}</span>
+                <span className="text-xs opacity-70 shrink-0 ml-2">{passageExpanded ? "▲ Yig'ish" : "▼ Ko'rish"}</span>
+              </button>
+              {passageExpanded && (
+                <div className="px-4 pb-3 max-h-[38vh] overflow-y-auto">
+                  <p className="text-amber-100 text-sm leading-relaxed whitespace-pre-wrap" dir="auto" data-testid="text-solo-passage">
+                    {soloPassage.text}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 flex flex-col items-center justify-start p-4 overflow-y-auto">
           <AnimatePresence mode="wait">

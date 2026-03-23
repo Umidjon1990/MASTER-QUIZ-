@@ -3061,6 +3061,7 @@ export async function registerRoutes(
       res.json({
         quiz: { id: quiz.id, title: quiz.title, description: quiz.description, category: quiz.category, totalQuestions: quiz.totalQuestions, practiceMode: quiz.practiceMode ?? false },
         questions: safeQuestions,
+        questionSections: (quiz as any).questionSections || [],
       });
     } catch (error) {
       res.status(500).json({ message: "Server error" });
