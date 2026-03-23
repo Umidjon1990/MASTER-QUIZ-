@@ -996,11 +996,8 @@ export async function registerRoutes(
         const line = rawLines[li].replace(/\s+$/, "");
         const trimmed = line.trim();
 
-        // Skip empty lines and ::: markers
-        if (!trimmed || trimmed === ":::") {
-          if (arabicReadingMode && arabicPendingLines.length > 0) continue;
-          if (!trimmed) continue;
-        }
+        // Skip empty lines and ::: markers always
+        if (!trimmed || /^:{3,}$/.test(trimmed)) continue;
 
         // --- Format markers ---
         const readingStart = trimmed.match(/^reading\s*:?\s*(.*)?$/i);
