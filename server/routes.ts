@@ -595,6 +595,7 @@ export async function registerRoutes(
         shuffleQuestions: quiz.shuffleQuestions,
         shuffleOptions: quiz.shuffleOptions,
         showCorrectAnswers: quiz.showCorrectAnswers,
+        questionSections: (quiz as any).questionSections || [],
         questions: questionsList.map(q => ({
           id: q.id,
           questionText: q.questionText,

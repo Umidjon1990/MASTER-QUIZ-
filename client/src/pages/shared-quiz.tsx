@@ -16,8 +16,18 @@ type QuestionData = {
   correctAnswer: string;
   points: number;
   timeLimit: number;
+  orderIndex: number;
   mediaUrl?: string;
   mediaType?: string;
+};
+
+type QuizSection = {
+  id: string;
+  fromIndex: number;
+  toIndex: number;
+  passageTitle?: string;
+  passageText?: string;
+  timePerQuestion?: number;
 };
 
 type QuizData = {
@@ -32,6 +42,7 @@ type QuizData = {
   shuffleOptions: boolean;
   showCorrectAnswers: boolean;
   questions: QuestionData[];
+  questionSections?: QuizSection[];
 };
 
 type AnswerRecord = Record<string, { answer: string | string[]; isCorrect: boolean; points: number; timeSpent: number }>;
@@ -89,6 +100,7 @@ export default function SharedQuizPage() {
   const [score, setScore] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [processedQuestions, setProcessedQuestions] = useState<QuestionData[]>([]);
+  const [passageExpanded, setPassageExpanded] = useState(true);
 
   useEffect(() => {
     async function load() {
@@ -136,7 +148,11 @@ export default function SharedQuizPage() {
       setCurrentIndex(0);
       setQuestionStartTime(Date.now());
       if (quizData?.timerEnabled && processedQuestions[0]) {
-        setTimeLeft(processedQuestions[0].timeLimit);
+        const firstQ = processedQuestions[0];
+        const sections = quizData?.questionSections || [];
+        const firstQIdx = firstQ.orderIndex + 1;
+        const firstSection = sections.find(s => firstQIdx >= s.fromIndex && firstQIdx <= s.toIndex);
+        setTimeLeft(firstSection?.timePerQuestion || firstQ.timeLimit);
       }
       setPhase("playing");
     } catch {
@@ -145,6 +161,13 @@ export default function SharedQuizPage() {
   };
 
   const currentQuestion = processedQuestions[currentIndex];
+
+  const currentPassage = (() => {
+    if (!quizData?.questionSections?.length || !currentQuestion) return null;
+    const qIdx = currentQuestion.orderIndex + 1; // 1-based
+    const section = quizData.questionSections.find(s => qIdx >= s.fromIndex && qIdx <= s.toIndex);
+    return section?.passageText ? { title: section.passageTitle || "", text: section.passageText } : null;
+  })();
 
   const submitAnswer = useCallback(() => {
     if (!currentQuestion || showFeedback) return;
@@ -195,8 +218,13 @@ export default function SharedQuizPage() {
       const nextIdx = currentIndex + 1;
       setCurrentIndex(nextIdx);
       setQuestionStartTime(Date.now());
+      setPassageExpanded(true);
       if (quizData?.timerEnabled && processedQuestions[nextIdx]) {
-        setTimeLeft(processedQuestions[nextIdx].timeLimit);
+        const nextQ = processedQuestions[nextIdx];
+        const sections = quizData?.questionSections || [];
+        const nextQIdx = nextQ.orderIndex + 1;
+        const nextSection = sections.find(s => nextQIdx >= s.fromIndex && nextQIdx <= s.toIndex);
+        setTimeLeft(nextSection?.timePerQuestion || nextQ.timeLimit);
       }
     } else {
       finishQuiz(updatedAnswers);
@@ -366,6 +394,27 @@ export default function SharedQuizPage() {
         <div className="w-full bg-muted rounded-full h-2">
           <div className="h-2 rounded-full gradient-purple transition-all duration-300" style={{ width: `${progressPct}%` }} />
         </div>
+
+        {/* Reading passage panel */}
+        {currentPassage && (
+          <div className="rounded-xl bg-amber-950/90 border border-amber-500/40 shadow-lg overflow-hidden" data-testid="panel-passage">
+            <button
+              className="w-full flex items-center justify-between px-4 py-2.5 text-amber-200 hover:bg-amber-800/30 transition-colors"
+              onClick={() => setPassageExpanded(v => !v)}
+              data-testid="button-toggle-passage"
+            >
+              <span className="font-semibold text-sm flex items-center gap-2">📖 {currentPassage.title || "Reading matni"}</span>
+              <span className="text-xs opacity-70 shrink-0 ml-2">{passageExpanded ? "▲ Yig'ish" : "▼ Ko'rish"}</span>
+            </button>
+            {passageExpanded && (
+              <div className="px-4 pb-3 max-h-[38vh] overflow-y-auto">
+                <p className="text-amber-100 text-sm leading-relaxed whitespace-pre-wrap" dir="auto" data-testid="text-passage">
+                  {currentPassage.text}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         <AnimatePresence mode="wait">
           <motion.div key={currentIndex} initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} transition={{ duration: 0.2 }}>
