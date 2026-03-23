@@ -49,13 +49,23 @@ const KAHOOT_COLORS = [
   { bg: "from-orange-500 to-red-500", border: "border-orange-400", text: "text-white", icon: Zap },
 ];
 
+const fmtTime = (s: number) => {
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+};
+
 const CircularTimer = memo(function CircularTimer({ timeLeft, totalTime }: { timeLeft: number; totalTime: number }) {
   const radius = 28;
   const circumference = 2 * Math.PI * radius;
   const progress = totalTime > 0 ? timeLeft / totalTime : 0;
   const strokeDashoffset = circumference * (1 - progress);
-  const isUrgent = timeLeft <= 5;
-  const colorClass = isUrgent ? "text-red-500" : timeLeft <= 10 ? "text-amber-400" : "text-emerald-400";
+  const urgentThreshold = totalTime >= 60 ? 30 : 5;
+  const warnThreshold = totalTime >= 60 ? 60 : 10;
+  const isUrgent = timeLeft <= urgentThreshold;
+  const colorClass = isUrgent ? "text-red-500" : timeLeft <= warnThreshold ? "text-amber-400" : "text-emerald-400";
+  const isLong = totalTime >= 60;
 
   return (
     <div className="relative w-16 h-16 flex items-center justify-center">
@@ -71,8 +81,8 @@ const CircularTimer = memo(function CircularTimer({ timeLeft, totalTime }: { tim
           style={{ transition: "stroke-dashoffset 0.8s linear, color 0.3s" }}
         />
       </svg>
-      <span className={`absolute text-lg font-bold font-mono ${colorClass}`}>
-        {timeLeft}
+      <span className={`absolute font-bold font-mono ${isLong ? "text-sm" : "text-lg"} ${colorClass}`}>
+        {fmtTime(timeLeft)}
       </span>
     </div>
   );

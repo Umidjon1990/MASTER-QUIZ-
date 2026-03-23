@@ -295,7 +295,7 @@ export default function SharedQuizPage() {
               {quizData?.description && <p className="text-muted-foreground text-sm">{quizData.description}</p>}
               <div className="flex items-center justify-center gap-3 mt-3">
                 <Badge variant="secondary">{quizData?.totalQuestions} ta savol</Badge>
-                {quizData?.timerEnabled && <Badge variant="outline"><Clock className="w-3 h-3 mr-1" />{quizData.timePerQuestion}s</Badge>}
+                {quizData?.timerEnabled && <Badge variant="outline"><Clock className="w-3 h-3 mr-1" />{quizData.timePerQuestion >= 60 ? `${Math.floor(quizData.timePerQuestion / 60)} daqiqa` : `${quizData.timePerQuestion}s`}</Badge>}
               </div>
             </div>
             <div className="space-y-3">
@@ -385,11 +385,18 @@ export default function SharedQuizPage() {
             <Badge variant="secondary" className="shrink-0">{currentIndex + 1}/{processedQuestions.length}</Badge>
             <span className="text-sm text-muted-foreground truncate" dir="auto">{quizData?.title}</span>
           </div>
-          {quizData?.timerEnabled && (
-            <Badge variant={timeLeft <= 5 ? "destructive" : "outline"} className="text-lg px-3 py-1 tabular-nums shrink-0" data-testid="badge-timer">
-              <Clock className="w-4 h-4 mr-1" />{timeLeft}s
-            </Badge>
-          )}
+          {quizData?.timerEnabled && (() => {
+            const urgentSec = (currentQuestion?.timeLimit ?? 30) >= 60 ? 30 : 5;
+            const isUrgent = timeLeft <= urgentSec;
+            const display = timeLeft >= 60
+              ? `${Math.floor(timeLeft / 60)}:${(timeLeft % 60).toString().padStart(2, "0")}`
+              : `${timeLeft}s`;
+            return (
+              <Badge variant={isUrgent ? "destructive" : "outline"} className="text-lg px-3 py-1 tabular-nums shrink-0" data-testid="badge-timer">
+                <Clock className="w-4 h-4 mr-1" />{display}
+              </Badge>
+            );
+          })()}
         </div>
 
         <div className="w-full bg-muted rounded-full h-2">
