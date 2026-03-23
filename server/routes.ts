@@ -1528,23 +1528,46 @@ export async function registerRoutes(
       results.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
 
       const PDFDocument = (await import("pdfkit")).default;
+      const pathMod = await import("path");
+      const fsMod = await import("fs");
+
+      const fontDir = pathMod.join(process.cwd(), "server", "fonts");
+      const regularFont = pathMod.join(fontDir, "NotoSans-Regular.ttf");
+      const boldFont = pathMod.join(fontDir, "NotoSans-Bold.ttf");
+      const arabicFont = pathMod.join(fontDir, "NotoSansArabic-Regular.ttf");
+      const hasRegular = fsMod.existsSync(regularFont);
+      const hasBold = fsMod.existsSync(boldFont);
+      const hasArabic = fsMod.existsSync(arabicFont);
+
+      const isRtl = (s: string) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
+
       const doc = new PDFDocument({ size: "A4", margin: 40 });
+      if (hasRegular) doc.registerFont("NotoSans", regularFont);
+      if (hasBold) doc.registerFont("NotoSansBold", boldFont);
+      if (hasArabic) doc.registerFont("NotoArabic", arabicFont);
+      const mainFont = hasRegular ? "NotoSans" : "Helvetica";
+      const boldFontName = hasBold ? "NotoSansBold" : "Helvetica-Bold";
+
+      const getFont = (name: string, bold: boolean) => {
+        if (isRtl(name)) return hasArabic ? "NotoArabic" : mainFont;
+        return bold ? boldFontName : mainFont;
+      };
 
       const safeTitle = quiz.title.replace(/[^a-zA-Z0-9\u0400-\u04FF\u0600-\u06FF]/g, "_");
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}_natijalar.pdf"`);
       doc.pipe(res);
 
-      doc.fontSize(20).text(quiz.title, { align: "center" });
+      doc.font(isRtl(quiz.title) ? (hasArabic ? "NotoArabic" : mainFont) : boldFontName).fontSize(20).text(quiz.title, { align: "center" });
       doc.moveDown(0.3);
-      doc.fontSize(11).fillColor("#666").text(`Natijalar — ${new Date().toLocaleDateString("uz-UZ")}`, { align: "center" });
+      doc.font(mainFont).fontSize(11).fillColor("#666").text(`Natijalar — ${new Date().toLocaleDateString("uz-UZ")}`, { align: "center" });
       doc.moveDown(0.8);
 
       doc.fillColor("#000");
 
       const colX = [45, 80, 280, 380, 450];
       const headerY = doc.y;
-      doc.fontSize(10).font("Helvetica-Bold");
+      doc.fontSize(10).font(boldFontName);
       doc.text("#", colX[0], headerY);
       doc.text("Ism", colX[1], headerY);
       doc.text("Ball", colX[2], headerY);
@@ -1555,9 +1578,8 @@ export async function registerRoutes(
       doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#ccc").stroke();
       doc.moveDown(0.3);
 
-      doc.font("Helvetica");
       results.forEach((r: any, i: number) => {
-        const name = r.guestName || `O'yinchi #${r.participantId.slice(-4)}`;
+        const name = r.guestName || `O'yinchi #${r.participantId?.slice(-4) || "?"}`;
         const pct = r.totalQuestions > 0 ? Math.round((r.correctAnswers / r.totalQuestions) * 100) : 0;
 
         if (doc.y > 750) {
@@ -1565,11 +1587,11 @@ export async function registerRoutes(
         }
 
         const rowY = doc.y;
-        if (i < 3) doc.font("Helvetica-Bold"); else doc.font("Helvetica");
-        doc.fontSize(10);
+        const bold = i < 3;
+        doc.font(getFont(name, bold)).fontSize(10);
         doc.text(`${i + 1}`, colX[0], rowY);
         doc.text(name, colX[1], rowY, { width: 190 });
-        doc.text(`${r.totalScore}`, colX[2], rowY);
+        doc.font(bold ? boldFontName : mainFont).text(`${r.totalScore}`, colX[2], rowY);
         doc.text(`${r.correctAnswers}/${r.totalQuestions}`, colX[3], rowY);
         doc.text(`${pct}%`, colX[4], rowY);
         doc.moveDown(0.4);
