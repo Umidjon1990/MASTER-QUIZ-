@@ -726,7 +726,8 @@ export default function QuizEditor() {
                       Oddiy savollar yoki Reading (matnli) bloklar bilan import qiling:
                     </p>
                     <Card className="p-3 text-xs font-mono bg-muted/50 space-y-0.5 leading-5 text-foreground/80 overflow-x-auto">
-                      <p className="text-amber-600 font-semibold">Reading: O'rmon hayvonlari</p>
+                      <p className="text-amber-600 font-semibold">Reading: O'rmon hayvonlari | 60</p>
+                      <p className="text-amber-600">Vaqt: 60</p>
                       <p className="text-amber-600">Matn: O'rmonda turli xil hayvonlar yashaydi.</p>
                       <p className="text-amber-600">Ular bir-biri bilan do'st bo'lib yashaydi.</p>
                       <p className="text-amber-600">Savollar:</p>
@@ -734,20 +735,20 @@ export default function QuizEditor() {
                       <p>A) Baliqlar</p>
                       <p>B) Hayvonlar *</p>
                       <p>C) Tog'lar</p>
-                      <p>D) Dengizlar</p>
                       <p>2. Hayvonlar qanday yashaydi?</p>
                       <p>A) Janjallashib</p>
                       <p>B) Do'st bo'lib *</p>
                       <p className="text-muted-foreground">---</p>
-                      <p className="text-muted-foreground">3. Oddiy savol (reading siz)</p>
+                      <p className="text-muted-foreground">3. Oddiy savol (reading siz, 30s)</p>
                       <p className="text-muted-foreground">A) Variant *</p>
                       <p className="text-muted-foreground">B) Variant</p>
                     </Card>
                     <div className="text-xs text-muted-foreground space-y-1">
-                      <p>• <span className="text-amber-600 font-medium">Reading:</span> — yangi reading blok boshlaydi (sarlavha ixtiyoriy)</p>
+                      <p>• <span className="text-amber-600 font-medium">Reading: Sarlavha | 60</span> — reading blok + timer (soniyada)</p>
+                      <p>• <span className="text-amber-600 font-medium">Vaqt: 60</span> — timer alohida qatorda ham yozsa bo'ladi</p>
                       <p>• <span className="text-amber-600 font-medium">Matn:</span> — reading matni (bir yoki ko'p qator)</p>
                       <p>• <span className="text-amber-600 font-medium">Savollar:</span> — savollar boshlanishini bildiradi</p>
-                      <p>• <span className="font-medium">---</span> — reading blokni tugatadi (oddiy savollar uchun)</p>
+                      <p>• <span className="font-medium">---</span> — reading blokni tugatadi</p>
                       <p>• To'g'ri javob yoniga <span className="font-medium">*</span> belgisi qo'ying</p>
                     </div>
                     <Textarea

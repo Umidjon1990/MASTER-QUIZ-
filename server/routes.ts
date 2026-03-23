@@ -934,13 +934,14 @@ export async function registerRoutes(
       let currentQ: any = null;
 
       // Reading section tracking
-      interface ReadingSection { passageTitle: string; passageText: string; fromIndex: number; toIndex: number; }
+      interface ReadingSection { passageTitle: string; passageText: string; fromIndex: number; toIndex: number; timePerQuestion?: number; }
       const newReadingSections: ReadingSection[] = [];
       let inReading = false;
       let readingPassageTitle = "";
       let readingPassageLines: string[] = [];
       let readingStartQIndex = -1;
       let inSavollar = false;
+      let readingTimePerQuestion: number | undefined = undefined;
 
       // Arabic reading mode: collecting passage+question lines before seeing first option
       let arabicReadingMode = false;
@@ -976,6 +977,7 @@ export async function registerRoutes(
             passageText: readingPassageLines.join("\n").trim(),
             fromIndex: startIndex + readingStartQIndex + 1,
             toIndex: startIndex + imported.length,
+            timePerQuestion: readingTimePerQuestion,
           });
         }
         inReading = false;
@@ -983,6 +985,7 @@ export async function registerRoutes(
         readingPassageTitle = "";
         readingPassageLines = [];
         readingStartQIndex = -1;
+        readingTimePerQuestion = undefined;
       };
 
       // Arabic reading block markers (اقرأ النص / iqra an-nass)
@@ -1017,6 +1020,7 @@ export async function registerRoutes(
         }
 
         // --- Latin "Reading:" marker ---
+        // Formats: "Reading: Title", "Reading: Title | 60", "Reading: | 45"
         if (readingStart) {
           if (arabicReadingMode) arabicReadingMode = false;
           await saveCurrentQ();
@@ -1024,7 +1028,16 @@ export async function registerRoutes(
           closeReadingSection();
           inReading = true;
           inSavollar = false;
-          readingPassageTitle = readingStart[1]?.trim() || "";
+          const titleRaw = readingStart[1]?.trim() || "";
+          const pipeIdx = titleRaw.lastIndexOf("|");
+          if (pipeIdx >= 0) {
+            readingPassageTitle = titleRaw.slice(0, pipeIdx).trim();
+            const secNum = parseInt(titleRaw.slice(pipeIdx + 1).trim(), 10);
+            if (!isNaN(secNum) && secNum > 0) readingTimePerQuestion = secNum;
+          } else {
+            readingPassageTitle = titleRaw;
+            readingTimePerQuestion = undefined;
+          }
           readingPassageLines = [];
           readingStartQIndex = imported.length;
           continue;
@@ -1032,6 +1045,13 @@ export async function registerRoutes(
 
         // --- Latin reading: collecting passage ---
         if (inReading && !inSavollar) {
+          // "Vaqt: 60" or "Vaqt:60" sets timer for this reading block
+          const vaqtMatch = trimmed.match(/^vaqt\s*:\s*(\d+)/i);
+          if (vaqtMatch) {
+            const t = parseInt(vaqtMatch[1], 10);
+            if (!isNaN(t) && t > 0) readingTimePerQuestion = t;
+            continue;
+          }
           if (matnMatch) {
             const firstLine = matnMatch[1].trim();
             if (firstLine) readingPassageLines.push(firstLine);
@@ -1137,6 +1157,7 @@ export async function registerRoutes(
             toIndex: s.toIndex,
             passageTitle: s.passageTitle || undefined,
             passageText: s.passageText || undefined,
+            timePerQuestion: s.timePerQuestion || undefined,
           })),
         ];
         await storage.updateQuiz(req.params.quizId, { questionSections: merged } as any);
