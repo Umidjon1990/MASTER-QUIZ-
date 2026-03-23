@@ -392,8 +392,10 @@ export default function QuizEditor() {
       if (!res.ok) throw new Error("Import failed");
       const data = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/quizzes", quizId, "questions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quizzes", quizId] });
       queryClient.invalidateQueries({ queryKey: ["/api/quizzes"] });
-      toast({ title: `${data.imported} ta savol yuklandi!` });
+      const sectionMsg = data.readingSections ? ` (${data.readingSections} ta reading bo'lim)` : "";
+      toast({ title: `${data.imported} ta savol yuklandi!${sectionMsg}` });
       setImportText("");
       setTextImportOpen(false);
     } catch {
@@ -715,21 +717,39 @@ export default function QuizEditor() {
                     <FileText className="w-4 h-4 mr-1" /> Matndan import
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-lg">
+                <DialogContent className="max-w-xl">
                   <DialogHeader>
                     <DialogTitle>Matndan savollar yuklash</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      Har bir savolni quyidagi formatda yozing. To'g'ri javob yoniga * belgisini qo'ying:
+                      Oddiy savollar yoki Reading (matnli) bloklar bilan import qiling:
                     </p>
-                    <Card className="p-3 text-xs font-mono text-muted-foreground space-y-1">
-                      <p>1. Savol matni</p>
-                      <p>A) Birinchi variant</p>
-                      <p>B) To'g'ri javob *</p>
-                      <p>C) Uchinchi variant</p>
-                      <p>D) To'rtinchi variant</p>
+                    <Card className="p-3 text-xs font-mono bg-muted/50 space-y-0.5 leading-5 text-foreground/80 overflow-x-auto">
+                      <p className="text-amber-600 font-semibold">Reading: O'rmon hayvonlari</p>
+                      <p className="text-amber-600">Matn: O'rmonda turli xil hayvonlar yashaydi.</p>
+                      <p className="text-amber-600">Ular bir-biri bilan do'st bo'lib yashaydi.</p>
+                      <p className="text-amber-600">Savollar:</p>
+                      <p>1. O'rmonda nimalar yashaydi?</p>
+                      <p>A) Baliqlar</p>
+                      <p>B) Hayvonlar *</p>
+                      <p>C) Tog'lar</p>
+                      <p>D) Dengizlar</p>
+                      <p>2. Hayvonlar qanday yashaydi?</p>
+                      <p>A) Janjallashib</p>
+                      <p>B) Do'st bo'lib *</p>
+                      <p className="text-muted-foreground">---</p>
+                      <p className="text-muted-foreground">3. Oddiy savol (reading siz)</p>
+                      <p className="text-muted-foreground">A) Variant *</p>
+                      <p className="text-muted-foreground">B) Variant</p>
                     </Card>
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <p>• <span className="text-amber-600 font-medium">Reading:</span> — yangi reading blok boshlaydi (sarlavha ixtiyoriy)</p>
+                      <p>• <span className="text-amber-600 font-medium">Matn:</span> — reading matni (bir yoki ko'p qator)</p>
+                      <p>• <span className="text-amber-600 font-medium">Savollar:</span> — savollar boshlanishini bildiradi</p>
+                      <p>• <span className="font-medium">---</span> — reading blokni tugatadi (oddiy savollar uchun)</p>
+                      <p>• To'g'ri javob yoniga <span className="font-medium">*</span> belgisi qo'ying</p>
+                    </div>
                     <Textarea
                       value={importText}
                       onChange={(e) => setImportText(e.target.value)}

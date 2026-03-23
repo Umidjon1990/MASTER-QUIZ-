@@ -933,6 +933,15 @@ export async function registerRoutes(
       const imported: any[] = [];
       let currentQ: any = null;
 
+      // Reading section tracking
+      interface ReadingSection { passageTitle: string; passageText: string; fromIndex: number; toIndex: number; }
+      const newReadingSections: ReadingSection[] = [];
+      let inReading = false;
+      let readingPassageTitle = "";
+      let readingPassageLines: string[] = [];
+      let readingStartQIndex = -1; // 1-based
+      let inSavollar = false;
+
       const saveCurrentQ = async () => {
         if (!currentQ || !currentQ.questionText) return;
         const correct = currentQ.options.find((o: string) => o.endsWith(" *") || o.endsWith("*"));
@@ -956,43 +965,117 @@ export async function registerRoutes(
         }
       };
 
-      for (let li = 0; li < rawLines.length; li++) {
-        const line = rawLines[li].replace(/^\s+/, "").replace(/\s+$/, "");
+      const closeReadingSection = () => {
+        if (inReading && readingStartQIndex >= 0 && imported.length >= readingStartQIndex) {
+          newReadingSections.push({
+            passageTitle: readingPassageTitle,
+            passageText: readingPassageLines.join("\n").trim(),
+            fromIndex: startIndex + readingStartQIndex + 1,
+            toIndex: startIndex + imported.length,
+          });
+        }
+        inReading = false;
+        inSavollar = false;
+        readingPassageTitle = "";
+        readingPassageLines = [];
+        readingStartQIndex = -1;
+      };
 
-        if (!line) {
-          // Bo'sh qatorni e'tiborsiz qoldiramiz — variantlar orasida bo'sh qator bo'lishi mumkin
-          // Savolni faqat yangi savol boshlanganida yoki fayl oxirida saqlaymiz
+      for (let li = 0; li < rawLines.length; li++) {
+        const line = rawLines[li].replace(/\s+$/, "");
+        const trimmed = line.trim();
+
+        // --- Reading block detection ---
+        // "Reading:" yoki "READING:" yoki "Reading: Sarlavha"
+        const readingStart = trimmed.match(/^reading\s*:?\s*(.*)?$/i);
+        // "---" separator closes reading block
+        const isSeparator = /^-{3,}$/.test(trimmed);
+        // "Matn:" prefix for passage text
+        const matnMatch = trimmed.match(/^matn\s*:\s*(.*)/i);
+        // "Savollar:" marker
+        const savollarMatch = /^savollar\s*:?/i.test(trimmed);
+
+        if (isSeparator) {
+          await saveCurrentQ();
+          currentQ = null;
+          closeReadingSection();
           continue;
         }
 
-        const optMatch = line.match(/^([A-Da-d])[\.\)\s]\s*(.*)/);
-        const qMatch = line.match(/^(\d+)\s*[\.\)\-\t]\s*(.*)/);
+        if (readingStart) {
+          await saveCurrentQ();
+          currentQ = null;
+          closeReadingSection();
+          inReading = true;
+          inSavollar = false;
+          readingPassageTitle = readingStart[1]?.trim() || "";
+          readingPassageLines = [];
+          readingStartQIndex = imported.length;
+          continue;
+        }
+
+        if (inReading && !inSavollar) {
+          if (matnMatch) {
+            const firstLine = matnMatch[1].trim();
+            if (firstLine) readingPassageLines.push(firstLine);
+            continue;
+          }
+          if (savollarMatch) {
+            inSavollar = true;
+            continue;
+          }
+          if (!trimmed) continue;
+          // Still collecting passage text lines (after Matn: or without explicit Matn: keyword)
+          readingPassageLines.push(trimmed);
+          continue;
+        }
+
+        if (!trimmed) continue;
+
+        const optMatch = trimmed.match(/^([A-Da-d])[\.\)\s]\s*(.*)/);
+        const qMatch = trimmed.match(/^(\d+)\s*[\.\)\-\t]\s*(.*)/);
 
         if (optMatch && currentQ) {
           currentQ.options.push(optMatch[2].trim());
         } else if (qMatch) {
           await saveCurrentQ();
-          let qText = qMatch[2].trim();
+          const qText = qMatch[2].trim();
           if (!qText) continue;
           currentQ = { questionText: qText, options: [], correctAnswer: "" };
         } else if (!optMatch) {
           if (currentQ && currentQ.options.length === 0) {
-            // Savol matni davomi
-            currentQ.questionText += " " + line;
+            currentQ.questionText += " " + trimmed;
           } else if (currentQ && currentQ.options.length > 0) {
-            // Variantlar tugagandan keyin yangi savol matni
             await saveCurrentQ();
-            currentQ = { questionText: line, options: [], correctAnswer: "" };
+            currentQ = { questionText: trimmed, options: [], correctAnswer: "" };
           } else {
             await saveCurrentQ();
-            currentQ = { questionText: line, options: [], correctAnswer: "" };
+            currentQ = { questionText: trimmed, options: [], correctAnswer: "" };
           }
         }
       }
 
       await saveCurrentQ();
+      closeReadingSection();
 
-      res.json({ imported: imported.length, questions: imported });
+      // Merge new reading sections into quiz questionSections
+      if (newReadingSections.length > 0) {
+        const quiz = await storage.getQuiz(req.params.quizId);
+        const existingSections: any[] = (quiz as any)?.questionSections || [];
+        const merged = [
+          ...existingSections,
+          ...newReadingSections.map((s, i) => ({
+            id: `reading-${Date.now()}-${i}`,
+            fromIndex: s.fromIndex,
+            toIndex: s.toIndex,
+            passageTitle: s.passageTitle || undefined,
+            passageText: s.passageText || undefined,
+          })),
+        ];
+        await storage.updateQuiz(req.params.quizId, { questionSections: merged } as any);
+      }
+
+      res.json({ imported: imported.length, questions: imported, readingSections: newReadingSections.length });
     } catch (error) {
       console.error("Text import error:", error);
       res.status(500).json({ message: "Import xatosi" });
