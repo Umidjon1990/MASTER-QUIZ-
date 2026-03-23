@@ -128,6 +128,7 @@ export default function QuizEditor() {
       passageText: s.passageText || "",
       timePerQuestion: s.timePerQuestion || 0,
     })));
+    if (qs.length > 0) setSectionsPanelOpen(true);
     setInitialized(true);
   }
 
