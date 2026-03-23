@@ -627,6 +627,11 @@ export async function registerRoutes(
       const quiz = await storage.getQuiz(shared.quizId);
       if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
 
+      // Mashq rejimi: natija saqlanmaydi
+      if (quiz.practiceMode) {
+        return res.json({ id: "practice_mode", playerName: playerName.trim() });
+      }
+
       const attempt = await storage.createSharedQuizAttempt({
         sharedQuizId: shared.id,
         playerName: playerName.trim(),
@@ -642,6 +647,11 @@ export async function registerRoutes(
     try {
       const { attemptId, answers, score, correctAnswers, totalQuestions } = req.body;
       if (!attemptId) return res.status(400).json({ message: "attemptId kerak" });
+
+      // Mashq rejimi: natija saqlanmaydi
+      if (attemptId === "practice_mode") {
+        return res.json({ id: "practice_mode", score: score || 0, correctAnswers: correctAnswers || 0, totalQuestions: totalQuestions || 0 });
+      }
 
       const attempt = await storage.getSharedQuizAttempt(attemptId);
       if (!attempt) return res.status(404).json({ message: "Urinish topilmadi" });
