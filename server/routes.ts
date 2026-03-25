@@ -4177,23 +4177,42 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Manba sinf topilmadi yoki ruxsat yo'q" });
       }
       const sourceTasks = await storage.getAiTasks(sourceId);
-      const existingTasks = await storage.getAiTasks(id);
-      for (const task of existingTasks) {
-        await storage.deleteAiTask(task.id);
-      }
-      for (const task of sourceTasks) {
-        await storage.createAiTask({
-          aiClassId: id,
-          lessonNumber: task.lessonNumber,
-          title: task.title,
-          orderIndex: task.orderIndex,
-          prompt: task.prompt,
-          referenceText: task.referenceText,
-          type: task.type || "audio",
-        });
+      const mode: "replace" | "append" = req.body?.mode === "append" ? "append" : "replace";
+      if (mode === "replace") {
+        const existingTasks = await storage.getAiTasks(id);
+        for (const task of existingTasks) {
+          await storage.deleteAiTask(task.id);
+        }
+        for (const task of sourceTasks) {
+          await storage.createAiTask({
+            aiClassId: id,
+            lessonNumber: task.lessonNumber,
+            title: task.title,
+            orderIndex: task.orderIndex,
+            prompt: task.prompt,
+            referenceText: task.referenceText,
+            type: task.type || "audio",
+          });
+        }
+      } else {
+        const existingTasks = await storage.getAiTasks(id);
+        const maxLesson = existingTasks.length > 0
+          ? Math.max(...existingTasks.map(t => t.lessonNumber || 1))
+          : 0;
+        for (const task of sourceTasks) {
+          await storage.createAiTask({
+            aiClassId: id,
+            lessonNumber: (task.lessonNumber || 1) + maxLesson,
+            title: task.title,
+            orderIndex: task.orderIndex,
+            prompt: task.prompt,
+            referenceText: task.referenceText,
+            type: task.type || "audio",
+          });
+        }
       }
       const newTasks = await storage.getAiTasks(id);
-      res.json({ success: true, count: newTasks.length });
+      res.json({ success: true, count: newTasks.length, mode });
     } catch (error) {
       console.error("Copy tasks error:", error);
       res.status(500).json({ message: "Server error" });

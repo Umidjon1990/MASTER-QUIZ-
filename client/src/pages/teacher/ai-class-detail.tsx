@@ -61,6 +61,7 @@ export default function AiClassDetail() {
   const [selectedSourceId, setSelectedSourceId] = useState<string>("");
   const [copyConfirmStep, setCopyConfirmStep] = useState(false);
   const [copySourceInfo, setCopySourceInfo] = useState<{ name: string; count: number } | null>(null);
+  const [copyMode, setCopyMode] = useState<"replace" | "append">("replace");
 
   const { data: aiClass, isLoading } = useQuery<any>({
     queryKey: ["/api/ai-classes", classId],
@@ -181,8 +182,8 @@ export default function AiClassDetail() {
   });
 
   const copyTasksMutation = useMutation({
-    mutationFn: async (sourceId: string) => {
-      const res = await apiRequest("POST", `/api/ai-classes/${classId}/copy-tasks-from/${sourceId}`);
+    mutationFn: async ({ sourceId, mode }: { sourceId: string; mode: "replace" | "append" }) => {
+      const res = await apiRequest("POST", `/api/ai-classes/${classId}/copy-tasks-from/${sourceId}`, { mode });
       return res.json();
     },
     onSuccess: (data: any) => {
@@ -192,7 +193,9 @@ export default function AiClassDetail() {
       setCopyConfirmStep(false);
       setSelectedSourceId("");
       setCopySourceInfo(null);
-      toast({ title: `${data.count} ta vazifa muvaffaqiyatli ko'chirildi!` });
+      setCopyMode("replace");
+      const actionLabel = data.mode === "append" ? "qo'shildi" : "ko'chirildi";
+      toast({ title: `${data.count} ta vazifa muvaffaqiyatli ${actionLabel}!` });
     },
     onError: (err: any) => toast({ title: "Xatolik", description: err.message, variant: "destructive" }),
   });
@@ -1102,14 +1105,14 @@ export default function AiClassDetail() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={copyImportOpen} onOpenChange={(open) => { setCopyImportOpen(open); if (!open) { setCopyConfirmStep(false); setSelectedSourceId(""); setCopySourceInfo(null); } }}>
+      <Dialog open={copyImportOpen} onOpenChange={(open) => { setCopyImportOpen(open); if (!open) { setCopyConfirmStep(false); setSelectedSourceId(""); setCopySourceInfo(null); setCopyMode("replace"); } }}>
         <DialogContent className="max-w-sm max-h-[75vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{copyConfirmStep ? "Tasdiqlash" : "Boshqa guruhdan vazifalar import"}</DialogTitle>
+            <DialogTitle>{copyConfirmStep ? "Usul va tasdiqlash" : "Boshqa guruhdan vazifalar import"}</DialogTitle>
           </DialogHeader>
           {!copyConfirmStep ? (
             <>
-              <p className="text-sm text-muted-foreground mb-3">Guruh tanlang — uning barcha darslar va vazifalari bu sinfga ko'chiriladi (mavjud vazifalar o'chirilib)</p>
+              <p className="text-sm text-muted-foreground mb-3">Guruh tanlang — uning barcha darslar va vazifalari bu sinfga import qilinadi</p>
               <div className="space-y-2">
                 {allAiClasses.filter((c: any) => c.id !== classId).map((cls: any) => (
                   <button
@@ -1117,6 +1120,7 @@ export default function AiClassDetail() {
                     onClick={() => {
                       setSelectedSourceId(cls.id);
                       setCopySourceInfo({ name: cls.name, count: cls.taskCount || 0 });
+                      setCopyMode("replace");
                       setCopyConfirmStep(true);
                     }}
                     className="w-full text-left p-3 rounded-lg border hover:bg-muted/50 transition-colors flex items-center justify-between"
@@ -1133,21 +1137,41 @@ export default function AiClassDetail() {
             </>
           ) : (
             <div className="space-y-4">
-              <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
-                <p className="text-sm font-medium text-amber-800 dark:text-amber-300">Diqqat!</p>
-                <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
-                  Bu sinfning mavjud <strong>{allTasks.length} ta</strong> vazifasi o'chirilib, "{copySourceInfo?.name}" guruhidan <strong>{copySourceInfo?.count} ta</strong> vazifa ko'chiriladi.
-                </p>
+              <p className="text-sm font-medium">"{copySourceInfo?.name}" guruhidan {copySourceInfo?.count} ta vazifa import qilinadi</p>
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Import usuli</p>
+                <button
+                  onClick={() => setCopyMode("replace")}
+                  className={`w-full text-left p-3 rounded-lg border transition-colors ${copyMode === "replace" ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}
+                  data-testid="button-mode-replace"
+                >
+                  <p className="font-medium text-sm">Almashtirish</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Mavjud {allTasks.length} ta vazifa o'chirilib, yangilari bilan almashtiriladi</p>
+                </button>
+                <button
+                  onClick={() => setCopyMode("append")}
+                  className={`w-full text-left p-3 rounded-lg border transition-colors ${copyMode === "append" ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}
+                  data-testid="button-mode-append"
+                >
+                  <p className="font-medium text-sm">Qo'shish (append)</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Mavjud {allTasks.length} ta vazifa saqlanib, {copySourceInfo?.count} ta yangi vazifa oxiriga qo'shiladi</p>
+                </button>
               </div>
-              <p className="text-sm text-muted-foreground">Bu amalni bekor qilib bo'lmaydi. Davom etasizmi?</p>
+              {copyMode === "replace" && allTasks.length > 0 && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-400">
+                  Diqqat: mavjud {allTasks.length} ta vazifa va ularning natijalari o'chirilib ketadi
+                </div>
+              )}
               <DialogFooter className="flex gap-2">
                 <Button variant="outline" onClick={() => setCopyConfirmStep(false)}>Orqaga</Button>
                 <Button
-                  onClick={() => copyTasksMutation.mutate(selectedSourceId)}
+                  onClick={() => copyTasksMutation.mutate({ sourceId: selectedSourceId, mode: copyMode })}
                   disabled={copyTasksMutation.isPending}
                   data-testid="button-confirm-copy-tasks"
                 >
-                  {copyTasksMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Ko'chirilmoqda...</> : "Ha, ko'chirish"}
+                  {copyTasksMutation.isPending
+                    ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Bajarilmoqda...</>
+                    : copyMode === "replace" ? "Almashtirish" : "Qo'shish"}
                 </Button>
               </DialogFooter>
             </div>
