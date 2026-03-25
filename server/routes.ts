@@ -4038,6 +4038,10 @@ export async function registerRoutes(
       if (!name) return res.status(400).json({ message: "Sinf nomi kerak" });
 
       if (telegramBotToken) {
+        const existing = await storage.getAiClassByBotToken(telegramBotToken);
+        if (existing) {
+          return res.status(400).json({ message: "Bu bot token allaqachon boshqa sinfda ishlatilmoqda" });
+        }
         try {
           const TelegramBot = (await import("node-telegram-bot-api")).default;
           const testBot = new TelegramBot(telegramBotToken);
@@ -4129,6 +4133,12 @@ export async function registerRoutes(
       if (!aiClass) return res.status(404).json({ message: "AI sinf topilmadi" });
       if (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
+      }
+      if (req.body.telegramBotToken && req.body.telegramBotToken !== aiClass.telegramBotToken) {
+        const existingWithToken = await storage.getAiClassByBotToken(req.body.telegramBotToken);
+        if (existingWithToken && existingWithToken.id !== req.params.id) {
+          return res.status(400).json({ message: "Bu bot token allaqachon boshqa sinfda ishlatilmoqda" });
+        }
       }
       const updated = await storage.updateAiClass(req.params.id, req.body);
       res.json(updated);

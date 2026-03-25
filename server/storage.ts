@@ -185,7 +185,8 @@ export interface IStorage {
   createAiStudent(data: InsertAiStudent): Promise<AiStudent>;
   getAiStudents(aiClassId: string): Promise<AiStudent[]>;
   getAiStudentByPhone(aiClassId: string, phone: string): Promise<AiStudent | undefined>;
-  getAiStudentByTelegramChatId(chatId: string): Promise<AiStudent | undefined>;
+  getAiStudentByTelegramChatId(chatId: string, aiClassId: string): Promise<AiStudent | undefined>;
+  getAiClassByBotToken(token: string): Promise<AiClass | undefined>;
   updateAiStudent(id: string, data: Partial<InsertAiStudent>): Promise<AiStudent | undefined>;
   deleteAiStudent(id: string): Promise<void>;
 
@@ -907,8 +908,14 @@ export class DatabaseStorage implements IStorage {
     return found;
   }
 
-  async getAiStudentByTelegramChatId(chatId: string): Promise<AiStudent | undefined> {
-    const [found] = await db.select().from(aiStudents).where(eq(aiStudents.telegramChatId, chatId));
+  async getAiStudentByTelegramChatId(chatId: string, aiClassId: string): Promise<AiStudent | undefined> {
+    const [found] = await db.select().from(aiStudents)
+      .where(and(eq(aiStudents.telegramChatId, chatId), eq(aiStudents.aiClassId, aiClassId)));
+    return found;
+  }
+
+  async getAiClassByBotToken(token: string): Promise<AiClass | undefined> {
+    const [found] = await db.select().from(aiClasses).where(eq(aiClasses.telegramBotToken, token));
     return found;
   }
 
