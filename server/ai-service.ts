@@ -90,7 +90,7 @@ export async function transcribeAudio(audioBuffer: Buffer, filename: string = "a
     const response = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tmpFile),
       model: "gpt-4o-mini-transcribe",
-      prompt: "Bu audioda o'quvchi arab tilidagi matnni o'qiydi va o'zbek tiliga tarjima qiladi. Audioda arabcha va o'zbekcha aralash bo'ladi. O'zbek tilidagi qismlarni ALBATTA lotin alifbosida yoz (masalan: bu kitob foydali, tarjima qilish kerak). Arab tilidagi qismlarni arab alifbosida yoz. Hech qachon o'zbek tilini arab yoki kirill harflarida yozma — faqat lotin. Misol: 'الكتاب المفيد — bu foydali kitob, o'qish uchun yaxshi'.",
+      prompt: "O'quvchi ovozli xabar yuboradi. Matnda har xil tillar (arabcha, o'zbekcha, inglizcha va boshqalar) aralash bo'lishi mumkin — barchasi tabiy holda. O'zbek tilidagi qismlarni faqat lotin alifbosida yoz. Arab tilidagi qismlarni arab alifbosida yoz. Boshqa tillarda o'sha tilning alifbosida yoz. Aniq eshitilganicha yoz.",
     });
 
     console.log(`[AI-SERVICE] STT transcription success: ${response.text?.substring(0, 80)}...`);
@@ -140,46 +140,38 @@ export async function evaluateSubmission({
 }): Promise<{ score: number; feedback: string }> {
   let typeContext = "";
   if (submissionType === "audio_sample") {
-    typeContext = "\nBu audio yozuvning 3 joydan olingan namunasi (boshi, o'rtasi, oxiri). Shu namuna asosida o'quvchining umumiy o'qish sifatini baholay.";
+    typeContext = "\nESLATMA: Bu audio yozuvning 3 joydan olingan namunasi (boshi, o'rtasi, oxiri). Shu namuna asosida o'quvchining umumiy o'qish va tarjima sifatini baholay.";
   } else if (submissionType === "image") {
-    typeContext = "\nBu o'quvchining daftardagi yozuvi (OCR orqali o'qilgan). Yozuv sifatini ham hisobga ol.";
+    typeContext = "\nESLATMA: Bu o'quvchining daftardagi yozuvi (OCR orqali o'qilgan). Mazmunni baholashda yozuv sifatini ham hisobga ol.";
   }
 
-  const systemMessage = `Sen tajribali arab tili o'qituvchisissan.
+  const systemMessage = `Sen tajribali o'qituvchissan va o'quvchilarning topshiriqlarini baholaysan.
 
-JARAYON:
-O'quvchi arab tilidagi asl matnni ovozli o'qiydi va o'zbek tiliga MA'NOVIY TARJIMA qiladi. Sening vazifang — tarjima sifatini baholash.
+BAHOLASH JARAYONI:
+- O'quvchi ovozli xabar yuboradi, u avtomatik matnga aylantiriladi
+- Matnda turli tillar aralash bo'lishi mumkin — bu NORMAL holat
+- Ba'zi so'zlar transkripsiyada buzilishi yoki noto'g'ri yozilishi mumkin — buni o'quvchining xatosi deb hisoblaMA
+- Asosiy e'tibor: o'quvchi vazifani TUSHUNDIMI va BAJARISHGA HARAKAT QILDIMI?
 
-TRANSKRIPSIYA HAQIDA (juda muhim):
-- O'quvchining javobi audio dan avtomatik transkripsiya qilingan
-- Audioda arab va o'zbek tillari ARALASH bo'ladi — bu NORMAL
-- Arab so'zlari lotin harflarida chiqishi mumkin (masalan: "an-na'tu" = "النعت") — bu NORMAL
-- O'zbek so'zlari arab harflarida chiqishi mumkin — bu ham NORMAL
-- Transkripsiya sifatiga EMAS, o'quvchining TARJIMA MAZMUNIGA e'tibor ber
-- Ba'zi so'zlar transkripsiyada buzilishi mumkin — buni o'quvchining xatosi deb hisoblaMA
-
-BAHOLASH:
-- Asosiy mezon: o'quvchi asl matnning MAZMUNINI tushunganmi va o'zbekchaga yetkazganmi?
-- So'zma-so'z tarjima shart EMAS — erkin tarjima, ma'no tarjimasi to'liq qabul qilinadi
-- Matnning asosiy g'oyalari o'zbekchaga o'tkazilgan bo'lsa — 7-10 baho
-- O'quvchi harakat qilgan, lekin kamchiliklar bor — 5-6 baho
-- Butunlay noto'g'ri, mavzuga aloqasiz yoki bo'sh javob — 5 baho
-- O'quvchidan sharh, izoh yoki tushuntirish KUTILMAYDI — u faqat tarjimachi
+BAHOLASH MEZONI (5-10 shkala):
+- 9-10: Vazifa to'liq va sifatli bajarilgan
+- 7-8: Asosiy qism to'g'ri, kichik kamchiliklar bor
+- 5-6: O'quvchi harakat qilgan, lekin muhim kamchiliklar ko'zga tashlanadi
+- 5: Butunlay noto'g'ri yoki bo'sh javob (minimal baho)
 
 IZOH (30-40 so'z, o'zbek tilida lotin yozuvida):
-- Tarjimaning kuchli tomonlarini ayt
-- Agar kamchilik bo'lsa — qisqa, aniq ko'rsat
+- Kuchli tomonlarini ayt
+- Kamchilik bo'lsa — qisqa va aniq ko'rsat
 - Rag'batlantiruvchi xulosa bilan tugat
-- Arab so'zlarini kerak bo'lsa arab alifbosida (عربي) keltir
-- "tushuntirish yetarli emas", "sharh kam", "umuman noto'g'ri" kabi iboralarni ISHLATMA
+- "tushuntirish yetarli emas" kabi salbiy iboralar ISHLATMA
 ${typeContext}
-${instructions ? `\nO'qituvchi ko'rsatmasi: ${instructions}` : ""}
-${prompt ? `\nVazifa ko'rsatmasi: ${prompt}` : ""}
+${instructions ? `\nO'QITUVCHI KO'RSATMASI (eng muhim — shu ko'rsatmaga asoslanib baho ber):\n${instructions}` : ""}
+${prompt ? `\nVAZIFA KO'RSATMASI:\n${prompt}` : ""}
 
 Javobni faqat JSON formatda ber: {"score": <5-10>, "feedback": "<30-40 so'zli izoh>"}`;
 
   const userMessage = referenceText
-    ? `Asl matn (tarjima qilish kerak edi):\n${referenceText}\n\nO'quvchining javobi:\n${studentAnswer}`
+    ? `Mavzu matni (asl material):\n${referenceText}\n\nO'quvchining javobi:\n${studentAnswer}`
     : `O'quvchining javobi:\n${studentAnswer}`;
 
   const response = await openai.chat.completions.create({
