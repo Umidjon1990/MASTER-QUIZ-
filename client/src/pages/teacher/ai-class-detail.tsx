@@ -501,13 +501,14 @@ export default function AiClassDetail() {
         </TabsContent>
 
         <TabsContent value="students" className="mt-4">
-          <div className="flex justify-between items-center mb-3">
+          <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
             <p className="text-sm text-muted-foreground">{aiClass.students?.length || 0} ta o'quvchi</p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={async () => {
                 const students = aiClass.students || [];
-                if (students.length === 0) return;
+                if (students.length === 0) { toast({ title: "O'quvchilar yo'q" }); return; }
                 const XLSX = await import("xlsx");
+                const isArabic = (str: string) => /[\u0600-\u06FF]/.test(str);
                 const payLabel: Record<string, string> = { paid: "To'langan", unpaid: "To'lanmagan", partial: "Qisman", nasiya: "Nasiya" };
                 const data = students.map((s: any, i: number) => ({
                   "№": i + 1,
@@ -519,12 +520,20 @@ export default function AiClassDetail() {
                   "Izoh": s.paymentInfo?.note || "",
                 }));
                 const ws = XLSX.utils.json_to_sheet(data);
-                ws["!cols"] = [{ wch: 5 }, { wch: 30 }, { wch: 15 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 20 }];
+                ws["!cols"] = [{ wch: 5 }, { wch: 32 }, { wch: 15 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 22 }];
+                const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
+                for (let R = range.s.r + 1; R <= range.e.r; R++) {
+                  const nameCell = XLSX.utils.encode_cell({ r: R, c: 1 });
+                  if (ws[nameCell] && isArabic(ws[nameCell].v)) {
+                    ws[nameCell].s = { alignment: { readingOrder: 2, horizontal: "right" } };
+                  }
+                }
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, "O'quvchilar");
-                XLSX.writeFile(wb, `${aiClass.name || "sinf"}_o'quvchilar.xlsx`);
+                XLSX.writeFile(wb, `${aiClass.name || "sinf"}_oquvchilar.xlsx`);
+                toast({ title: `${students.length} ta o'quvchi yuklab olindi` });
               }} data-testid="button-download-students">
-                <Download className="w-3.5 h-3.5 mr-1" /> XLSX
+                <Download className="w-3.5 h-3.5 mr-1" /> Yuklab olish
               </Button>
               <Button size="sm" variant="outline" onClick={() => setPayPdfOpen(true)} data-testid="button-payment-pdf">
                 <Download className="w-3.5 h-3.5 mr-1" /> To'lov PDF
