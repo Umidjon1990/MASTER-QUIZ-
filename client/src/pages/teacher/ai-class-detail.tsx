@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Plus, Trash2, Power, PowerOff, Users, ListChecks, Settings, BarChart3, X, Phone, Wifi, WifiOff, Pencil, Check, ChevronDown, ChevronRight, Send, Upload, Loader2, Download, DollarSign, EyeOff, Eye, CreditCard } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Power, PowerOff, Users, ListChecks, Settings, BarChart3, X, Phone, Wifi, WifiOff, Pencil, Check, ChevronDown, ChevronRight, Send, Upload, Loader2, Download, DollarSign, EyeOff, Eye, CreditCard, Copy } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function AiClassDetail() {
@@ -57,6 +57,10 @@ export default function AiClassDetail() {
   const [payPdfOpen, setPayPdfOpen] = useState(false);
   const [payPdfFilter, setPayPdfFilter] = useState<"all"|"paid"|"nasiya"|"partial"|"unpaid">("all");
   const [showHiddenInNatija, setShowHiddenInNatija] = useState(false);
+  const [copyImportOpen, setCopyImportOpen] = useState(false);
+  const [selectedSourceId, setSelectedSourceId] = useState<string>("");
+  const [copyConfirmStep, setCopyConfirmStep] = useState(false);
+  const [copySourceInfo, setCopySourceInfo] = useState<{ name: string; count: number } | null>(null);
 
   const { data: aiClass, isLoading } = useQuery<any>({
     queryKey: ["/api/ai-classes", classId],
@@ -70,6 +74,10 @@ export default function AiClassDetail() {
 
   const { data: profile } = useQuery<any>({
     queryKey: ["/api/profile"],
+  });
+
+  const { data: allAiClasses = [] } = useQuery<any[]>({
+    queryKey: ["/api/ai-classes"],
   });
 
   const botStartMutation = useMutation({
@@ -170,6 +178,23 @@ export default function AiClassDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
     },
+  });
+
+  const copyTasksMutation = useMutation({
+    mutationFn: async (sourceId: string) => {
+      const res = await apiRequest("POST", `/api/ai-classes/${classId}/copy-tasks-from/${sourceId}`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId, "results"] });
+      setCopyImportOpen(false);
+      setCopyConfirmStep(false);
+      setSelectedSourceId("");
+      setCopySourceInfo(null);
+      toast({ title: `${data.count} ta vazifa muvaffaqiyatli ko'chirildi!` });
+    },
+    onError: (err: any) => toast({ title: "Xatolik", description: err.message, variant: "destructive" }),
   });
 
   function openPaymentDialog(student: any) {
@@ -640,11 +665,18 @@ export default function AiClassDetail() {
         </TabsContent>
 
         <TabsContent value="tasks" className="mt-4">
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
             <p className="text-sm text-muted-foreground">{lessonNumbers.length} ta dars, {allTasks.length} ta vazifa</p>
-            <Button size="sm" onClick={() => { setNewTaskLessonNum(maxLessonNum + 1); setAddTaskOpen(true); }} data-testid="button-add-ai-task">
-              <Plus className="w-3.5 h-3.5 mr-1" /> Vazifa qo'shish
-            </Button>
+            <div className="flex gap-2">
+              {allAiClasses.filter((c: any) => c.id !== classId).length > 0 && (
+                <Button size="sm" variant="outline" onClick={() => { setCopyConfirmStep(false); setSelectedSourceId(""); setCopySourceInfo(null); setCopyImportOpen(true); }} data-testid="button-import-ai-tasks">
+                  <Copy className="w-3.5 h-3.5 mr-1" /> Vazifalarni import
+                </Button>
+              )}
+              <Button size="sm" onClick={() => { setNewTaskLessonNum(maxLessonNum + 1); setAddTaskOpen(true); }} data-testid="button-add-ai-task">
+                <Plus className="w-3.5 h-3.5 mr-1" /> Vazifa qo'shish
+              </Button>
+            </div>
           </div>
           <div className="space-y-1">
             {lessonNumbers.map(lessonNum => {
@@ -1067,6 +1099,59 @@ export default function AiClassDetail() {
               {updateStudentMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Saqlanmoqda...</> : "Saqlash"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={copyImportOpen} onOpenChange={(open) => { setCopyImportOpen(open); if (!open) { setCopyConfirmStep(false); setSelectedSourceId(""); setCopySourceInfo(null); } }}>
+        <DialogContent className="max-w-sm max-h-[75vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{copyConfirmStep ? "Tasdiqlash" : "Boshqa guruhdan vazifalar import"}</DialogTitle>
+          </DialogHeader>
+          {!copyConfirmStep ? (
+            <>
+              <p className="text-sm text-muted-foreground mb-3">Guruh tanlang — uning barcha darslar va vazifalari bu sinfga ko'chiriladi (mavjud vazifalar o'chirilib)</p>
+              <div className="space-y-2">
+                {allAiClasses.filter((c: any) => c.id !== classId).map((cls: any) => (
+                  <button
+                    key={cls.id}
+                    onClick={() => {
+                      setSelectedSourceId(cls.id);
+                      setCopySourceInfo({ name: cls.name, count: cls.taskCount || 0 });
+                      setCopyConfirmStep(true);
+                    }}
+                    className="w-full text-left p-3 rounded-lg border hover:bg-muted/50 transition-colors flex items-center justify-between"
+                    data-testid={`button-copy-from-${cls.id}`}
+                  >
+                    <div>
+                      <p className="font-medium text-sm">{cls.name}</p>
+                      <p className="text-xs text-muted-foreground">{cls.taskCount || 0} ta vazifa</p>
+                    </div>
+                    <Copy className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="space-y-4">
+              <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-300">Diqqat!</p>
+                <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+                  Bu sinfning mavjud <strong>{allTasks.length} ta</strong> vazifasi o'chirilib, "{copySourceInfo?.name}" guruhidan <strong>{copySourceInfo?.count} ta</strong> vazifa ko'chiriladi.
+                </p>
+              </div>
+              <p className="text-sm text-muted-foreground">Bu amalni bekor qilib bo'lmaydi. Davom etasizmi?</p>
+              <DialogFooter className="flex gap-2">
+                <Button variant="outline" onClick={() => setCopyConfirmStep(false)}>Orqaga</Button>
+                <Button
+                  onClick={() => copyTasksMutation.mutate(selectedSourceId)}
+                  disabled={copyTasksMutation.isPending}
+                  data-testid="button-confirm-copy-tasks"
+                >
+                  {copyTasksMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Ko'chirilmoqda...</> : "Ha, ko'chirish"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

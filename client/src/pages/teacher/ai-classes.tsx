@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, BrainCircuit, Users, ListChecks, X, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, BrainCircuit, Users, ListChecks, X, ChevronDown, ChevronRight, Copy, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface TaskDraft {
@@ -37,6 +37,8 @@ export default function AiClasses() {
   const [tasks, setTasks] = useState<TaskDraft[]>([]);
   const [students, setStudents] = useState<StudentDraft[]>([{ name: "", phone: "" }]);
   const [expandedLessons, setExpandedLessons] = useState<Set<number>>(new Set());
+  const [importOpen, setImportOpen] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
 
   const { data: aiClasses = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/ai-classes"],
@@ -56,6 +58,35 @@ export default function AiClasses() {
       toast({ title: "Xatolik", description: err.message, variant: "destructive" });
     },
   });
+
+  async function importTasksFromClass(sourceId: string, sourceName: string) {
+    setImportLoading(true);
+    try {
+      const res = await apiRequest("GET", `/api/ai-classes/${sourceId}`);
+      const data = await res.json();
+      const sourceTasks: any[] = data.tasks || [];
+      if (sourceTasks.length === 0) {
+        toast({ title: "Bu sinfda vazifalar yo'q" });
+        setImportLoading(false);
+        return;
+      }
+      const drafted: TaskDraft[] = sourceTasks.map((t: any) => ({
+        lessonNumber: t.lessonNumber || 1,
+        title: t.title,
+        prompt: t.prompt || "",
+        referenceText: t.referenceText || "",
+        type: t.type || "audio",
+      }));
+      setTasks(drafted);
+      const uniqueLessons = [...new Set(drafted.map(t => t.lessonNumber))];
+      setLessonsCount(uniqueLessons.length);
+      setImportOpen(false);
+      toast({ title: `${sourceTasks.length} ta vazifa "${sourceName}" guruhidan yuklandi` });
+    } catch {
+      toast({ title: "Yuklab bo'lmadi", variant: "destructive" });
+    }
+    setImportLoading(false);
+  }
 
   function resetForm() {
     setCreateOpen(false);
@@ -203,7 +234,14 @@ export default function AiClasses() {
 
             {step === 1 && (
               <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Har bir darsni kengaytirib, vazifalarni tahrirlang</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">Har bir darsni kengaytirib, vazifalarni tahrirlang</p>
+                  {aiClasses.length > 0 && (
+                    <Button variant="outline" size="sm" className="text-xs" onClick={() => setImportOpen(true)} data-testid="button-wizard-import-tasks">
+                      <Copy className="w-3.5 h-3.5 mr-1" /> Boshqa guruhdan import
+                    </Button>
+                  )}
+                </div>
                 <div className="space-y-1 max-h-[400px] overflow-y-auto">
                   {lessonNumbers.map(lessonNum => {
                     const lessonTasks = tasks.filter(t => t.lessonNumber === lessonNum);
@@ -325,6 +363,32 @@ export default function AiClasses() {
             </div>
           </DialogContent>
         </Dialog>
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="max-w-sm max-h-[70vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Boshqa guruhdan import</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground mb-3">Guruh tanlang — uning barcha vazifalari yuklanadi (mavjud vazifalar o'rniga)</p>
+          <div className="space-y-2">
+            {aiClasses.map((cls: any) => (
+              <button
+                key={cls.id}
+                disabled={importLoading}
+                onClick={() => importTasksFromClass(cls.id, cls.name)}
+                className="w-full text-left p-3 rounded-lg border hover:bg-muted/50 transition-colors flex items-center justify-between"
+                data-testid={`button-import-from-${cls.id}`}
+              >
+                <div>
+                  <p className="font-medium text-sm">{cls.name}</p>
+                  <p className="text-xs text-muted-foreground">{cls.taskCount} ta vazifa</p>
+                </div>
+                {importLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4 text-muted-foreground" />}
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       </motion.div>
 
       {isLoading ? (

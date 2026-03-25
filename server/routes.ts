@@ -4162,6 +4162,44 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/ai-classes/:id/copy-tasks-from/:sourceId", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { id, sourceId } = req.params;
+      if (id === sourceId) {
+        return res.status(400).json({ message: "O'z-o'ziga nusxalab bo'lmaydi" });
+      }
+      const targetClass = await storage.getAiClass(id);
+      if (!targetClass || (targetClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const sourceClass = await storage.getAiClass(sourceId);
+      if (!sourceClass || (sourceClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Manba sinf topilmadi yoki ruxsat yo'q" });
+      }
+      const sourceTasks = await storage.getAiTasks(sourceId);
+      const existingTasks = await storage.getAiTasks(id);
+      for (const task of existingTasks) {
+        await storage.deleteAiTask(task.id);
+      }
+      for (const task of sourceTasks) {
+        await storage.createAiTask({
+          aiClassId: id,
+          lessonNumber: task.lessonNumber,
+          title: task.title,
+          orderIndex: task.orderIndex,
+          prompt: task.prompt,
+          referenceText: task.referenceText,
+          type: task.type || "audio",
+        });
+      }
+      const newTasks = await storage.getAiTasks(id);
+      res.json({ success: true, count: newTasks.length });
+    } catch (error) {
+      console.error("Copy tasks error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
   app.post("/api/ai-classes/:id/tasks", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const aiClass = await storage.getAiClass(req.params.id);
