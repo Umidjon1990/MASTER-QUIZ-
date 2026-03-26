@@ -459,6 +459,23 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
     responseMsg += `💬 Izoh: ${result.feedback}`;
 
     await bot.sendMessage(Number(chatId), responseMsg);
+
+    if (aiClass?.monitoringChatId) {
+      try {
+        const student = await storage.getAiStudentById(session.aiStudentId);
+        const monitorMsg =
+          `📥 Yangi topshiriq!\n\n` +
+          `👤 O'quvchi: ${student?.name || "Noma'lum"}\n` +
+          `📞 Tel: ${student?.phone || "—"}\n` +
+          `📚 ${session.selectedLessonNumber}-dars: ${task.title}\n` +
+          `📊 Baho: ${result.score}/10\n` +
+          `💬 Izoh: ${result.feedback}`;
+        await bot.sendAudio(Number(aiClass.monitoringChatId), fileId, { caption: monitorMsg });
+      } catch (monErr: any) {
+        console.error("[AI-BOT] Monitoring forward error:", monErr?.message || monErr);
+      }
+    }
+
     await advanceToNextTask(bot, chatId, session, storage);
   } catch (error: any) {
     console.error("[AI-BOT] Audio submission error:", error?.message || error);

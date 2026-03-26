@@ -968,6 +968,30 @@ export default function AiClassDetail() {
               <p className="text-sm text-muted-foreground mt-1">{aiClass.instructions || "Ko'rsatma yo'q"}</p>
             </div>
             <div>
+              <Label className="text-sm font-medium">Monitoring guruh (Telegram)</Label>
+              <p className="text-xs text-muted-foreground mb-1">O'quvchi audio yuborganda natija va audio shu guruhga ham yuboriladi</p>
+              <div className="flex gap-2 items-center">
+                <Input
+                  placeholder="-100xxxxxxxxxx"
+                  defaultValue={aiClass.monitoringChatId || ""}
+                  className="max-w-[280px] h-8 text-sm"
+                  data-testid="input-monitoring-chat-id"
+                  onBlur={async (e) => {
+                    const val = e.target.value.trim();
+                    if (val === (aiClass.monitoringChatId || "")) return;
+                    try {
+                      await apiRequest("PATCH", `/api/ai-classes/${classId}`, { monitoringChatId: val || null });
+                      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
+                      toast({ title: val ? "Monitoring guruh saqlandi" : "Monitoring o'chirildi" });
+                    } catch {
+                      toast({ title: "Xatolik", variant: "destructive" });
+                    }
+                  }}
+                />
+                {aiClass.monitoringChatId && <Badge variant="default" className="text-xs">Faol</Badge>}
+              </div>
+            </div>
+            <div>
               <Label className="text-sm font-medium">Status</Label>
               <p className="text-sm mt-1"><Badge variant={aiClass.status === "active" ? "default" : "secondary"}>{aiClass.status === "active" ? "Faol" : "To'xtatilgan"}</Badge></p>
             </div>

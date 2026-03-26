@@ -415,6 +415,7 @@ export const aiClasses = pgTable("ai_classes", {
   instructions: text("instructions"),
   status: varchar("status", { length: 20 }).notNull().default("active"),
   hiddenLessons: jsonb("hidden_lessons").$type<number[]>().default([]),
+  monitoringChatId: varchar("monitoring_chat_id", { length: 100 }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
