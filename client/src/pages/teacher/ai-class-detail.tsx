@@ -56,6 +56,7 @@ export default function AiClassDetail() {
   const [editStudentPhone, setEditStudentPhone] = useState("");
   const [payPdfOpen, setPayPdfOpen] = useState(false);
   const [payPdfFilter, setPayPdfFilter] = useState<"all"|"paid"|"nasiya"|"partial"|"unpaid">("all");
+  const [monitoringId, setMonitoringId] = useState("");
   const [showHiddenInNatija, setShowHiddenInNatija] = useState(false);
   const [copyImportOpen, setCopyImportOpen] = useState(false);
   const [selectedSourceId, setSelectedSourceId] = useState<string>("");
@@ -973,12 +974,14 @@ export default function AiClassDetail() {
               <div className="flex gap-2 items-center">
                 <Input
                   placeholder="-100xxxxxxxxxx"
-                  defaultValue={aiClass.monitoringChatId || ""}
+                  value={monitoringId}
+                  onChange={e => setMonitoringId(e.target.value)}
                   className="max-w-[280px] h-8 text-sm"
                   data-testid="input-monitoring-chat-id"
-                  onBlur={async (e) => {
-                    const val = e.target.value.trim();
-                    if (val === (aiClass.monitoringChatId || "")) return;
+                />
+                <Button size="sm" variant="outline" data-testid="button-save-monitoring"
+                  onClick={async () => {
+                    const val = monitoringId.trim();
                     try {
                       await apiRequest("PATCH", `/api/ai-classes/${classId}`, { monitoringChatId: val || null });
                       queryClient.invalidateQueries({ queryKey: ["/api/ai-classes", classId] });
@@ -986,8 +989,9 @@ export default function AiClassDetail() {
                     } catch {
                       toast({ title: "Xatolik", variant: "destructive" });
                     }
-                  }}
-                />
+                  }}>
+                  <Check className="w-3.5 h-3.5 mr-1" /> Saqlash
+                </Button>
                 {aiClass.monitoringChatId && <Badge variant="default" className="text-xs">Faol</Badge>}
               </div>
             </div>
