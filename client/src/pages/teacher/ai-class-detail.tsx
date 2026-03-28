@@ -15,6 +15,21 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Plus, Trash2, Power, PowerOff, Users, ListChecks, Settings, BarChart3, X, Phone, Wifi, WifiOff, Pencil, Check, ChevronDown, ChevronRight, Send, Upload, Loader2, Download, DollarSign, EyeOff, Eye, CreditCard, Copy } from "lucide-react";
 import { motion } from "framer-motion";
 
+const cleanName = (s: string) => {
+  let r = s.replace(/[\u200E\u200F\u200B\u200C\u200D\uFEFF]/g, "");
+  r = Array.from(r).map(c => {
+    const cp = c.codePointAt(0)!;
+    if (cp >= 0x1D400 && cp <= 0x1D419) return String.fromCharCode(65 + cp - 0x1D400);
+    if (cp >= 0x1D41A && cp <= 0x1D433) return String.fromCharCode(97 + cp - 0x1D41A);
+    if (cp >= 0x1D434 && cp <= 0x1D44D) return String.fromCharCode(65 + cp - 0x1D434);
+    if (cp >= 0x1D44E && cp <= 0x1D467) return String.fromCharCode(97 + cp - 0x1D44E);
+    if (cp >= 0x1D468 && cp <= 0x1D481) return String.fromCharCode(65 + cp - 0x1D468);
+    if (cp >= 0x1D482 && cp <= 0x1D49B) return String.fromCharCode(97 + cp - 0x1D482);
+    return c;
+  }).join("");
+  return r.trim();
+};
+
 export default function AiClassDetail() {
   const [, params] = useRoute("/teacher/ai-classes/:id");
   const classId = params?.id;
@@ -541,7 +556,7 @@ export default function AiClassDetail() {
                 const payLabel: Record<string, string> = { paid: "To'langan", unpaid: "To'lanmagan", partial: "Qisman", nasiya: "Nasiya" };
                 const data = students.map((s: any, i: number) => ({
                   "№": i + 1,
-                  "Ism": s.name,
+                  "Ism": cleanName(s.name),
                   "Telefon": s.phone || "",
                   "Telegram": s.telegramChatId ? "Ulangan" : "Kutilmoqda",
                   "To'lov holati": payLabel[s.paymentInfo?.status] || "To'lanmagan",
@@ -628,7 +643,7 @@ export default function AiClassDetail() {
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="text-xs text-muted-foreground w-5 flex-shrink-0">{idx + 1}</span>
                       <div className="min-w-0">
-                        <span className="font-medium text-sm">{s.name}</span>
+                        <span className="font-medium text-sm">{cleanName(s.name)}</span>
                         <div className="flex items-center flex-wrap gap-2 text-xs text-muted-foreground mt-0.5">
                           <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {s.phone}</span>
                           {s.telegramChatId
@@ -869,7 +884,7 @@ export default function AiClassDetail() {
                     const XLSX = await import("xlsx");
                     const header = ["#", "O'quvchi", ...selLessons.map((ln: number) => `${ln}-dars`), "Ball", "Foiz"];
                     const rows = sortedStudents.map((st: any, idx: number) => {
-                      const cells: any = { "#": idx + 1, "O'quvchi": st.name };
+                      const cells: any = { "#": idx + 1, "O'quvchi": cleanName(st.name) };
                       selLessons.forEach((ln: number) => {
                         const cell = getCellData(st.id, ln);
                         cells[`${ln}-dars`] = cell.total === 0 ? "—" : cell.done ? "✅" : cell.score > 0 ? `${cell.score}` : "❌";
@@ -912,7 +927,7 @@ export default function AiClassDetail() {
                               <tr key={st.id} className="border-b last:border-0 hover:bg-muted/30" data-testid={`row-stat-student-${idx}`}>
                                 <td className="py-2 pr-1 text-muted-foreground text-xs">{idx + 1}</td>
                                 <td className="py-2 pr-4 sticky left-0 bg-card">
-                                  <div className="font-medium truncate max-w-[140px]">{st.name}</div>
+                                  <div className="font-medium truncate max-w-[140px]">{cleanName(st.name)}</div>
                                   {!st.telegramChatId && <div className="text-xs text-muted-foreground">Ulanmagan</div>}
                                 </td>
                                 {selLessons.map((ln: number) => {

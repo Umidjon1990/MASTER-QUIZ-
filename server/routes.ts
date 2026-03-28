@@ -4495,6 +4495,7 @@ export async function registerRoutes(
       const fontR = hasCustomFonts ? "Regular" : "Helvetica";
       const fontB = hasCustomFonts ? "Bold" : "Helvetica-Bold";
       const isRtl = (s: string) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
+      const cleanName = (s: string) => { let r = s.replace(/[\u200E\u200F\u200B\u200C\u200D\uFEFF]/g, ""); r = Array.from(r).map(c => { const cp = c.codePointAt(0)!; if (cp >= 0x1D400 && cp <= 0x1D419) return String.fromCharCode(65 + cp - 0x1D400); if (cp >= 0x1D41A && cp <= 0x1D433) return String.fromCharCode(97 + cp - 0x1D41A); if (cp >= 0x1D434 && cp <= 0x1D44D) return String.fromCharCode(65 + cp - 0x1D434); if (cp >= 0x1D44E && cp <= 0x1D467) return String.fromCharCode(97 + cp - 0x1D44E); if (cp >= 0x1D468 && cp <= 0x1D481) return String.fromCharCode(65 + cp - 0x1D468); if (cp >= 0x1D482 && cp <= 0x1D49B) return String.fromCharCode(97 + cp - 0x1D482); return c; }).join(""); return r.trim(); };
       const pickFont = (s: string, bold = false) => isRtl(s) && hasArabic ? "Arabic" : (bold ? fontB : fontR);
 
       const title = `${aiClass.name} — ${lessonNumber}-dars natijalari`;
@@ -4546,9 +4547,10 @@ export async function registerRoutes(
         if (y > 550) { doc.addPage(); y = 30; }
         const bgColor = r.hasAnyScore ? (idx % 2 === 0 ? "#f0fdf4" : "#ffffff") : (idx % 2 === 0 ? "#fef2f2" : "#fff5f5");
         doc.rect(colStart, y, totalW, 16).fill(bgColor);
+        const displayName = cleanName(r.name);
         doc.fill("#000000").font(fontR).fontSize(7);
         doc.text(String(idx + 1), colStart + 2, y + 4, { width: 25, align: "center" });
-        doc.font(pickFont(r.name)).text(r.name, colStart + 30, y + 4, { width: nameW - 35, features: isRtl(r.name) ? ["rtla"] : undefined });
+        doc.font(pickFont(displayName)).text(displayName, colStart + 30, y + 4, { width: nameW - 35, features: isRtl(displayName) ? ["rtla"] : undefined });
         doc.font(fontR);
         r.taskScores.forEach((ts, i) => {
           const color = ts.score >= 8 ? "#16a34a" : ts.score >= 5 ? "#ca8a04" : ts.score > 0 ? "#dc2626" : "#9ca3af";
@@ -4615,6 +4617,7 @@ export async function registerRoutes(
       const fontR = hasCustomFonts ? "Regular" : "Helvetica";
       const fontB = hasCustomFonts ? "Bold" : "Helvetica-Bold";
       const isRtl = (s: string) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
+      const cleanName = (s: string) => { let r = s.replace(/[\u200E\u200F\u200B\u200C\u200D\uFEFF]/g, ""); r = Array.from(r).map(c => { const cp = c.codePointAt(0)!; if (cp >= 0x1D400 && cp <= 0x1D419) return String.fromCharCode(65 + cp - 0x1D400); if (cp >= 0x1D41A && cp <= 0x1D433) return String.fromCharCode(97 + cp - 0x1D41A); if (cp >= 0x1D434 && cp <= 0x1D44D) return String.fromCharCode(65 + cp - 0x1D434); if (cp >= 0x1D44E && cp <= 0x1D467) return String.fromCharCode(97 + cp - 0x1D44E); if (cp >= 0x1D468 && cp <= 0x1D481) return String.fromCharCode(65 + cp - 0x1D468); if (cp >= 0x1D482 && cp <= 0x1D49B) return String.fromCharCode(97 + cp - 0x1D482); return c; }).join(""); return r.trim(); };
       const pickFont = (s: string) => isRtl(s) && hasArabic ? "Arabic" : fontR;
 
       const pageW = doc.page.width - 72;
@@ -4694,7 +4697,8 @@ export async function registerRoutes(
         doc.fill("#555555").font(fontR).fontSize(7.5);
         cx = marginL + 3;
         doc.text(String(idx + 1), cx, y + 6, { width: cols.no }); cx += cols.no;
-        doc.fill("#000000").font(isRtl(s.name) && hasArabic ? "Arabic" : fontB).text(s.name, cx, y + 6, { width: cols.name - 4, features: isRtl(s.name) ? ["rtla"] : undefined }); cx += cols.name;
+        const dn = cleanName(s.name);
+        doc.fill("#000000").font(isRtl(dn) && hasArabic ? "Arabic" : fontB).text(dn, cx, y + 6, { width: cols.name - 4, features: isRtl(dn) ? ["rtla"] : undefined }); cx += cols.name;
         doc.fill("#555555").font(fontR).text(s.phone || "—", cx, y + 6, { width: cols.phone }); cx += cols.phone;
 
         doc.rect(cx - 1, y + 4, cols.status - 6, rowH - 8).fill(info.color + "22");
@@ -4849,6 +4853,7 @@ export async function registerRoutes(
       const fontR = hasCustomFonts ? "Regular" : "Helvetica";
       const fontB = hasCustomFonts ? "Bold" : "Helvetica-Bold";
       const isRtl = (s: string) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
+      const cleanName = (s: string) => { let r = s.replace(/[\u200E\u200F\u200B\u200C\u200D\uFEFF]/g, ""); r = Array.from(r).map(c => { const cp = c.codePointAt(0)!; if (cp >= 0x1D400 && cp <= 0x1D419) return String.fromCharCode(65 + cp - 0x1D400); if (cp >= 0x1D41A && cp <= 0x1D433) return String.fromCharCode(97 + cp - 0x1D41A); if (cp >= 0x1D434 && cp <= 0x1D44D) return String.fromCharCode(65 + cp - 0x1D434); if (cp >= 0x1D44E && cp <= 0x1D467) return String.fromCharCode(97 + cp - 0x1D44E); if (cp >= 0x1D468 && cp <= 0x1D481) return String.fromCharCode(65 + cp - 0x1D468); if (cp >= 0x1D482 && cp <= 0x1D49B) return String.fromCharCode(97 + cp - 0x1D482); return c; }).join(""); return r.trim(); };
 
       doc.font(fontB).fontSize(14).text(title, { align: "center" });
       doc.moveDown(0.3);
@@ -4892,8 +4897,9 @@ export async function registerRoutes(
         if (y > 550) { doc.addPage(); y = 30; }
         const bgColor = idx % 2 === 0 ? "#f5f3ff" : "#ffffff";
         doc.rect(colStart, y, totalW, 16).fill(bgColor);
-        doc.fill("#000000").font(isRtl(r.name) && hasArabic ? "Arabic" : fontR).fontSize(7);
-        doc.text(`${idx + 1}. ${r.name}`, colStart + 4, y + 4, { width: nameW - 8, features: isRtl(r.name) ? ["rtla"] : undefined });
+        const dn = cleanName(r.name);
+        doc.fill("#000000").font(isRtl(dn) && hasArabic ? "Arabic" : fontR).fontSize(7);
+        doc.text(`${idx + 1}. ${dn}`, colStart + 4, y + 4, { width: nameW - 8, features: isRtl(dn) ? ["rtla"] : undefined });
         doc.font(fontR);
 
         filteredTasks.forEach((task, i) => {
