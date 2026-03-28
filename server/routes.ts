@@ -4484,13 +4484,18 @@ export async function registerRoutes(
       const fontPath = path.join(process.cwd(), "server", "fonts");
       const regularFont = path.join(fontPath, "NotoSans-Regular.ttf");
       const boldFont = path.join(fontPath, "NotoSans-Bold.ttf");
+      const arabicFont = path.join(fontPath, "NotoSansArabic-Regular.ttf");
       const hasCustomFonts = fs.existsSync(regularFont) && fs.existsSync(boldFont);
+      const hasArabic = fs.existsSync(arabicFont);
       if (hasCustomFonts) {
         doc.registerFont("Regular", regularFont);
         doc.registerFont("Bold", boldFont);
       }
+      if (hasArabic) doc.registerFont("Arabic", arabicFont);
       const fontR = hasCustomFonts ? "Regular" : "Helvetica";
       const fontB = hasCustomFonts ? "Bold" : "Helvetica-Bold";
+      const isRtl = (s: string) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
+      const pickFont = (s: string, bold = false) => isRtl(s) && hasArabic ? "Arabic" : (bold ? fontB : fontR);
 
       const title = `${aiClass.name} — ${lessonNumber}-dars natijalari`;
       doc.font(fontB).fontSize(14).text(title, { align: "center" });
@@ -4543,7 +4548,8 @@ export async function registerRoutes(
         doc.rect(colStart, y, totalW, 16).fill(bgColor);
         doc.fill("#000000").font(fontR).fontSize(7);
         doc.text(String(idx + 1), colStart + 2, y + 4, { width: 25, align: "center" });
-        doc.text(r.name, colStart + 30, y + 4, { width: nameW - 35 });
+        doc.font(pickFont(r.name)).text(r.name, colStart + 30, y + 4, { width: nameW - 35, features: isRtl(r.name) ? ["rtla"] : undefined });
+        doc.font(fontR);
         r.taskScores.forEach((ts, i) => {
           const color = ts.score >= 8 ? "#16a34a" : ts.score >= 5 ? "#ca8a04" : ts.score > 0 ? "#dc2626" : "#9ca3af";
           doc.fill(color).text(ts.score > 0 ? String(ts.score) : "—", colStart + nameW + i * taskW, y + 4, { width: taskW, align: "center" });
@@ -4601,10 +4607,15 @@ export async function registerRoutes(
       const fontPath = path.join(process.cwd(), "server", "fonts");
       const regularFont = path.join(fontPath, "NotoSans-Regular.ttf");
       const boldFont = path.join(fontPath, "NotoSans-Bold.ttf");
+      const arabicFont = path.join(fontPath, "NotoSansArabic-Regular.ttf");
       const hasCustomFonts = fs.existsSync(regularFont) && fs.existsSync(boldFont);
+      const hasArabic = fs.existsSync(arabicFont);
       if (hasCustomFonts) { doc.registerFont("Regular", regularFont); doc.registerFont("Bold", boldFont); }
+      if (hasArabic) doc.registerFont("Arabic", arabicFont);
       const fontR = hasCustomFonts ? "Regular" : "Helvetica";
       const fontB = hasCustomFonts ? "Bold" : "Helvetica-Bold";
+      const isRtl = (s: string) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
+      const pickFont = (s: string) => isRtl(s) && hasArabic ? "Arabic" : fontR;
 
       const pageW = doc.page.width - 72;
       const marginL = 36;
@@ -4683,7 +4694,7 @@ export async function registerRoutes(
         doc.fill("#555555").font(fontR).fontSize(7.5);
         cx = marginL + 3;
         doc.text(String(idx + 1), cx, y + 6, { width: cols.no }); cx += cols.no;
-        doc.fill("#000000").font(fontB).text(s.name, cx, y + 6, { width: cols.name - 4 }); cx += cols.name;
+        doc.fill("#000000").font(isRtl(s.name) && hasArabic ? "Arabic" : fontB).text(s.name, cx, y + 6, { width: cols.name - 4, features: isRtl(s.name) ? ["rtla"] : undefined }); cx += cols.name;
         doc.fill("#555555").font(fontR).text(s.phone || "—", cx, y + 6, { width: cols.phone }); cx += cols.phone;
 
         doc.rect(cx - 1, y + 4, cols.status - 6, rowH - 8).fill(info.color + "22");
@@ -4827,13 +4838,17 @@ export async function registerRoutes(
       const fontPath = path.join(process.cwd(), "server", "fonts");
       const regularFont = path.join(fontPath, "NotoSans-Regular.ttf");
       const boldFont = path.join(fontPath, "NotoSans-Bold.ttf");
+      const arabicFont = path.join(fontPath, "NotoSansArabic-Regular.ttf");
       const hasCustomFonts = fs.existsSync(regularFont) && fs.existsSync(boldFont);
+      const hasArabic = fs.existsSync(arabicFont);
       if (hasCustomFonts) {
         doc.registerFont("Regular", regularFont);
         doc.registerFont("Bold", boldFont);
       }
+      if (hasArabic) doc.registerFont("Arabic", arabicFont);
       const fontR = hasCustomFonts ? "Regular" : "Helvetica";
       const fontB = hasCustomFonts ? "Bold" : "Helvetica-Bold";
+      const isRtl = (s: string) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s);
 
       doc.font(fontB).fontSize(14).text(title, { align: "center" });
       doc.moveDown(0.3);
@@ -4877,8 +4892,9 @@ export async function registerRoutes(
         if (y > 550) { doc.addPage(); y = 30; }
         const bgColor = idx % 2 === 0 ? "#f5f3ff" : "#ffffff";
         doc.rect(colStart, y, totalW, 16).fill(bgColor);
-        doc.fill("#000000").font(fontR).fontSize(7);
-        doc.text(`${idx + 1}. ${r.name}`, colStart + 4, y + 4, { width: nameW - 8 });
+        doc.fill("#000000").font(isRtl(r.name) && hasArabic ? "Arabic" : fontR).fontSize(7);
+        doc.text(`${idx + 1}. ${r.name}`, colStart + 4, y + 4, { width: nameW - 8, features: isRtl(r.name) ? ["rtla"] : undefined });
+        doc.font(fontR);
 
         filteredTasks.forEach((task, i) => {
           const score = r.scores[i] || 0;
