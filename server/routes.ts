@@ -4231,10 +4231,13 @@ export async function registerRoutes(
         const filtered = parts
           .filter((p: any) => p.referenceText && typeof p.referenceText === "string" && p.referenceText.trim().length > 0)
           .map((p: any, i: number) => ({ partNumber: i + 1, referenceText: p.referenceText.trim() }));
-        if (filtered.length >= 2 && filtered.length <= 5) {
-          validatedParts = filtered;
-        } else if (filtered.length > 5) {
+        if (filtered.length < 2) {
+          return res.status(400).json({ message: "Bo'limlar soni kamida 2 ta bo'lishi kerak" });
+        }
+        if (filtered.length > 5) {
           validatedParts = filtered.slice(0, 5).map((p: any, i: number) => ({ ...p, partNumber: i + 1 }));
+        } else {
+          validatedParts = filtered;
         }
       }
       const existingTasks = await storage.getAiTasks(req.params.id);

@@ -638,7 +638,7 @@ async function handleVideoSubmission(bot: TelegramBot, msg: TelegramBot.Message,
 
     const transcription = await transcribeAudio(audioBuffer, "video_audio.mp3");
 
-    await storage.updateAiSubmission(submission.id, { transcription, audioFileId: fileId, status: "processing" });
+    await storage.updateAiSubmission(submission.id, { transcription, status: "processing" });
 
     const aiClass = await storage.getAiClass(session.aiClassId);
     const partRef = getTaskPartRef(task, partNum);

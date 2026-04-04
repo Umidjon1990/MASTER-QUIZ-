@@ -1318,7 +1318,7 @@ export default function AiClassDetail() {
             )}
           </div>
           <DialogFooter>
-            <Button onClick={() => addTaskMutation.mutate()} disabled={!newTaskTitle || addTaskMutation.isPending} data-testid="button-submit-task">
+            <Button onClick={() => addTaskMutation.mutate()} disabled={!newTaskTitle || addTaskMutation.isPending || (newTaskHasParts && newTaskParts.filter(p => p.referenceText.trim().length > 0).length < 2)} data-testid="button-submit-task">
               {addTaskMutation.isPending ? "Qo'shilmoqda..." : "Qo'shish"}
             </Button>
           </DialogFooter>
