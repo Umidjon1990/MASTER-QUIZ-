@@ -516,12 +516,14 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
 
     const aiClass = await storage.getAiClass(session.aiClassId);
     const partRef = getTaskPartRef(task, partNum);
+    const hasParts = task.parts && Array.isArray(task.parts) && task.parts.length > 0;
     const result = await evaluateSubmission({
       prompt: task.prompt || undefined,
       referenceText: partRef,
       studentAnswer: transcription,
       instructions: aiClass?.instructions || undefined,
       submissionType: "audio_sample",
+      isMemorization: hasParts,
     });
 
     await storage.updateAiSubmission(submission.id, {
@@ -531,7 +533,6 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
       gradedAt: new Date(),
     });
 
-    const hasParts = task.parts && Array.isArray(task.parts) && task.parts.length > 0;
     const partLabel = hasParts ? ` (${partNum}-bo'lim)` : "";
     let responseMsg = `✅ ${task.title}${partLabel} — natija:\n\n`;
     responseMsg += `📊 Baho: ${result.score}/10\n`;
@@ -647,12 +648,14 @@ async function handleVideoSubmission(bot: TelegramBot, msg: TelegramBot.Message,
 
     const aiClass = await storage.getAiClass(session.aiClassId);
     const partRef = getTaskPartRef(task, partNum);
+    const hasParts = task.parts && Array.isArray(task.parts) && task.parts.length > 0;
     const result = await evaluateSubmission({
       prompt: task.prompt || undefined,
       referenceText: partRef,
       studentAnswer: transcription,
       instructions: aiClass?.instructions || undefined,
       submissionType: "audio_sample",
+      isMemorization: hasParts,
     });
 
     await storage.updateAiSubmission(submission.id, {
@@ -662,7 +665,6 @@ async function handleVideoSubmission(bot: TelegramBot, msg: TelegramBot.Message,
       gradedAt: new Date(),
     });
 
-    const hasParts = task.parts && Array.isArray(task.parts) && task.parts.length > 0;
     const partLabel = hasParts ? ` (${partNum}-bo'lim)` : "";
     let responseMsg = `✅ ${task.title}${partLabel} — natija:\n\n`;
     responseMsg += `📊 Baho: ${result.score}/10\n`;

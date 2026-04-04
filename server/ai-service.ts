@@ -160,21 +160,64 @@ export async function evaluateSubmission({
   studentAnswer,
   instructions,
   submissionType,
+  isMemorization,
 }: {
   prompt?: string;
   referenceText?: string;
   studentAnswer: string;
   instructions?: string;
   submissionType?: string;
+  isMemorization?: boolean;
 }): Promise<{ score: number; feedback: string }> {
-  let typeContext = "";
-  if (submissionType === "audio_sample") {
-    typeContext = "\nBu audio yozuvning 3 joydan olingan namunasi (boshi, o'rtasi, oxiri). Shu namuna asosida o'quvchining umumiy o'qish sifatini baholay.";
-  } else if (submissionType === "image") {
-    typeContext = "\nBu o'quvchining daftardagi yozuvi (OCR orqali o'qilgan). Yozuv sifatini ham hisobga ol.";
-  }
+  let systemMessage: string;
+  let userMessage: string;
 
-  const systemMessage = `Sen tajribali arab tili o'qituvchisissan.
+  if (isMemorization && referenceText) {
+    systemMessage = `Sen tajribali arab tili o'qituvchisissan. Sening vazifang — o'quvchining YODLASH sifatini baholash.
+
+JARAYON:
+O'quvchi o'qituvchi bergan asl matnni YODDAN AYTADI. Sen asl matn bilan o'quvchi aytgan matnni SOLISHTIRASAN va yodlaganlik darajasini baholaysan.
+
+TRANSKRIPSIYA HAQIDA (juda muhim):
+- O'quvchining javobi audio dan avtomatik transkripsiya qilingan
+- Transkripsiya xatolari bo'lishi mumkin — bu o'quvchining xatosi EMAS
+- Arab so'zlari lotin harflarida chiqishi mumkin (masalan: "al-kitabu" = "الكتاب") — bu NORMAL
+- Ba'zi so'zlar buzilishi mumkin — buni o'quvchining xatosi deb hisoblaMA
+- MAZMUN ga e'tibor ber, transkripsiya sifatiga EMAS
+
+SOLISHTIRISH MEZONLARI:
+- Asl matn bilan o'quvchi javobi o'rtasidagi FARQLARNI aniqla
+- Tushirib qoldirilgan qismlar — qaysi jumlalar/so'zlar aytilmagan?
+- O'zgartirilgan so'zlar — qaysi so'zlar boshqacha aytilgan?
+- Tartib o'zgarishi — matn tartibi o'zgarganmi?
+- Qo'shimcha qilingan so'zlar — asl matnda yo'q narsalar qo'shilganmi?
+
+BAHOLASH SHKALA:
+- 9-10: Matnni deyarli to'liq va aniq yodlagan, juda kam farq bor
+- 7-8: Asosiy mazmunni yodlagan, kichik tushirib qoldirishlar yoki o'zgarishlar bor
+- 5-6: Matnning faqat bir qismini yodlagan, sezilarli tushirib qoldirishlar yoki xatolar bor
+- 5: Deyarli yodlamagan, juda ko'p farqlar yoki bo'sh javob
+
+IZOH (30-40 so'z, o'zbek tilida lotin yozuvida):
+- Yodlashning kuchli tomonlarini ayt (to'g'ri aytilgan qismlar)
+- Tushirib qoldirilgan yoki xato aytilgan joylarni aniq ko'rsat
+- Rag'batlantiruvchi xulosa bilan tugat
+- Arab so'zlarini kerak bo'lsa arab alifbosida (عربي) keltir
+${instructions ? `\nO'qituvchi ko'rsatmasi: ${instructions}` : ""}
+${prompt ? `\nVazifa ko'rsatmasi: ${prompt}` : ""}
+
+Javobni faqat JSON formatda ber: {"score": <5-10>, "feedback": "<30-40 so'zli izoh>"}`;
+
+    userMessage = `Asl matn (yodlash kerak edi):\n${referenceText}\n\nO'quvchi yoddan aytgani:\n${studentAnswer}`;
+  } else {
+    let typeContext = "";
+    if (submissionType === "audio_sample") {
+      typeContext = "\nBu audio yozuvning 3 joydan olingan namunasi (boshi, o'rtasi, oxiri). Shu namuna asosida o'quvchining umumiy o'qish sifatini baholay.";
+    } else if (submissionType === "image") {
+      typeContext = "\nBu o'quvchining daftardagi yozuvi (OCR orqali o'qilgan). Yozuv sifatini ham hisobga ol.";
+    }
+
+    systemMessage = `Sen tajribali arab tili o'qituvchisissan.
 
 JARAYON:
 O'quvchi arab tilidagi asl matnni ovozli o'qiydi va o'zbek tiliga MA'NOVIY TARJIMA qiladi. Sening vazifang — tarjima sifatini baholash.
@@ -207,9 +250,10 @@ ${prompt ? `\nVazifa ko'rsatmasi: ${prompt}` : ""}
 
 Javobni faqat JSON formatda ber: {"score": <5-10>, "feedback": "<30-40 so'zli izoh>"}`;
 
-  const userMessage = referenceText
-    ? `Asl matn (tarjima qilish kerak edi):\n${referenceText}\n\nO'quvchining javobi:\n${studentAnswer}`
-    : `O'quvchining javobi:\n${studentAnswer}`;
+    userMessage = referenceText
+      ? `Asl matn (tarjima qilish kerak edi):\n${referenceText}\n\nO'quvchining javobi:\n${studentAnswer}`
+      : `O'quvchining javobi:\n${studentAnswer}`;
+  }
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
