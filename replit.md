@@ -87,9 +87,9 @@ Preferred communication style: Simple, everyday language.
   - `quiz_likes` — Quiz like tracking (quizId, userId)
   - `live_lessons` — Live lesson sessions with lessonType (pdf/voice), title, pdfUrl (nullable for voice), teacher, status, code, requireCode
   - `ai_classes` — AI nazorat sinflari (name, teacherId, telegramBotToken, instructions, status, hiddenLessons JSONB array of lesson numbers to hide from Natijalar tab)
-  - `ai_class_tasks` — AI sinf darslar/vazifalari (title, lessonNumber, orderIndex, prompt, referenceText, type: audio/text). Wizard auto-generates numbered lessons with configurable tasks per lesson. Tasks grouped by `lessonNumber`, sorted by `orderIndex`.
+  - `ai_class_tasks` — AI sinf darslar/vazifalari (title, lessonNumber, orderIndex, prompt, referenceText, type: audio/text, parts JSONB array of `TaskPart {partNumber, referenceText}`). Wizard auto-generates numbered lessons with configurable tasks per lesson. Tasks grouped by `lessonNumber`, sorted by `orderIndex`. Multi-part tasks split into separate bo'limlar — bot tracks currentPartNumber in session and creates separate submissions per part.
   - `ai_students` — AI sinf o'quvchilari (name, phone, telegramChatId — bot orqali ulanadi). Bulk import via textarea (har qatorda ism + telefon). `paymentInfo` JSONB: {status: paid/unpaid/partial, amount, lessonsCount, untilDate, note}.
-  - `ai_submissions` — O'quvchi topshiriqlari (submissionType: audio/image/text, audioFileId, imageFileId, ocrText, transcription via gpt-4o-mini-transcribe, aiResponse via GPT-4o-mini, score 5-10, status). Only `completed` blocks resubmission; `failed` allows retry. Image/text handlers temporarily disabled (audio only).
+  - `ai_submissions` — O'quvchi topshiriqlari (submissionType: audio/image/text/video, audioFileId, imageFileId, videoFileId, ocrText, transcription via gpt-4o-mini-transcribe, aiResponse via GPT-4o-mini, score 5-10, status, partNumber default 1). Only `completed` blocks resubmission; `failed` allows retry. Image/text handlers temporarily disabled (audio+video only). Video submissions extract audio via ffmpeg then process through same pipeline.
   - **Bot flow**: Students select lessons via inline keyboard buttons (1-dars, 2-dars... with status icons ✅/⏳/📝), not sequential. Each lesson can only be submitted once.
 
 ### Storage Layer
