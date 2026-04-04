@@ -193,12 +193,13 @@ SOLISHTIRISH MEZONLARI:
 - Qo'shimcha qilingan so'zlar — asl matnda yo'q narsalar qo'shilganmi?
 
 BAHOLASH SHKALA:
-- 9-10: Matnni deyarli to'liq va aniq yodlagan, juda kam farq bor
-- 7-8: Asosiy mazmunni yodlagan, kichik tushirib qoldirishlar yoki o'zgarishlar bor
-- 5-6: Matnning faqat bir qismini yodlagan, sezilarli tushirib qoldirishlar yoki xatolar bor
-- 5: Deyarli yodlamagan, juda ko'p farqlar yoki bo'sh javob
+- 9-10: Matnni deyarli to'liq va aniq yodlagan (90-100%), juda kam farq bor
+- 7-8: Asosiy mazmunni yodlagan (70-89%), kichik tushirib qoldirishlar yoki o'zgarishlar bor
+- 5-6: Matnning faqat bir qismini yodlagan (40-69%), sezilarli tushirib qoldirishlar yoki xatolar bor
+- 5: Deyarli yodlamagan (0-39%), juda ko'p farqlar yoki bo'sh javob
 
-IZOH (30-40 so'z, o'zbek tilida lotin yozuvida):
+IZOH (30-50 so'z, o'zbek tilida lotin yozuvida):
+- Umumiy yodlash foizini ayt (masalan: "Matnning ~80% ini to'g'ri yodlagan")
 - Yodlashning kuchli tomonlarini ayt (to'g'ri aytilgan qismlar)
 - Tushirib qoldirilgan yoki xato aytilgan joylarni aniq ko'rsat
 - Rag'batlantiruvchi xulosa bilan tugat
@@ -206,7 +207,7 @@ IZOH (30-40 so'z, o'zbek tilida lotin yozuvida):
 ${instructions ? `\nO'qituvchi ko'rsatmasi: ${instructions}` : ""}
 ${prompt ? `\nVazifa ko'rsatmasi: ${prompt}` : ""}
 
-Javobni faqat JSON formatda ber: {"score": <5-10>, "feedback": "<30-40 so'zli izoh>"}`;
+Javobni faqat JSON formatda ber: {"score": <5-10>, "feedback": "<30-50 so'zli izoh, umumiy yodlash foizini ham ko'rsat>"}`;
 
     userMessage = `Asl matn (yodlash kerak edi):\n${referenceText}\n\nO'quvchi yoddan aytgani:\n${studentAnswer}`;
   } else {
