@@ -194,7 +194,8 @@ export interface IStorage {
   createAiSubmission(data: InsertAiSubmission): Promise<AiSubmission>;
   getAiSubmissions(aiStudentId: string): Promise<AiSubmission[]>;
   getAiSubmissionsByClass(aiClassId: string): Promise<AiSubmission[]>;
-  getAiSubmissionByStudentAndTask(aiStudentId: string, aiTaskId: string): Promise<AiSubmission | undefined>;
+  getAiSubmissionByStudentAndTask(aiStudentId: string, aiTaskId: string, partNumber?: number): Promise<AiSubmission | undefined>;
+  getAiSubmissionsByStudentAndTask(aiStudentId: string, aiTaskId: string): Promise<AiSubmission[]>;
   updateAiSubmission(id: string, data: Partial<InsertAiSubmission>): Promise<AiSubmission | undefined>;
   deleteAiSubmission(id: string): Promise<void>;
   deleteAiSubmissionsByLesson(aiClassId: string, lessonNumber: number): Promise<number>;
@@ -950,12 +951,22 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(aiSubmissions.submittedAt));
   }
 
-  async getAiSubmissionByStudentAndTask(aiStudentId: string, aiTaskId: string): Promise<AiSubmission | undefined> {
+  async getAiSubmissionByStudentAndTask(aiStudentId: string, aiTaskId: string, partNumber?: number): Promise<AiSubmission | undefined> {
+    const conditions = [eq(aiSubmissions.aiStudentId, aiStudentId), eq(aiSubmissions.aiTaskId, aiTaskId)];
+    if (partNumber !== undefined) {
+      conditions.push(eq(aiSubmissions.partNumber, partNumber));
+    }
     const [found] = await db.select().from(aiSubmissions)
-      .where(and(eq(aiSubmissions.aiStudentId, aiStudentId), eq(aiSubmissions.aiTaskId, aiTaskId)))
+      .where(and(...conditions))
       .orderBy(desc(aiSubmissions.submittedAt))
       .limit(1);
     return found;
+  }
+
+  async getAiSubmissionsByStudentAndTask(aiStudentId: string, aiTaskId: string): Promise<AiSubmission[]> {
+    return db.select().from(aiSubmissions)
+      .where(and(eq(aiSubmissions.aiStudentId, aiStudentId), eq(aiSubmissions.aiTaskId, aiTaskId)))
+      .orderBy(aiSubmissions.partNumber);
   }
 
   async updateAiSubmission(id: string, data: Partial<InsertAiSubmission>): Promise<AiSubmission | undefined> {

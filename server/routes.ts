@@ -4225,7 +4225,7 @@ export async function registerRoutes(
       if (!aiClass || (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const { title, prompt, referenceText, type, lessonNumber } = req.body;
+      const { title, prompt, referenceText, type, lessonNumber, parts } = req.body;
       const existingTasks = await storage.getAiTasks(req.params.id);
       const ln = lessonNumber || 1;
       const lessonTasks = existingTasks.filter(t => t.lessonNumber === ln);
@@ -4237,6 +4237,7 @@ export async function registerRoutes(
         prompt: prompt || null,
         referenceText: referenceText || null,
         type: type || "audio",
+        parts: parts && Array.isArray(parts) && parts.length > 0 ? parts : null,
       });
       res.json(task);
     } catch (error) {
@@ -4407,6 +4408,29 @@ export async function registerRoutes(
       const results = students.map(student => {
         const studentSubs = submissions.filter(s => s.aiStudentId === student.id);
         const taskResults = sortedTasks.map(task => {
+          const hasParts = task.parts && Array.isArray(task.parts) && task.parts.length > 0;
+          if (hasParts) {
+            const partSubs = studentSubs.filter(s => s.aiTaskId === task.id && s.status === "completed");
+            const totalParts = task.parts!.length;
+            const completedParts = partSubs.length;
+            const avgScore = completedParts > 0 ? Math.round(partSubs.reduce((sum, s) => sum + (s.score || 0), 0) / completedParts * 10) / 10 : null;
+            const allPartsCompleted = completedParts >= totalParts;
+            const latestSub = partSubs.sort((a, b) => (b.submittedAt?.getTime() || 0) - (a.submittedAt?.getTime() || 0))[0];
+            return {
+              taskId: task.id,
+              taskTitle: task.title,
+              lessonNumber: task.lessonNumber,
+              submissionId: latestSub?.id || null,
+              score: avgScore,
+              status: allPartsCompleted ? "completed" : completedParts > 0 ? "processing" : "pending",
+              transcription: latestSub?.transcription || null,
+              aiResponse: latestSub?.aiResponse || null,
+              submittedAt: latestSub?.submittedAt || null,
+              totalParts,
+              completedParts,
+              partSubmissions: partSubs.map(s => ({ partNumber: s.partNumber, score: s.score, status: s.status, transcription: s.transcription, aiResponse: s.aiResponse, submissionId: s.id })),
+            };
+          }
           const sub = studentSubs.find(s => s.aiTaskId === task.id);
           return {
             taskId: task.id,
@@ -4462,6 +4486,13 @@ export async function registerRoutes(
       const studentResults = students.map(student => {
         const studentSubs = submissions.filter(s => s.aiStudentId === student.id);
         const taskScores = lessonTasks.map(task => {
+          const hasParts = task.parts && Array.isArray(task.parts) && task.parts.length > 0;
+          if (hasParts) {
+            const partSubs = studentSubs.filter(s => s.aiTaskId === task.id && s.status === "completed");
+            if (partSubs.length === 0) return { score: 0, status: "pending" };
+            const avg = Math.round(partSubs.reduce((sum, s) => sum + (s.score || 0), 0) / partSubs.length * 10) / 10;
+            return { score: avg, status: partSubs.length >= task.parts!.length ? "completed" : "processing" };
+          }
           const sub = studentSubs.find(s => s.aiTaskId === task.id);
           return { score: sub?.score || 0, status: sub?.status || "pending" };
         });
@@ -4767,6 +4798,12 @@ export async function registerRoutes(
       const studentResults = students.map(student => {
         const studentSubs = submissions.filter(s => s.aiStudentId === student.id);
         const scores = filteredTasks.map(task => {
+          const hasParts = task.parts && Array.isArray(task.parts) && task.parts.length > 0;
+          if (hasParts) {
+            const partSubs = studentSubs.filter(s => s.aiTaskId === task.id && s.status === "completed");
+            if (partSubs.length === 0) return 0;
+            return Math.round(partSubs.reduce((sum, s) => sum + (s.score || 0), 0) / partSubs.length * 10) / 10;
+          }
           const sub = studentSubs.find(s => s.aiTaskId === task.id);
           return sub?.score || 0;
         });

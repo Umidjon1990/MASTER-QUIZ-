@@ -78,6 +78,29 @@ export function extractAudioSample(inputPath: string): string {
   }
 }
 
+export function extractAudioFromVideo(videoBuffer: Buffer): Buffer {
+  const tmpVideo = path.join(os.tmpdir(), `video_${Date.now()}.mp4`);
+  const tmpAudio = path.join(os.tmpdir(), `video_audio_${Date.now()}.mp3`);
+  fs.writeFileSync(tmpVideo, videoBuffer);
+  console.log(`[AI-SERVICE] Extracting audio from video: ${videoBuffer.length} bytes`);
+
+  try {
+    execSync(
+      `ffmpeg -y -i "${tmpVideo}" -vn -ar 16000 -ac 1 -b:a 64k "${tmpAudio}" 2>/dev/null`,
+      { timeout: 60000 }
+    );
+    const audioBuffer = fs.readFileSync(tmpAudio);
+    console.log(`[AI-SERVICE] Video audio extracted: ${audioBuffer.length} bytes`);
+    return audioBuffer;
+  } catch (e) {
+    console.error("[AI-SERVICE] Video audio extraction failed:", e);
+    throw new Error("Video dan audio chiqarib bo'lmadi");
+  } finally {
+    try { fs.unlinkSync(tmpVideo); } catch {}
+    try { fs.unlinkSync(tmpAudio); } catch {}
+  }
+}
+
 export async function transcribeAudio(audioBuffer: Buffer, filename: string = "audio.ogg"): Promise<string> {
   const ext = filename.split(".").pop()?.toLowerCase() || "ogg";
   const tmpInput = path.join(os.tmpdir(), `whisper_${Date.now()}.${ext}`);

@@ -423,6 +423,11 @@ export const insertAiClassSchema = createInsertSchema(aiClasses).omit({ id: true
 export type InsertAiClass = z.infer<typeof insertAiClassSchema>;
 export type AiClass = typeof aiClasses.$inferSelect;
 
+export type TaskPart = {
+  partNumber: number;
+  referenceText: string;
+};
+
 export const aiClassTasks = pgTable("ai_class_tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   aiClassId: varchar("ai_class_id").notNull(),
@@ -432,6 +437,7 @@ export const aiClassTasks = pgTable("ai_class_tasks", {
   prompt: text("prompt"),
   referenceText: text("reference_text"),
   type: varchar("type", { length: 20 }).notNull().default("audio"),
+  parts: jsonb("parts").$type<TaskPart[]>(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -467,8 +473,10 @@ export const aiSubmissions = pgTable("ai_submissions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   aiStudentId: varchar("ai_student_id").notNull(),
   aiTaskId: varchar("ai_task_id").notNull(),
+  partNumber: integer("part_number").notNull().default(1),
   submissionType: varchar("submission_type", { length: 10 }).notNull().default("audio"),
   audioFileId: varchar("audio_file_id"),
+  videoFileId: varchar("video_file_id"),
   imageFileId: varchar("image_file_id"),
   ocrText: text("ocr_text"),
   transcription: text("transcription"),

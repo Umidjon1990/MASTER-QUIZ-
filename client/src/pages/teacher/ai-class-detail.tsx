@@ -45,6 +45,11 @@ export default function AiClassDetail() {
   const [newTaskPrompt, setNewTaskPrompt] = useState("");
   const [newTaskRef, setNewTaskRef] = useState("");
   const [newTaskLessonNum, setNewTaskLessonNum] = useState(1);
+  const [newTaskHasParts, setNewTaskHasParts] = useState(false);
+  const [newTaskParts, setNewTaskParts] = useState<{ partNumber: number; referenceText: string }[]>([
+    { partNumber: 1, referenceText: "" },
+    { partNumber: 2, referenceText: "" },
+  ]);
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<any>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -252,13 +257,17 @@ export default function AiClassDetail() {
 
   const addTaskMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/ai-classes/${classId}/tasks`, {
+      const body: any = {
         title: newTaskTitle,
         prompt: newTaskPrompt,
-        referenceText: newTaskRef,
+        referenceText: newTaskHasParts ? "" : newTaskRef,
         lessonNumber: newTaskLessonNum,
         type: "audio",
-      });
+      };
+      if (newTaskHasParts) {
+        body.parts = newTaskParts.filter(p => p.referenceText.trim().length > 0);
+      }
+      const res = await apiRequest("POST", `/api/ai-classes/${classId}/tasks`, body);
       return res.json();
     },
     onSuccess: () => {
@@ -268,6 +277,8 @@ export default function AiClassDetail() {
       setNewTaskTitle("");
       setNewTaskPrompt("");
       setNewTaskRef("");
+      setNewTaskHasParts(false);
+      setNewTaskParts([{ partNumber: 1, referenceText: "" }, { partNumber: 2, referenceText: "" }]);
       toast({ title: "Vazifa qo'shildi" });
     },
   });
@@ -733,7 +744,12 @@ export default function AiClassDetail() {
                           ) : (
                             <>
                               <div className="flex items-center justify-between mb-1">
-                                <span className="font-medium text-sm">{localIdx + 1}. {t.title}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-sm">{localIdx + 1}. {t.title}</span>
+                                  {t.parts && Array.isArray(t.parts) && t.parts.length > 0 && (
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">{t.parts.length} bo'lim</Badge>
+                                  )}
+                                </div>
                                 <div className="flex items-center gap-1">
                                   <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-500" onClick={() => startEditing(t)} data-testid={`button-edit-task-${t.id}`}>
                                     <Pencil className="w-3.5 h-3.5" />
@@ -744,6 +760,13 @@ export default function AiClassDetail() {
                                 </div>
                               </div>
                               {t.referenceText && <p className="text-xs text-muted-foreground line-clamp-2">{t.referenceText}</p>}
+                              {t.parts && Array.isArray(t.parts) && t.parts.length > 0 && (
+                                <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                                  {t.parts.map((p: any) => (
+                                    <p key={p.partNumber} className="line-clamp-1">{p.partNumber}. {p.referenceText?.substring(0, 80)}{p.referenceText?.length > 80 ? "..." : ""}</p>
+                                  ))}
+                                </div>
+                              )}
                               {t.prompt && <p className="text-xs text-muted-foreground mt-1">{t.prompt}</p>}
                             </>
                           )}
@@ -1223,7 +1246,7 @@ export default function AiClassDetail() {
       </Dialog>
 
       <Dialog open={addTaskOpen} onOpenChange={setAddTaskOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Vazifa qo'shish</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
@@ -1235,16 +1258,63 @@ export default function AiClassDetail() {
               <Input value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} placeholder="Grammatika" data-testid="input-new-task-title" />
             </div>
             <div>
-              <Label>Mavzu matni (faqat AI uchun)</Label>
-              <Textarea value={newTaskRef} onChange={e => setNewTaskRef(e.target.value)} placeholder="O'quvchi tarjima qilishi kerak bo'lgan matn" rows={3} />
-            </div>
-            <div>
               <Label>AI ga ko'rsatma</Label>
               <Input value={newTaskPrompt} onChange={e => setNewTaskPrompt(e.target.value)} placeholder="Tarjimani tekshir va baho ber" />
             </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="has-parts"
+                checked={newTaskHasParts}
+                onChange={e => setNewTaskHasParts(e.target.checked)}
+                className="rounded border-gray-300"
+                data-testid="checkbox-has-parts"
+              />
+              <Label htmlFor="has-parts" className="cursor-pointer text-sm">Bo'limlarga ajratish (ko'p bo'limli vazifa)</Label>
+            </div>
+            {!newTaskHasParts ? (
+              <div>
+                <Label>Mavzu matni (faqat AI uchun)</Label>
+                <Textarea value={newTaskRef} onChange={e => setNewTaskRef(e.target.value)} placeholder="O'quvchi tarjima qilishi kerak bo'lgan matn" rows={3} />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Bo'limlar</Label>
+                {newTaskParts.map((part, idx) => (
+                  <div key={idx} className="flex gap-2 items-start">
+                    <span className="text-xs font-bold mt-2 min-w-[28px]">{part.partNumber}.</span>
+                    <Textarea
+                      value={part.referenceText}
+                      onChange={e => {
+                        const updated = [...newTaskParts];
+                        updated[idx] = { ...updated[idx], referenceText: e.target.value };
+                        setNewTaskParts(updated);
+                      }}
+                      placeholder={`${part.partNumber}-bo'lim matni`}
+                      rows={2}
+                      className="flex-1"
+                      data-testid={`input-part-${part.partNumber}`}
+                    />
+                    {newTaskParts.length > 2 && (
+                      <Button variant="ghost" size="icon" className="mt-0.5 shrink-0" onClick={() => {
+                        const filtered = newTaskParts.filter((_, i) => i !== idx).map((p, i) => ({ ...p, partNumber: i + 1 }));
+                        setNewTaskParts(filtered);
+                      }} data-testid={`button-remove-part-${part.partNumber}`}>
+                        <X className="w-3.5 h-3.5 text-red-500" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <Button variant="outline" size="sm" onClick={() => {
+                  setNewTaskParts([...newTaskParts, { partNumber: newTaskParts.length + 1, referenceText: "" }]);
+                }} data-testid="button-add-part">
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Bo'lim qo'shish
+                </Button>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button onClick={() => addTaskMutation.mutate()} disabled={!newTaskTitle || addTaskMutation.isPending}>
+            <Button onClick={() => addTaskMutation.mutate()} disabled={!newTaskTitle || addTaskMutation.isPending} data-testid="button-submit-task">
               {addTaskMutation.isPending ? "Qo'shilmoqda..." : "Qo'shish"}
             </Button>
           </DialogFooter>
@@ -1259,18 +1329,38 @@ export default function AiClassDetail() {
               <div>
                 <Label className="text-xs text-muted-foreground">Baho</Label>
                 <p className="text-2xl font-bold">{selectedDetail.score || "—"}<span className="text-sm font-normal text-muted-foreground">/10</span></p>
+                {selectedDetail.totalParts > 0 && (
+                  <p className="text-xs text-muted-foreground">{selectedDetail.completedParts}/{selectedDetail.totalParts} bo'lim topshirilgan</p>
+                )}
               </div>
-              {selectedDetail.transcription && (
-                <div>
-                  <Label className="text-xs text-muted-foreground">O'quvchi javobi (transkripsiya)</Label>
-                  <p className="text-sm bg-muted/50 p-2 rounded mt-1 max-h-[150px] overflow-y-auto">{selectedDetail.transcription}</p>
+              {selectedDetail.partSubmissions && selectedDetail.partSubmissions.length > 0 ? (
+                <div className="space-y-2">
+                  {selectedDetail.partSubmissions.map((ps: any) => (
+                    <div key={ps.partNumber} className="border rounded p-2 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold">{ps.partNumber}-bo'lim</span>
+                        <Badge variant={ps.score >= 7 ? "default" : ps.score >= 5 ? "secondary" : "destructive"} className="text-xs">{ps.score}/10</Badge>
+                      </div>
+                      {ps.transcription && <p className="text-xs bg-muted/50 p-1 rounded max-h-[80px] overflow-y-auto">{ps.transcription}</p>}
+                      {ps.aiResponse && <p className="text-xs bg-blue-50 dark:bg-blue-950/30 p-1 rounded">{ps.aiResponse}</p>}
+                    </div>
+                  ))}
                 </div>
-              )}
-              {selectedDetail.aiResponse && (
-                <div>
-                  <Label className="text-xs text-muted-foreground">AI izohi</Label>
-                  <p className="text-sm bg-blue-50 dark:bg-blue-950/30 p-2 rounded mt-1">{selectedDetail.aiResponse}</p>
-                </div>
+              ) : (
+                <>
+                  {selectedDetail.transcription && (
+                    <div>
+                      <Label className="text-xs text-muted-foreground">O'quvchi javobi (transkripsiya)</Label>
+                      <p className="text-sm bg-muted/50 p-2 rounded mt-1 max-h-[150px] overflow-y-auto">{selectedDetail.transcription}</p>
+                    </div>
+                  )}
+                  {selectedDetail.aiResponse && (
+                    <div>
+                      <Label className="text-xs text-muted-foreground">AI izohi</Label>
+                      <p className="text-sm bg-blue-50 dark:bg-blue-950/30 p-2 rounded mt-1">{selectedDetail.aiResponse}</p>
+                    </div>
+                  )}
+                </>
               )}
               {selectedDetail.status === "pending" && (
                 <p className="text-sm text-muted-foreground">Hali topshirilmagan</p>
