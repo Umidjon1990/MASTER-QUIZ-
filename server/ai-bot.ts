@@ -231,7 +231,7 @@ async function sendLessonList(bot: TelegramBot, chatId: string, session: any, st
   }
 
   const allLessonNumbers = getLessonNumbers(tasks);
-  const lessonNumbers = allLessonNumbers.filter(num => tasks.some(t => t.lessonNumber === num && (t.prompt || t.referenceText)));
+  const lessonNumbers = allLessonNumbers.filter(num => tasks.some(t => t.lessonNumber === num && (t.prompt || t.referenceText || (t.parts && Array.isArray(t.parts) && t.parts.length > 0))));
 
   if (lessonNumbers.length === 0) {
     await bot.sendMessage(Number(chatId), "Hozircha vazifalar tayyor emas. O'qituvchi vazifalarni biriktirishi kerak.");
@@ -623,7 +623,7 @@ async function handleVideoSubmission(bot: TelegramBot, msg: TelegramBot.Message,
     aiStudentId: session.aiStudentId,
     aiTaskId: task.id,
     partNumber: partNum,
-    submissionType: "audio",
+    submissionType: "video",
     videoFileId: fileId,
     status: "processing",
   });

@@ -4226,6 +4226,17 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Forbidden" });
       }
       const { title, prompt, referenceText, type, lessonNumber, parts } = req.body;
+      let validatedParts = null;
+      if (parts && Array.isArray(parts) && parts.length > 0) {
+        const filtered = parts
+          .filter((p: any) => p.referenceText && typeof p.referenceText === "string" && p.referenceText.trim().length > 0)
+          .map((p: any, i: number) => ({ partNumber: i + 1, referenceText: p.referenceText.trim() }));
+        if (filtered.length >= 2 && filtered.length <= 5) {
+          validatedParts = filtered;
+        } else if (filtered.length > 5) {
+          validatedParts = filtered.slice(0, 5).map((p: any, i: number) => ({ ...p, partNumber: i + 1 }));
+        }
+      }
       const existingTasks = await storage.getAiTasks(req.params.id);
       const ln = lessonNumber || 1;
       const lessonTasks = existingTasks.filter(t => t.lessonNumber === ln);
@@ -4237,7 +4248,7 @@ export async function registerRoutes(
         prompt: prompt || null,
         referenceText: referenceText || null,
         type: type || "audio",
-        parts: parts && Array.isArray(parts) && parts.length > 0 ? parts : null,
+        parts: validatedParts,
       });
       res.json(task);
     } catch (error) {

@@ -265,7 +265,9 @@ export default function AiClassDetail() {
         type: "audio",
       };
       if (newTaskHasParts) {
-        body.parts = newTaskParts.filter(p => p.referenceText.trim().length > 0);
+        body.parts = newTaskParts
+          .filter(p => p.referenceText.trim().length > 0)
+          .map((p, i) => ({ ...p, partNumber: i + 1 }));
       }
       const res = await apiRequest("POST", `/api/ai-classes/${classId}/tasks`, body);
       return res.json();
@@ -1305,11 +1307,13 @@ export default function AiClassDetail() {
                     )}
                   </div>
                 ))}
-                <Button variant="outline" size="sm" onClick={() => {
-                  setNewTaskParts([...newTaskParts, { partNumber: newTaskParts.length + 1, referenceText: "" }]);
-                }} data-testid="button-add-part">
-                  <Plus className="w-3.5 h-3.5 mr-1" /> Bo'lim qo'shish
-                </Button>
+                {newTaskParts.length < 5 && (
+                  <Button variant="outline" size="sm" onClick={() => {
+                    setNewTaskParts([...newTaskParts, { partNumber: newTaskParts.length + 1, referenceText: "" }]);
+                  }} data-testid="button-add-part">
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Bo'lim qo'shish ({newTaskParts.length}/5)
+                  </Button>
+                )}
               </div>
             )}
           </div>
