@@ -634,9 +634,14 @@ async function handleVideoSubmission(bot: TelegramBot, msg: TelegramBot.Message,
     const response = await fetch(fileLink);
     const videoBuffer = Buffer.from(await response.arrayBuffer());
 
-    const audioBuffer = extractAudioFromVideo(videoBuffer);
-
-    const transcription = await transcribeAudio(audioBuffer, "video_audio.mp3");
+    let transcription: string;
+    try {
+      const audioBuffer = extractAudioFromVideo(videoBuffer);
+      transcription = await transcribeAudio(audioBuffer, "video_audio.mp3");
+    } catch (ffmpegErr) {
+      console.log(`[AI-BOT] ffmpeg failed, sending video directly to Whisper:`, (ffmpegErr as Error).message);
+      transcription = await transcribeAudio(videoBuffer, "video_input.mp4");
+    }
 
     await storage.updateAiSubmission(submission.id, { transcription, status: "processing" });
 

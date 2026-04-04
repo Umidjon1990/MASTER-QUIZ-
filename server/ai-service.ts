@@ -107,7 +107,13 @@ export async function transcribeAudio(audioBuffer: Buffer, filename: string = "a
   fs.writeFileSync(tmpInput, audioBuffer);
   console.log(`[AI-SERVICE] Temp file written: ${tmpInput}, size=${audioBuffer.length}, ext=${ext}`);
 
-  const tmpFile = extractAudioSample(tmpInput);
+  let tmpFile: string;
+  try {
+    tmpFile = extractAudioSample(tmpInput);
+  } catch (sampleErr) {
+    console.log(`[AI-SERVICE] extractAudioSample failed (ffmpeg missing?), sending raw file to Whisper:`, (sampleErr as Error).message);
+    tmpFile = tmpInput;
+  }
 
   try {
     const response = await openai.audio.transcriptions.create({
