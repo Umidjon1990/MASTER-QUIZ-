@@ -172,6 +172,10 @@ export async function evaluateSubmission({
   let systemMessage: string;
   let userMessage: string;
 
+  if (isMemorization && !referenceText) {
+    console.warn("[AI-SERVICE] isMemorization=true but referenceText is missing, falling back to translation mode");
+  }
+
   if (isMemorization && referenceText) {
     systemMessage = `Sen tajribali arab tili o'qituvchisissan. Sening vazifang — o'quvchining YODLASH sifatini baholash.
 
