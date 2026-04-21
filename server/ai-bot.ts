@@ -10,7 +10,9 @@ const studentSessions = new Map<string, {
   selectedLessonNumber: number | null;
   currentTaskIndex: number;
   currentPartNumber: number;
+  awaitingName: boolean;
   awaitingPhone: boolean;
+  pendingName?: string;
 }>();
 
 function sessionKey(aiClassId: string, chatId: string): string {
@@ -39,6 +41,7 @@ export async function startAiBot(aiClassId: string, token: string, storage: ISto
         selectedLessonNumber: null,
         currentTaskIndex: 0,
         currentPartNumber: 1,
+        awaitingName: false,
         awaitingPhone: false,
       });
       await bot.sendMessage(Number(chatId), `Xush kelibsiz, ${existing.name}! Darslarni ko'rish uchun /vazifa buyrug'ini yuboring.`);
@@ -51,18 +54,13 @@ export async function startAiBot(aiClassId: string, token: string, storage: ISto
       selectedLessonNumber: null,
       currentTaskIndex: 0,
       currentPartNumber: 1,
-      awaitingPhone: true,
+      awaitingName: true,
+      awaitingPhone: false,
     });
 
     await bot.sendMessage(Number(chatId),
-      `Assalomu alaykum! "${aiClass.name}" sinfiga xush kelibsiz.\n\nIltimos, telefon raqamingizni yuboring (masalan: 998901234567):`,
-      {
-        reply_markup: {
-          keyboard: [[{ text: "📱 Telefon raqamni yuborish", request_contact: true }]],
-          resize_keyboard: true,
-          one_time_keyboard: true,
-        },
-      }
+      `Assalomu alaykum! "${aiClass.name}" sinfiga xush kelibsiz.\n\nRo'yxatdan o'tish uchun ism va familiyangizni yozing:`,
+      { reply_markup: { remove_keyboard: true } }
     );
   });
 
@@ -97,6 +95,7 @@ export async function startAiBot(aiClassId: string, token: string, storage: ISto
           selectedLessonNumber: null,
           currentTaskIndex: 0,
           currentPartNumber: 1,
+          awaitingName: false,
           awaitingPhone: false,
         });
         await bot.sendMessage(Number(chatId), `✅ Qayta ulandi, ${existing.name}! Darslarni ko'rish uchun /vazifa buyrug'ini yuboring.`);
@@ -107,17 +106,12 @@ export async function startAiBot(aiClassId: string, token: string, storage: ISto
           selectedLessonNumber: null,
           currentTaskIndex: 0,
           currentPartNumber: 1,
-          awaitingPhone: true,
+          awaitingName: true,
+          awaitingPhone: false,
         });
         await bot.sendMessage(Number(chatId),
-          `Assalomu alaykum! "${aiClass.name}" sinfiga xush kelibsiz.\n\nIltimos, telefon raqamingizni yuboring (masalan: 998901234567):`,
-          {
-            reply_markup: {
-              keyboard: [[{ text: "📱 Telefon raqamni yuborish", request_contact: true }]],
-              resize_keyboard: true,
-              one_time_keyboard: true,
-            },
-          }
+          `Assalomu alaykum! "${aiClass.name}" sinfiga xush kelibsiz.\n\nRo'yxatdan o'tish uchun ism va familiyangizni yozing:`,
+          { reply_markup: { remove_keyboard: true } }
         );
       }
       return;
@@ -170,7 +164,7 @@ export async function startAiBot(aiClassId: string, token: string, storage: ISto
     if (!session || !session.awaitingPhone) return;
 
     const phone = (msg.contact?.phone_number || "").replace(/\D/g, "");
-    await matchStudent(bot, chatId, phone, session, storage, aiClassId);
+    await selfRegisterStudent(bot, chatId, phone, session, storage, aiClassId);
   });
 
   bot.on("voice", async (msg) => {
@@ -199,17 +193,39 @@ export async function startAiBot(aiClassId: string, token: string, storage: ISto
     const session = studentSessions.get(sessionKey(aiClassId, chatId));
     if (!session) return;
 
+    if (session.awaitingName && msg.text) {
+      const fullName = msg.text.trim().replace(/\s+/g, " ");
+      if (fullName.length < 2 || fullName.length > 80) {
+        await bot.sendMessage(Number(chatId), "Iltimos, to'liq ism va familiyangizni yozing (kamida 2 ta belgi):");
+        return;
+      }
+      session.pendingName = fullName;
+      session.awaitingName = false;
+      session.awaitingPhone = true;
+      await bot.sendMessage(Number(chatId),
+        `Rahmat, ${fullName}!\n\nEndi telefon raqamingizni yuboring (998xxxxxxxxx) yoki tugma orqali ulashing:`,
+        {
+          reply_markup: {
+            keyboard: [[{ text: "📱 Telefon raqamni yuborish", request_contact: true }]],
+            resize_keyboard: true,
+            one_time_keyboard: true,
+          },
+        }
+      );
+      return;
+    }
+
     if (session.awaitingPhone && msg.text) {
       const phone = msg.text.replace(/\D/g, "");
       if (phone.length >= 9) {
-        await matchStudent(bot, chatId, phone, session, storage, aiClassId);
+        await selfRegisterStudent(bot, chatId, phone, session, storage, aiClassId);
       } else {
         await bot.sendMessage(Number(chatId), "Telefon raqam noto'g'ri. Qaytadan kiriting (masalan: 998901234567):");
       }
       return;
     }
 
-    if (msg.text && session.aiStudentId && !session.awaitingPhone) {
+    if (msg.text && session.aiStudentId && !session.awaitingPhone && !session.awaitingName) {
       await handleTextSubmission(bot, msg, storage, aiClassId);
     }
   });
@@ -356,28 +372,64 @@ async function offerNextLesson(bot: TelegramBot, chatId: string, session: any, s
   );
 }
 
-async function matchStudent(bot: TelegramBot, chatId: string, phone: string, session: any, storage: IStorage, aiClassId: string) {
-  const students = await storage.getAiStudents(aiClassId);
-  const matched = students.find(s => {
-    const sPhone = s.phone.replace(/\D/g, "");
-    return sPhone === phone || phone.endsWith(sPhone) || sPhone.endsWith(phone);
-  });
-
-  if (!matched) {
-    await bot.sendMessage(Number(chatId), "❌ Siz ro'yxatda topilmadingiz. O'qituvchingizga murojaat qiling.");
-    studentSessions.delete(sessionKey(aiClassId, chatId));
+async function selfRegisterStudent(bot: TelegramBot, chatId: string, phone: string, session: any, storage: IStorage, aiClassId: string) {
+  const name = (session.pendingName || "").trim();
+  if (!name) {
+    session.awaitingName = true;
+    session.awaitingPhone = false;
+    await bot.sendMessage(Number(chatId), "Ism topilmadi. Iltimos, ism va familiyangizni yozing:", { reply_markup: { remove_keyboard: true } });
     return;
   }
 
-  await storage.updateAiStudent(matched.id, { telegramChatId: chatId });
-  session.aiStudentId = matched.id;
-  session.awaitingPhone = false;
-  session.currentPartNumber = 1;
+  const existingByChat = await storage.getAiStudentByTelegramChatId(chatId, aiClassId);
+  if (existingByChat) {
+    session.aiStudentId = existingByChat.id;
+    session.awaitingName = false;
+    session.awaitingPhone = false;
+    session.pendingName = undefined;
+    await bot.sendMessage(Number(chatId),
+      `✅ Siz allaqachon ro'yxatda borsiz, ${existingByChat.name}!\n\nDarslarni ko'rish uchun /vazifa buyrug'ini yuboring.`,
+      { reply_markup: { remove_keyboard: true } }
+    );
+    return;
+  }
 
-  await bot.sendMessage(Number(chatId),
-    `✅ Xush kelibsiz, ${matched.name}!\n\nDarslarni ko'rish uchun /vazifa buyrug'ini yuboring.`,
-    { reply_markup: { remove_keyboard: true } }
-  );
+  const existingByPhone = await storage.getAiStudentByPhone(aiClassId, phone);
+  if (existingByPhone) {
+    await storage.updateAiStudent(existingByPhone.id, { telegramChatId: chatId, name });
+    session.aiStudentId = existingByPhone.id;
+    session.awaitingName = false;
+    session.awaitingPhone = false;
+    session.pendingName = undefined;
+    await bot.sendMessage(Number(chatId),
+      `✅ Xush kelibsiz, ${name}! Ro'yxatga ulandingiz.\n\nDarslarni ko'rish uchun /vazifa buyrug'ini yuboring.`,
+      { reply_markup: { remove_keyboard: true } }
+    );
+    return;
+  }
+
+  try {
+    const created = await storage.createAiStudent({
+      aiClassId,
+      name,
+      phone,
+      telegramChatId: chatId,
+      status: "active",
+    });
+    session.aiStudentId = created.id;
+    session.awaitingName = false;
+    session.awaitingPhone = false;
+    session.pendingName = undefined;
+
+    await bot.sendMessage(Number(chatId),
+      `✅ Tabriklaymiz, ${name}! Siz "${(await storage.getAiClass(aiClassId))?.name || "sinf"}" ga muvaffaqiyatli ro'yxatdan o'tdingiz.\n\nDarslarni ko'rish uchun /vazifa buyrug'ini yuboring.`,
+      { reply_markup: { remove_keyboard: true } }
+    );
+  } catch (err: any) {
+    console.error("[AI-BOT] Self-register error:", err?.message || err);
+    await bot.sendMessage(Number(chatId), "❌ Ro'yxatdan o'tishda xatolik. Qaytadan /start yuboring.");
+    studentSessions.delete(sessionKey(aiClassId, chatId));
+  }
 }
 
 function isTaskFullyCompleted(task: any, submissions: any[]): boolean {

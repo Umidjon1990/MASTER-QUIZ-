@@ -20,11 +20,6 @@ interface TaskDraft {
   type: string;
 }
 
-interface StudentDraft {
-  name: string;
-  phone: string;
-}
-
 export default function AiClasses() {
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
@@ -35,7 +30,6 @@ export default function AiClasses() {
   const [lessonsCount, setLessonsCount] = useState<number>(0);
   const [tasksPerLesson, setTasksPerLesson] = useState<number>(3);
   const [tasks, setTasks] = useState<TaskDraft[]>([]);
-  const [students, setStudents] = useState<StudentDraft[]>([{ name: "", phone: "" }]);
   const [expandedLessons, setExpandedLessons] = useState<Set<number>>(new Set());
   const [importOpen, setImportOpen] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
@@ -97,7 +91,6 @@ export default function AiClasses() {
     setLessonsCount(0);
     setTasksPerLesson(3);
     setTasks([]);
-    setStudents([{ name: "", phone: "" }]);
     setExpandedLessons(new Set());
   }
 
@@ -133,13 +126,13 @@ export default function AiClasses() {
       telegramBotToken: botToken || null,
       instructions: instructions || null,
       tasks: tasks.filter(t => t.title),
-      students: students.filter(s => s.name && s.phone),
+      students: [],
     });
   }
 
   const lessonNumbers = [...new Set(tasks.map(t => t.lessonNumber))].sort((a, b) => a - b);
 
-  const stepTitles = ["Asosiy ma'lumotlar", "Darslar va vazifalar", "O'quvchilar"];
+  const stepTitles = ["Asosiy ma'lumotlar", "Darslar va vazifalar"];
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -327,25 +320,11 @@ export default function AiClasses() {
               </div>
             )}
 
-            {step === 2 && (
-              <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">O'quvchilarni ism va telefon raqam bilan qo'shing. Bot telefon raqam orqali taniydi.</p>
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {students.map((s, idx) => (
-                    <div key={idx} className="flex gap-2 items-center">
-                      <Input value={s.name} onChange={e => { const st = [...students]; st[idx].name = e.target.value; setStudents(st); }} placeholder="Ism" className="flex-1" data-testid={`input-student-name-${idx}`} />
-                      <Input value={s.phone} onChange={e => { const st = [...students]; st[idx].phone = e.target.value; setStudents(st); }} placeholder="998901234567" className="w-[140px]" data-testid={`input-student-phone-${idx}`} />
-                      {students.length > 1 && (
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setStudents(students.filter((_, i) => i !== idx))}>
-                          <X className="w-3.5 h-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <Button variant="outline" size="sm" onClick={() => setStudents([...students, { name: "", phone: "" }])} data-testid="button-add-student">
-                  <Plus className="w-3.5 h-3.5 mr-1" /> O'quvchi qo'shish
-                </Button>
+            {step === 1 && (
+              <div className="mt-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900">
+                <p className="text-xs text-blue-800 dark:text-blue-300">
+                  💡 O'quvchilar botga <code className="font-mono">/start</code> yuborib o'zlari ro'yxatdan o'tadilar (ism + telefon). Sinf yaratilgach, bot havolasini o'quvchilarga tarqating.
+                </p>
               </div>
             )}
 
@@ -353,7 +332,7 @@ export default function AiClasses() {
               {step > 0 ? (
                 <Button variant="outline" onClick={() => setStep(step - 1)}>Orqaga</Button>
               ) : <div />}
-              {step < 2 ? (
+              {step < stepTitles.length - 1 ? (
                 <Button onClick={() => setStep(step + 1)} disabled={step === 0 && !name}>Keyingi</Button>
               ) : (
                 <Button onClick={handleCreate} disabled={createMutation.isPending || !name} className="gradient-purple border-0" data-testid="button-create-ai-class">
