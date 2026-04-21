@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, BrainCircuit, Users, ListChecks, X, ChevronDown, ChevronRight, Copy, Loader2 } from "lucide-react";
+import { Plus, BrainCircuit, Users, ListChecks, X, ChevronDown, ChevronRight, Copy, Loader2, Trash2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { motion } from "framer-motion";
 
 interface TaskDraft {
@@ -51,6 +52,22 @@ export default function AiClasses() {
     },
     onError: (err: any) => {
       toast({ title: "Xatolik", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const [classToDelete, setClassToDelete] = useState<{ id: string; name: string } | null>(null);
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/ai-classes/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-classes"] });
+      toast({ title: "AI sinf o'chirildi" });
+      setClassToDelete(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "O'chirib bo'lmadi", description: err.message, variant: "destructive" });
     },
   });
 
@@ -399,7 +416,7 @@ export default function AiClasses() {
       ) : aiClasses.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {aiClasses.map((cls: any) => (
-            <motion.div key={cls.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+            <motion.div key={cls.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="relative group">
               <Link href={`/teacher/ai-classes/${cls.id}`}>
                 <Card className="p-4 hover:shadow-md transition-all cursor-pointer" data-testid={`card-ai-class-${cls.id}`}>
                   <div className="flex items-start justify-between mb-3">
@@ -421,6 +438,19 @@ export default function AiClasses() {
                   </div>
                 </Card>
               </Link>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-2 right-2 h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setClassToDelete({ id: cls.id, name: cls.name });
+                }}
+                data-testid={`button-delete-ai-class-${cls.id}`}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
             </motion.div>
           ))}
         </div>
@@ -436,6 +466,28 @@ export default function AiClasses() {
           </Button>
         </Card>
       )}
+
+      <AlertDialog open={!!classToDelete} onOpenChange={(open) => !open && setClassToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>AI sinfni o'chirasizmi?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>"{classToDelete?.name}"</strong> sinfi o'chiriladi. Bu sinfdagi barcha o'quvchilar, vazifalar va topshiriqlar ham birga o'chadi. Bu amalni qaytarib bo'lmaydi.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-ai-class">Bekor qilish</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => classToDelete && deleteMutation.mutate(classToDelete.id)}
+              disabled={deleteMutation.isPending}
+              className="bg-red-600 hover:bg-red-700 text-white"
+              data-testid="button-confirm-delete-ai-class"
+            >
+              {deleteMutation.isPending ? "O'chirilmoqda..." : "O'chirish"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
