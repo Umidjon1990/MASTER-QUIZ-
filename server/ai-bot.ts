@@ -578,19 +578,21 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
       isMemorization: task.evaluationMode === "memorization",
     });
 
+    const feedbackScheduledFor = new Date(Date.now() + 2 * 60 * 60 * 1000);
     await storage.updateAiSubmission(submission.id, {
       aiResponse: result.feedback,
       score: result.score,
       status: "completed",
       gradedAt: new Date(),
+      studentChatId: chatId.toString(),
+      feedbackScheduledFor,
     });
 
     const partLabel = hasParts ? ` (${partNum}-bo'lim)` : "";
-    let responseMsg = `✅ ${task.title}${partLabel} — natija:\n\n`;
-    responseMsg += `📊 Baho: ${result.score}/10\n`;
-    responseMsg += `💬 Izoh: ${result.feedback}`;
-
-    await bot.sendMessage(Number(chatId), responseMsg);
+    await bot.sendMessage(
+      Number(chatId),
+      `✅ ${task.title}${partLabel} — vazifangiz qabul qilindi!\n\n📝 Ustoz vazifangizni ko'rib chiqib, taxminan 2 soatdan so'ng baho va izohini yuboradi.\n\nDarslarni davom ettirishingiz mumkin.`
+    );
 
     if (aiClass?.monitoringChatId) {
       try {
@@ -710,19 +712,21 @@ async function handleVideoSubmission(bot: TelegramBot, msg: TelegramBot.Message,
       isMemorization: task.evaluationMode === "memorization",
     });
 
+    const feedbackScheduledFor = new Date(Date.now() + 2 * 60 * 60 * 1000);
     await storage.updateAiSubmission(submission.id, {
       aiResponse: result.feedback,
       score: result.score,
       status: "completed",
       gradedAt: new Date(),
+      studentChatId: chatId.toString(),
+      feedbackScheduledFor,
     });
 
     const partLabel = hasParts ? ` (${partNum}-bo'lim)` : "";
-    let responseMsg = `✅ ${task.title}${partLabel} — natija:\n\n`;
-    responseMsg += `📊 Baho: ${result.score}/10\n`;
-    responseMsg += `💬 Izoh: ${result.feedback}`;
-
-    await bot.sendMessage(Number(chatId), responseMsg);
+    await bot.sendMessage(
+      Number(chatId),
+      `✅ ${task.title}${partLabel} — vazifangiz qabul qilindi!\n\n📝 Ustoz vazifangizni ko'rib chiqib, taxminan 2 soatdan so'ng baho va izohini yuboradi.\n\nDarslarni davom ettirishingiz mumkin.`
+    );
 
     if (aiClass?.monitoringChatId) {
       try {

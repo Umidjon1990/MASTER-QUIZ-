@@ -484,10 +484,13 @@ export const aiSubmissions = pgTable("ai_submissions", {
   aiResponse: text("ai_response"),
   score: integer("score"),
   status: varchar("status", { length: 20 }).notNull().default("pending"),
+  studentChatId: varchar("student_chat_id", { length: 100 }),
+  feedbackScheduledFor: timestamp("feedback_scheduled_for"),
+  feedbackSentAt: timestamp("feedback_sent_at"),
   submittedAt: timestamp("submitted_at").defaultNow(),
   gradedAt: timestamp("graded_at"),
 });
 
-export const insertAiSubmissionSchema = createInsertSchema(aiSubmissions).omit({ id: true, submittedAt: true, gradedAt: true });
+export const insertAiSubmissionSchema = createInsertSchema(aiSubmissions).omit({ id: true, submittedAt: true, gradedAt: true, feedbackSentAt: true });
 export type InsertAiSubmission = z.infer<typeof insertAiSubmissionSchema>;
 export type AiSubmission = typeof aiSubmissions.$inferSelect;

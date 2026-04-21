@@ -89,6 +89,9 @@ if (process.env.NODE_ENV === "production") {
   const { storage } = await import("./storage");
   restoreActiveBots(storage).catch(err => console.error("[AI-BOT] Restore failed:", err));
 
+  const { startFeedbackScheduler } = await import("./ai-feedback-scheduler");
+  startFeedbackScheduler();
+
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
