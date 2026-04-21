@@ -470,6 +470,19 @@ function getCurrentTask(session: any, tasks: any[]) {
   return lessonTasks[session.currentTaskIndex];
 }
 
+function buildAcceptedMessage(task: any, partNum: number, hasParts: boolean): string {
+  if (!hasParts) {
+    return `✅ ${task.title} — vazifangiz qabul qilindi!\n\n📝 Ustoz vazifangizni ko'rib chiqib, taxminan 2 soatdan so'ng baho va izohini yuboradi.\n\nDarslarni davom ettirishingiz mumkin.`;
+  }
+  const totalParts = task.parts.length;
+  const isLastPart = partNum >= totalParts;
+  if (isLastPart) {
+    return `✅ ${task.title} — oxirgi ${partNum}-qism ham qabul qilindi! 🎉\n\n📝 Vazifa to'liq topshirildi. Ustoz taxminan 2 soatdan so'ng baho va izoh yuboradi.`;
+  }
+  const nextPart = partNum + 1;
+  return `✅ ${task.title} — ${partNum}/${totalParts}-qism qabul qilindi!\n\n👉 Endi ${nextPart}/${totalParts}-qismni yuboring. Matn keyingi xabarda chiqadi.\n\n💡 Eslatma: vazifa ${totalParts} qismdan iborat — har bir qismni alohida ovozli yoki video xabar bilan yuboring.`;
+}
+
 async function advanceToNextTask(bot: TelegramBot, chatId: string, session: any, storage: IStorage) {
   const tasks = await storage.getAiTasks(session.aiClassId);
   const task = getCurrentTask(session, tasks);
@@ -589,10 +602,7 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
     });
 
     const partLabel = hasParts ? ` (${partNum}-bo'lim)` : "";
-    await bot.sendMessage(
-      Number(chatId),
-      `✅ ${task.title}${partLabel} — vazifangiz qabul qilindi!\n\n📝 Ustoz vazifangizni ko'rib chiqib, taxminan 2 soatdan so'ng baho va izohini yuboradi.\n\nDarslarni davom ettirishingiz mumkin.`
-    );
+    await bot.sendMessage(Number(chatId), buildAcceptedMessage(task, partNum, hasParts));
 
     if (aiClass?.monitoringChatId) {
       try {
@@ -723,10 +733,7 @@ async function handleVideoSubmission(bot: TelegramBot, msg: TelegramBot.Message,
     });
 
     const partLabel = hasParts ? ` (${partNum}-bo'lim)` : "";
-    await bot.sendMessage(
-      Number(chatId),
-      `✅ ${task.title}${partLabel} — vazifangiz qabul qilindi!\n\n📝 Ustoz vazifangizni ko'rib chiqib, taxminan 2 soatdan so'ng baho va izohini yuboradi.\n\nDarslarni davom ettirishingiz mumkin.`
-    );
+    await bot.sendMessage(Number(chatId), buildAcceptedMessage(task, partNum, hasParts));
 
     if (aiClass?.monitoringChatId) {
       try {
