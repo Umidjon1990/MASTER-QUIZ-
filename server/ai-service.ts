@@ -22,7 +22,7 @@ function convertToMp3(inputPath: string): string {
 }
 
 export function extractAudioSample(inputPath: string): string {
-  const outputPath = inputPath.replace(/\.[^.]+$/, "_sample.mp3");
+  const outputPath = inputPath.replace(/\.[^.]+$/, "_first60.mp3");
   try {
     const durationStr = execSync(
       `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${inputPath}" 2>/dev/null`,
@@ -30,50 +30,20 @@ export function extractAudioSample(inputPath: string): string {
     ).toString().trim();
     const duration = parseFloat(durationStr);
 
-    if (duration <= 65) {
-      console.log(`[AI-SERVICE] Audio short (${duration}s), using full file`);
+    if (duration <= 60) {
+      console.log(`[AI-SERVICE] Audio ${duration.toFixed(1)}s ≤ 60s, using full file`);
       return convertToMp3(inputPath);
     }
 
-    const tmpDir = os.tmpdir();
-    const ts = Date.now();
-    const segStart = path.join(tmpDir, `seg_start_${ts}.mp3`);
-    const segMid = path.join(tmpDir, `seg_mid_${ts}.mp3`);
-    const segEnd = path.join(tmpDir, `seg_end_${ts}.mp3`);
-
     execSync(
-      `ffmpeg -y -ss 0 -i "${inputPath}" -t 20 -vn -ar 16000 -ac 1 -b:a 64k "${segStart}" 2>/dev/null`,
-      { timeout: 15000 }
+      `ffmpeg -y -ss 0 -i "${inputPath}" -t 60 -vn -ar 16000 -ac 1 -b:a 64k "${outputPath}" 2>/dev/null`,
+      { timeout: 30000 }
     );
 
-    const midStart = Math.max(0, (duration / 2) - 10);
-    execSync(
-      `ffmpeg -y -ss ${midStart} -i "${inputPath}" -t 20 -vn -ar 16000 -ac 1 -b:a 64k "${segMid}" 2>/dev/null`,
-      { timeout: 15000 }
-    );
-
-    const endStart = Math.max(0, duration - 20);
-    execSync(
-      `ffmpeg -y -ss ${endStart} -i "${inputPath}" -t 20 -vn -ar 16000 -ac 1 -b:a 64k "${segEnd}" 2>/dev/null`,
-      { timeout: 15000 }
-    );
-
-    const listFile = path.join(tmpDir, `concat_${ts}.txt`);
-    fs.writeFileSync(listFile, `file '${segStart}'\nfile '${segMid}'\nfile '${segEnd}'`);
-    execSync(
-      `ffmpeg -y -f concat -safe 0 -i "${listFile}" -c copy "${outputPath}" 2>/dev/null`,
-      { timeout: 15000 }
-    );
-
-    try { fs.unlinkSync(segStart); } catch {}
-    try { fs.unlinkSync(segMid); } catch {}
-    try { fs.unlinkSync(segEnd); } catch {}
-    try { fs.unlinkSync(listFile); } catch {}
-
-    console.log(`[AI-SERVICE] Audio sampled: ${duration.toFixed(0)}s -> 60s (boshi 20s + o'rtasi 20s + oxiri 20s)`);
+    console.log(`[AI-SERVICE] Audio truncated: ${duration.toFixed(0)}s -> first 60s`);
     return outputPath;
   } catch (e) {
-    console.log(`[AI-SERVICE] Audio sampling failed, converting full file`);
+    console.log(`[AI-SERVICE] Audio truncation failed, converting full file`);
     return convertToMp3(inputPath);
   }
 }

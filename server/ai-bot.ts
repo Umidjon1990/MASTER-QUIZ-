@@ -575,7 +575,7 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
       studentAnswer: transcription,
       instructions: aiClass?.instructions || undefined,
       submissionType: "audio_sample",
-      isMemorization: hasParts,
+      isMemorization: task.evaluationMode === "memorization",
     });
 
     await storage.updateAiSubmission(submission.id, {
@@ -707,7 +707,7 @@ async function handleVideoSubmission(bot: TelegramBot, msg: TelegramBot.Message,
       studentAnswer: transcription,
       instructions: aiClass?.instructions || undefined,
       submissionType: "audio_sample",
-      isMemorization: hasParts,
+      isMemorization: task.evaluationMode === "memorization",
     });
 
     await storage.updateAiSubmission(submission.id, {

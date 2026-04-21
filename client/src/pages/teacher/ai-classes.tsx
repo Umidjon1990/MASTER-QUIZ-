@@ -18,6 +18,7 @@ interface TaskDraft {
   prompt: string;
   referenceText: string;
   type: string;
+  evaluationMode: "translation" | "memorization";
 }
 
 export default function AiClasses() {
@@ -70,6 +71,7 @@ export default function AiClasses() {
         prompt: t.prompt || "",
         referenceText: t.referenceText || "",
         type: t.type || "audio",
+        evaluationMode: t.evaluationMode === "memorization" ? "memorization" : "translation",
       }));
       setTasks(drafted);
       const uniqueLessons = [...new Set(drafted.map(t => t.lessonNumber))];
@@ -105,6 +107,7 @@ export default function AiClasses() {
           prompt: "",
           referenceText: "",
           type: "audio",
+          evaluationMode: "translation" as const,
         });
       }
     }
@@ -284,11 +287,29 @@ export default function AiClasses() {
                                     className="h-8 text-xs"
                                     data-testid={`input-task-prompt-${globalIdx}`}
                                   />
+                                  <div className="flex gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => { const t = [...tasks]; t[globalIdx].evaluationMode = "translation"; setTasks(t); }}
+                                      className={`flex-1 px-2 py-1 text-xs rounded border ${task.evaluationMode === "translation" ? "bg-primary text-primary-foreground border-primary" : "bg-background border-input"}`}
+                                      data-testid={`button-mode-translation-${globalIdx}`}
+                                    >
+                                      🔤 Tarjima
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => { const t = [...tasks]; t[globalIdx].evaluationMode = "memorization"; setTasks(t); }}
+                                      className={`flex-1 px-2 py-1 text-xs rounded border ${task.evaluationMode === "memorization" ? "bg-primary text-primary-foreground border-primary" : "bg-background border-input"}`}
+                                      data-testid={`button-mode-memorization-${globalIdx}`}
+                                    >
+                                      🧠 Yodlash
+                                    </button>
+                                  </div>
                                 </Card>
                               );
                             })}
                             <Button variant="outline" size="sm" className="text-xs" onClick={() => {
-                              const newTask: TaskDraft = { lessonNumber: lessonNum, title: "", prompt: "", referenceText: "", type: "audio" };
+                              const newTask: TaskDraft = { lessonNumber: lessonNum, title: "", prompt: "", referenceText: "", type: "audio", evaluationMode: "translation" };
                               const insertIdx = tasks.findIndex(t => t.lessonNumber > lessonNum);
                               if (insertIdx === -1) setTasks([...tasks, newTask]);
                               else { const t = [...tasks]; t.splice(insertIdx, 0, newTask); setTasks(t); }
@@ -310,6 +331,7 @@ export default function AiClasses() {
                     prompt: "",
                     referenceText: "",
                     type: "audio",
+                    evaluationMode: "translation" as const,
                   }));
                   setTasks([...tasks, ...newTasks]);
                   setLessonsCount(prev => prev + 1);

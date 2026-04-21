@@ -4072,6 +4072,7 @@ export async function registerRoutes(
             prompt: tasks[i].prompt || null,
             referenceText: tasks[i].referenceText || null,
             type: tasks[i].type || "audio",
+            evaluationMode: tasks[i].evaluationMode === "memorization" ? "memorization" : "translation",
           });
         }
       }
@@ -4192,6 +4193,8 @@ export async function registerRoutes(
             prompt: task.prompt,
             referenceText: task.referenceText,
             type: task.type || "audio",
+            evaluationMode: (task as any).evaluationMode || "translation",
+            parts: (task as any).parts || null,
           });
         }
       } else {
@@ -4208,6 +4211,8 @@ export async function registerRoutes(
             prompt: task.prompt,
             referenceText: task.referenceText,
             type: task.type || "audio",
+            evaluationMode: (task as any).evaluationMode || "translation",
+            parts: (task as any).parts || null,
           });
         }
       }
@@ -4225,7 +4230,7 @@ export async function registerRoutes(
       if (!aiClass || (aiClass.teacherId !== req.userId && req.userProfile?.role !== "admin")) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const { title, prompt, referenceText, type, lessonNumber, parts } = req.body;
+      const { title, prompt, referenceText, type, lessonNumber, parts, evaluationMode } = req.body;
       let validatedParts = null;
       if (parts && Array.isArray(parts) && parts.length > 0) {
         const filtered = parts
@@ -4251,6 +4256,7 @@ export async function registerRoutes(
         prompt: prompt || null,
         referenceText: referenceText || null,
         type: type || "audio",
+        evaluationMode: evaluationMode === "memorization" ? "memorization" : "translation",
         parts: validatedParts,
       });
       res.json(task);

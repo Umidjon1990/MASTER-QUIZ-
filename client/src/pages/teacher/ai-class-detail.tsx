@@ -46,6 +46,8 @@ export default function AiClassDetail() {
   const [newTaskRef, setNewTaskRef] = useState("");
   const [newTaskLessonNum, setNewTaskLessonNum] = useState(1);
   const [newTaskHasParts, setNewTaskHasParts] = useState(false);
+  const [newTaskEvalMode, setNewTaskEvalMode] = useState<"translation" | "memorization">("translation");
+  const [editEvalMode, setEditEvalMode] = useState<"translation" | "memorization">("translation");
   const [newTaskParts, setNewTaskParts] = useState<{ partNumber: number; referenceText: string }[]>([
     { partNumber: 1, referenceText: "" },
     { partNumber: 2, referenceText: "" },
@@ -263,6 +265,7 @@ export default function AiClassDetail() {
         referenceText: newTaskHasParts ? "" : newTaskRef,
         lessonNumber: newTaskLessonNum,
         type: "audio",
+        evaluationMode: newTaskEvalMode,
       };
       if (newTaskHasParts) {
         body.parts = newTaskParts
@@ -280,6 +283,7 @@ export default function AiClassDetail() {
       setNewTaskPrompt("");
       setNewTaskRef("");
       setNewTaskHasParts(false);
+      setNewTaskEvalMode("translation");
       setNewTaskParts([{ partNumber: 1, referenceText: "" }, { partNumber: 2, referenceText: "" }]);
       toast({ title: "Vazifa qo'shildi" });
     },
@@ -352,12 +356,13 @@ export default function AiClassDetail() {
     setEditTitle(task.title);
     setEditPrompt(task.prompt || "");
     setEditRef(task.referenceText || "");
+    setEditEvalMode(task.evaluationMode === "memorization" ? "memorization" : "translation");
   }
 
   function saveEdit(taskId: string) {
     updateTaskMutation.mutate({
       id: taskId,
-      data: { title: editTitle, prompt: editPrompt, referenceText: editRef },
+      data: { title: editTitle, prompt: editPrompt, referenceText: editRef, evaluationMode: editEvalMode },
     });
   }
 
@@ -742,6 +747,10 @@ export default function AiClassDetail() {
                               </div>
                               <Textarea value={editRef} onChange={e => setEditRef(e.target.value)} placeholder="Mavzu matni (faqat AI uchun)" rows={3} data-testid={`input-edit-task-ref-${t.id}`} />
                               <Input value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="AI ga ko'rsatma" data-testid={`input-edit-task-prompt-${t.id}`} />
+                              <div className="flex gap-1">
+                                <button type="button" onClick={() => setEditEvalMode("translation")} className={`flex-1 px-2 py-1 text-xs rounded border ${editEvalMode === "translation" ? "bg-primary text-primary-foreground border-primary" : "bg-background border-input"}`} data-testid={`button-edit-mode-translation-${t.id}`}>🔤 Tarjima</button>
+                                <button type="button" onClick={() => setEditEvalMode("memorization")} className={`flex-1 px-2 py-1 text-xs rounded border ${editEvalMode === "memorization" ? "bg-primary text-primary-foreground border-primary" : "bg-background border-input"}`} data-testid={`button-edit-mode-memorization-${t.id}`}>🧠 Yodlash</button>
+                              </div>
                             </div>
                           ) : (
                             <>

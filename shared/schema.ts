@@ -437,6 +437,7 @@ export const aiClassTasks = pgTable("ai_class_tasks", {
   prompt: text("prompt"),
   referenceText: text("reference_text"),
   type: varchar("type", { length: 20 }).notNull().default("audio"),
+  evaluationMode: varchar("evaluation_mode", { length: 20 }).notNull().default("translation"),
   parts: jsonb("parts").$type<TaskPart[]>(),
   createdAt: timestamp("created_at").defaultNow(),
 });
