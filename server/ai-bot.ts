@@ -529,7 +529,7 @@ async function handleAudioSubmission(bot: TelegramBot, msg: TelegramBot.Message,
   const fileId = msg.voice?.file_id || msg.audio?.file_id;
   if (!fileId) return;
 
-  await bot.sendMessage(Number(chatId), "⏳ Audio tekshirilmoqda...");
+  await bot.sendMessage(Number(chatId), "✅ Vazifangiz qabul qilindi! Tez orada tekshirib yuboramiz.");
 
   const submission = await storage.createAiSubmission({
     aiStudentId: session.aiStudentId,
@@ -672,7 +672,7 @@ async function handleVideoSubmission(bot: TelegramBot, msg: TelegramBot.Message,
   const fileId = msg.video?.file_id || msg.video_note?.file_id;
   if (!fileId) return;
 
-  await bot.sendMessage(Number(chatId), "⏳ Video tekshirilmoqda (audio chiqarilmoqda)...");
+  await bot.sendMessage(Number(chatId), "✅ Vazifangiz qabul qilindi! Tez orada tekshirib yuboramiz.");
 
   const submission = await storage.createAiSubmission({
     aiStudentId: session.aiStudentId,
@@ -812,7 +812,7 @@ async function handleImageSubmission(bot: TelegramBot, msg: TelegramBot.Message,
   const largestPhoto = photos[photos.length - 1];
   const fileId = largestPhoto.file_id;
 
-  await bot.sendMessage(Number(chatId), "⏳ Rasm tekshirilmoqda...");
+  await bot.sendMessage(Number(chatId), "✅ Vazifangiz qabul qilindi! Tez orada tekshirib yuboramiz.");
 
   const submission = await storage.createAiSubmission({
     aiStudentId: session.aiStudentId,
@@ -895,7 +895,7 @@ async function handleTextSubmission(bot: TelegramBot, msg: TelegramBot.Message, 
   const text = msg.text?.trim();
   if (!text) return;
 
-  await bot.sendMessage(Number(chatId), "⏳ Matn tekshirilmoqda...");
+  await bot.sendMessage(Number(chatId), "✅ Vazifangiz qabul qilindi! Tez orada tekshirib yuboramiz.");
 
   const submission = await storage.createAiSubmission({
     aiStudentId: session.aiStudentId,
