@@ -2459,14 +2459,26 @@ export async function registerRoutes(
   app.get("/api/classes/:id/members", requireAuth, async (req: any, res) => {
     try {
       const members = await storage.getClassMembers(req.params.id);
-      const membersWithProfiles = await Promise.all(
-        members.map(async (m) => {
-          const profile = await storage.getUserProfile(m.userId);
-          const user = await authStorage.getUser(m.userId);
-          const name = profile?.displayName || user?.name || "Unknown";
+      let membersWithProfiles: any[] = [];
+      if (members.length > 0) {
+        const userIds = members.map(m => m.userId);
+        const { userProfiles } = await import("@shared/schema");
+        const { users } = await import("@shared/models/auth");
+        const { inArray } = await import("drizzle-orm");
+        const { db } = await import("./db");
+        const [profilesRows, usersRows] = await Promise.all([
+          db.select().from(userProfiles).where(inArray(userProfiles.userId, userIds)),
+          db.select().from(users).where(inArray(users.id, userIds)),
+        ]);
+        const profileMap = new Map(profilesRows.map((p: any) => [p.userId, p]));
+        const userMap = new Map(usersRows.map((u: any) => [u.id, u]));
+        membersWithProfiles = members.map((m) => {
+          const profile: any = profileMap.get(m.userId);
+          const user: any = userMap.get(m.userId);
+          const name = profile?.displayName || user?.firstName || user?.name || "Unknown";
           return { ...m, displayName: name, userName: name };
-        })
-      );
+        });
+      }
       res.json(membersWithProfiles);
     } catch (error) {
       res.status(500).json({ message: "Server error" });
@@ -3478,14 +3490,26 @@ export async function registerRoutes(
         lessonTasksData = created;
       }
 
-      const membersWithProfiles = await Promise.all(
-        members.map(async (m) => {
-          const profile = await storage.getUserProfile(m.userId);
-          const user = await authStorage.getUser(m.userId);
-          const name = profile?.displayName || user?.name || "Unknown";
+      let membersWithProfiles: any[] = [];
+      if (members.length > 0) {
+        const userIds = members.map(m => m.userId);
+        const { userProfiles } = await import("@shared/schema");
+        const { users } = await import("@shared/models/auth");
+        const { inArray } = await import("drizzle-orm");
+        const { db } = await import("./db");
+        const [profilesRows, usersRows] = await Promise.all([
+          db.select().from(userProfiles).where(inArray(userProfiles.userId, userIds)),
+          db.select().from(users).where(inArray(users.id, userIds)),
+        ]);
+        const profileMap = new Map(profilesRows.map((p: any) => [p.userId, p]));
+        const userMap = new Map(usersRows.map((u: any) => [u.id, u]));
+        membersWithProfiles = members.map((m) => {
+          const profile: any = profileMap.get(m.userId);
+          const user: any = userMap.get(m.userId);
+          const name = profile?.displayName || user?.firstName || user?.name || "Unknown";
           return { ...m, displayName: name, userName: name };
-        })
-      );
+        });
+      }
 
       const { isAssistant, assistant } = await isTeacherOrAssistant(req.userId, cls);
       res.json({
