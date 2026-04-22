@@ -3438,13 +3438,29 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      const [members, lessons, taskColumnsData, existingLessonTasks, submissionsData] = await Promise.all([
+      const [members, initialLessons, taskColumnsData, existingLessonTasks, submissionsData] = await Promise.all([
         storage.getClassMembers(req.params.id),
         storage.getLessonsByClass(req.params.id),
         storage.getTaskColumnsByClass(req.params.id),
         storage.getLessonTasksByClass(req.params.id),
         storage.getSubmissionsByClass(req.params.id),
       ]);
+
+      let lessons = initialLessons;
+      if (lessons.length === 0 && cls.startDate && cls.totalLessons && cls.totalLessons > 0 && cls.scheduleType) {
+        try {
+          await storage.generateLessonsForClass(
+            cls.id,
+            new Date(cls.startDate),
+            cls.scheduleType,
+            cls.scheduleDays || [],
+            cls.totalLessons
+          );
+          lessons = await storage.getLessonsByClass(req.params.id);
+        } catch (genErr) {
+          console.error("Tracker lazy-generate lessons failed:", genErr);
+        }
+      }
 
       let lessonTasksData = existingLessonTasks;
       if (lessonTasksData.length === 0 && lessons.length > 0 && taskColumnsData.length > 0) {
