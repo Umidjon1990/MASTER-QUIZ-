@@ -2377,6 +2377,21 @@ export async function registerRoutes(
         teacherId: req.userId,
         joinCode,
       } as any);
+
+      if (cls.startDate && cls.totalLessons && cls.totalLessons > 0 && cls.scheduleType) {
+        try {
+          await storage.generateLessonsForClass(
+            cls.id,
+            new Date(cls.startDate),
+            cls.scheduleType,
+            cls.scheduleDays || [],
+            cls.totalLessons
+          );
+        } catch (genErr) {
+          console.error("Auto-generate lessons on class create failed:", genErr);
+        }
+      }
+
       res.json(cls);
     } catch (error) {
       console.error("Create class error:", error);
@@ -2582,7 +2597,24 @@ export async function registerRoutes(
 
   app.get("/api/classes/:id/lessons", requireAuth, async (req: any, res) => {
     try {
-      const lessons = await storage.getLessonsByClass(req.params.id);
+      let lessons = await storage.getLessonsByClass(req.params.id);
+      if (lessons.length === 0) {
+        const cls = await storage.getClass(req.params.id);
+        if (cls && cls.startDate && cls.totalLessons && cls.totalLessons > 0 && cls.scheduleType) {
+          try {
+            await storage.generateLessonsForClass(
+              cls.id,
+              new Date(cls.startDate),
+              cls.scheduleType,
+              cls.scheduleDays || [],
+              cls.totalLessons
+            );
+            lessons = await storage.getLessonsByClass(req.params.id);
+          } catch (genErr) {
+            console.error("Lazy-generate lessons failed:", genErr);
+          }
+        }
+      }
       res.json(lessons);
     } catch (error) {
       res.status(500).json({ message: "Server error" });
