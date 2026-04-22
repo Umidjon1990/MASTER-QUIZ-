@@ -2478,9 +2478,15 @@ export async function registerRoutes(
         const trimmedName = (studentName as string).trim();
         if (!trimmedName) continue;
 
-        const nameParts = trimmedName.toLowerCase().replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/);
-        const baseEmail = nameParts.join('.') || 'student';
-        const randomSuffix = Math.random().toString(36).substring(2, 6);
+        const asciiSlug = trimmedName
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, '')
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean)
+          .join('.');
+        const baseEmail = asciiSlug || 'student';
+        const randomSuffix = Math.random().toString(36).substring(2, 8);
         const email = `${baseEmail}.${randomSuffix}@student.local`;
         const password = Math.random().toString(36).substring(2, 10);
 

@@ -640,10 +640,10 @@ export default function TeacherClasses() {
                   <div>
                     <Label data-testid="label-bulk-instructions">O'quvchilar ismlarini kiriting (har qator — bitta o'quvchi)</Label>
                     <p className="text-xs text-muted-foreground mt-1 mb-2">
-                      Har bir ismni alohida qatorga yozing. Har biriga avtomatik email va parol yaratiladi.
+                      Har bir qatorda faqat ism (yoki taxallus). Telefon raqam shart emas. Arab harflari, kirill, emoji va maxsus belgilar ham qo'llab-quvvatlanadi. Har biriga avtomatik email va parol yaratiladi.
                     </p>
                     <Textarea
-                      placeholder={"Ali Valiyev\nVali Aliyev\nHasan Karimov\nHusayn Saidov"}
+                      placeholder={"Ali Valiyev\nمحمد علي\nЕвгений Петров\nHasan ⭐"}
                       value={bulkText}
                       onChange={(e) => setBulkText(e.target.value)}
                       className="min-h-[180px] font-mono text-sm"
