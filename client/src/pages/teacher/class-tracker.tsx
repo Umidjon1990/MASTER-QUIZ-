@@ -107,6 +107,7 @@ export default function ClassTracker() {
   const [taskEditOpen, setTaskEditOpen] = useState(false);
   const [editingColId, setEditingColId] = useState<string | null>(null);
   const [editingColTitle, setEditingColTitle] = useState("");
+  const [newTaskTitle, setNewTaskTitle] = useState("");
   const [statSelectedLessonIds, setStatSelectedLessonIds] = useState<Set<string>>(new Set());
   const [assistantDialogOpen, setAssistantDialogOpen] = useState(false);
   const [assistantPassword, setAssistantPassword] = useState("");
@@ -253,6 +254,25 @@ export default function ClassTracker() {
     onSuccess: () => {
       invalidateTracker();
       toast({ title: "Vazifa o'chirildi" });
+    },
+    onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
+  });
+
+  const createAndAddColumnMutation = useMutation({
+    mutationFn: async (data: { title: string; lessonId: string }) => {
+      const existingCount = (taskColumnsData || []).length;
+      const res = await apiRequest("POST", `/api/classes/${classId}/task-columns`, {
+        title: data.title,
+        sortOrder: existingCount,
+      });
+      const newCol = await res.json();
+      await apiRequest("POST", `/api/class-lessons/${data.lessonId}/tasks`, { taskColumnId: newCol.id });
+      return newCol;
+    },
+    onSuccess: () => {
+      invalidateTracker();
+      setNewTaskTitle("");
+      toast({ title: "Yangi vazifa qo'shildi" });
     },
     onError: () => toast({ title: "Xatolik yuz berdi", variant: "destructive" }),
   });
@@ -1481,7 +1501,7 @@ export default function ClassTracker() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={taskEditOpen} onOpenChange={(open) => { setTaskEditOpen(open); if (!open) setEditingColId(null); }}>
+      <Dialog open={taskEditOpen} onOpenChange={(open) => { setTaskEditOpen(open); if (!open) { setEditingColId(null); setNewTaskTitle(""); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle data-testid="text-task-edit-title">
@@ -1590,6 +1610,44 @@ export default function ClassTracker() {
 
             {!isAssistantUser && availableColumnsForLesson.length === 0 && selectedLessonColumns.length > 0 && (
               <p className="text-xs text-muted-foreground text-center py-1">Barcha vazifa turlari allaqachon qo'shilgan</p>
+            )}
+
+            {!isAssistantUser && selectedLesson && (
+              <div className="border-t pt-3">
+                <Label className="text-xs text-muted-foreground mb-2 block">Yangi vazifa turi yaratish</Label>
+                <form
+                  className="flex items-center gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const t = newTaskTitle.trim();
+                    if (t && selectedLesson) {
+                      createAndAddColumnMutation.mutate({ title: t, lessonId: selectedLesson.id });
+                    }
+                  }}
+                >
+                  <Input
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    placeholder="Masalan: Audio, Insho, Lug'at..."
+                    className="h-8 text-sm"
+                    disabled={createAndAddColumnMutation.isPending}
+                    data-testid="input-new-task-title"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="h-8 shrink-0"
+                    disabled={!newTaskTitle.trim() || createAndAddColumnMutation.isPending}
+                    data-testid="btn-create-new-task"
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    Qo'shish
+                  </Button>
+                </form>
+                <p className="text-[10px] text-muted-foreground mt-1.5">
+                  Yangi vazifa turi yaratiladi va ushbu darsga avtomatik qo'shiladi. Boshqa darslarda ham foydalanishingiz mumkin.
+                </p>
+              </div>
             )}
 
             <div className="flex justify-end">
