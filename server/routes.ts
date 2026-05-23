@@ -10,6 +10,7 @@ import { registerObjectStorageRoutes } from "./replit_integrations/object_storag
 import { setupWebSocket, getScheduledQuizRoomCode, isRestorationComplete } from "./websocket";
 import multer from "multer";
 import * as XLSX from "xlsx";
+import mammoth from "mammoth";
 import bcrypt from "bcryptjs";
 import { fisherYatesShuffle, balancedShuffleOptions } from "./shuffle";
 import { generateQuizPDF, generateQuizDOCX } from "./quiz-export";
@@ -932,15 +933,42 @@ export async function registerRoutes(
     res.send(buf);
   });
 
-  app.post("/api/quizzes/:quizId/import-text", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
-    try {
-      const { text } = req.body;
-      if (!text) return res.status(400).json({ message: "Matn kerak" });
+  // Expand inline MCQ lines like "1. Q? A) opt1 B) opt2 * C) opt3" into separate lines
+  const expandInlineMCQLines = (lines: string[]): string[] => {
+    const out: string[] = [];
+    for (const raw of lines) {
+      const line = raw.replace(/\s+$/, "");
+      // Find option markers preceded by whitespace OR start: " A)" " B)" etc.
+      const optMatches: { index: number; letter: string; lead: number }[] = [];
+      const re = /(^|\s)([A-Da-d])[\.\)](?=\s)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(line)) !== null) {
+        const lead = m[1].length;
+        optMatches.push({ index: m.index, letter: m[2].toUpperCase(), lead });
+      }
+      // Need at least 2 option markers on same line to consider it inline
+      if (optMatches.length >= 2) {
+        const first = optMatches[0];
+        const prefix = line.slice(0, first.index).trim();
+        if (prefix) out.push(prefix);
+        for (let i = 0; i < optMatches.length; i++) {
+          const cur = optMatches[i];
+          const start = cur.index + cur.lead;
+          const end = i + 1 < optMatches.length ? optMatches[i + 1].index + optMatches[i + 1].lead : line.length;
+          out.push(line.slice(start, end).trim());
+        }
+      } else {
+        out.push(line);
+      }
+    }
+    return out;
+  };
 
-      const existingQuestions = await storage.getQuestionsByQuiz(req.params.quizId);
+  const importQuestionsFromText = async (quizId: string, text: string) => {
+      const existingQuestions = await storage.getQuestionsByQuiz(quizId);
       const startIndex = existingQuestions.length;
 
-      const rawLines = text.split("\n");
+      const rawLines = expandInlineMCQLines(text.split("\n"));
       const imported: any[] = [];
       let currentQ: any = null;
 
@@ -968,7 +996,7 @@ export async function registerRoutes(
         const validOptions = currentQ.options.filter(Boolean);
         if (currentQ.correctAnswer && validOptions.length >= 2) {
           const question = await storage.createQuestion({
-            quizId: req.params.quizId,
+            quizId,
             orderIndex: startIndex + imported.length,
             type: "multiple_choice",
             questionText: currentQ.questionText.trim(),
@@ -1155,7 +1183,7 @@ export async function registerRoutes(
 
       // Merge new reading sections into quiz questionSections
       if (newReadingSections.length > 0) {
-        const quiz = await storage.getQuiz(req.params.quizId);
+        const quiz = await storage.getQuiz(quizId);
         const existingSections: any[] = (quiz as any)?.questionSections || [];
         const merged = [
           ...existingSections,
@@ -1168,10 +1196,18 @@ export async function registerRoutes(
             timePerQuestion: s.timePerQuestion || undefined,
           })),
         ];
-        await storage.updateQuiz(req.params.quizId, { questionSections: merged } as any);
+        await storage.updateQuiz(quizId, { questionSections: merged } as any);
       }
 
-      res.json({ imported: imported.length, questions: imported, readingSections: newReadingSections.length });
+      return { imported: imported.length, questions: imported, readingSections: newReadingSections.length };
+  };
+
+  app.post("/api/quizzes/:quizId/import-text", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
+    try {
+      const { text } = req.body;
+      if (!text) return res.status(400).json({ message: "Matn kerak" });
+      const result = await importQuestionsFromText(req.params.quizId, text);
+      res.json(result);
     } catch (error) {
       console.error("Text import error:", error);
       res.status(500).json({ message: "Import xatosi" });
@@ -1181,6 +1217,25 @@ export async function registerRoutes(
   app.post("/api/quizzes/:quizId/import", requireAuth, requireRole(["teacher", "admin"]), upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+      const filename = (req.file.originalname || "").toLowerCase();
+      const mime = (req.file.mimetype || "").toLowerCase();
+      const isDocx = filename.endsWith(".docx") || mime.includes("officedocument.wordprocessingml") || mime.includes("msword");
+      const isTextFile = filename.endsWith(".txt") || mime === "text/plain";
+
+      if (isDocx) {
+        const { value: text } = await mammoth.extractRawText({ buffer: req.file.buffer });
+        if (!text || !text.trim()) return res.status(400).json({ message: "Word fayldan matn topilmadi" });
+        const result = await importQuestionsFromText(req.params.quizId, text);
+        return res.json(result);
+      }
+
+      if (isTextFile) {
+        const text = req.file.buffer.toString("utf-8");
+        if (!text.trim()) return res.status(400).json({ message: "Fayl bo'sh" });
+        const result = await importQuestionsFromText(req.params.quizId, text);
+        return res.json(result);
+      }
 
       const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];

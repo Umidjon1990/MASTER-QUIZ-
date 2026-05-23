@@ -708,9 +708,9 @@ export default function QuizEditor() {
               <Button variant="outline" onClick={() => window.open("/api/template/download")} data-testid="button-download-template">
                 <Download className="w-4 h-4 mr-1" /> Shablon
               </Button>
-              <input type="file" ref={fileInputRef} onChange={handleImport} accept=".xlsx,.xls,.csv" className="hidden" />
+              <input type="file" ref={fileInputRef} onChange={handleImport} accept=".xlsx,.xls,.csv,.docx,.txt" className="hidden" />
               <Button variant="outline" onClick={() => fileInputRef.current?.click()} data-testid="button-import">
-                <Upload className="w-4 h-4 mr-1" /> Excel import
+                <Upload className="w-4 h-4 mr-1" /> Excel/Word import
               </Button>
               <Dialog open={textImportOpen} onOpenChange={setTextImportOpen}>
                 <DialogTrigger asChild>
