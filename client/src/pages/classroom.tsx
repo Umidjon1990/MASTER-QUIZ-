@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import DuoAnswerInput, { isDuoType } from "@/components/duo-answer";
+import type { QuestionConfig } from "@shared/schema";
 import { io as socketIO, Socket } from "socket.io-client";
 import {
   Copy,
@@ -218,6 +220,8 @@ interface QuizQuestion {
   timeLimit: number;
   mediaUrl: string | null;
   mediaType?: string | null;
+  config?: QuestionConfig | null;
+  correctAnswer?: string | null;
 }
 
 interface QuizData {
@@ -898,6 +902,33 @@ export default function ClassroomQuizPage() {
                 )}
               </div>
             </Blackboard>
+
+            {!hasAnswered && isDuoType(currentQuestion.type) && (
+              <div className="mt-4 max-w-2xl mx-auto w-full space-y-4" data-testid="answer-duo">
+                <DuoAnswerInput
+                  question={currentQuestion}
+                  value={selectedAnswer || ""}
+                  onChange={(serialized) => setSelectedAnswer(serialized)}
+                  tone="onDark"
+                />
+                <Button
+                  onClick={() => {
+                    if (!selectedAnswer || hasAnswered) return;
+                    setHasAnswered(true);
+                    socketRef.current?.emit("public:answer", {
+                      questionId: currentQuestion.id,
+                      answer: selectedAnswer,
+                    });
+                  }}
+                  disabled={!selectedAnswer}
+                  className="w-full bg-gradient-to-r from-emerald-500 to-green-600 text-white border-0"
+                  data-testid="button-submit-duo"
+                >
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  Tasdiqlash
+                </Button>
+              </div>
+            )}
 
             {!hasAnswered && currentQuestion.options && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 max-w-2xl mx-auto w-full" data-testid="answer-options">

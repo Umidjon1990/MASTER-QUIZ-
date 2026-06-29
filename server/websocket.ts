@@ -5,6 +5,7 @@ import { db } from "./db";
 import { activeGames, quizzes } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { fisherYatesShuffle, balancedShuffleOptions } from "./shuffle";
+import { gradeAnswer } from "@shared/grading";
 
 let io: SocketServer;
 const questionAnswerCounts = new Map<string, number>();
@@ -517,6 +518,7 @@ function sendPublicQuestion(roomId: string) {
       options: questionOptions,
       timeLimit,
       points: q.type === "poll" ? 0 : q.points,
+      config: (q as any).config ?? null,
     },
   });
 
@@ -1342,23 +1344,13 @@ export function setupWebSocket(httpServer: HttpServer) {
         if (question.type === "poll") {
           isCorrect = true;
           points = 0;
-        } else if (question.type === "multiple_select") {
-          const correctArr = question.correctAnswer.split(",").map(s => s.trim().toLowerCase());
-          const correctSet = new Set(correctArr);
-          const answerArr = Array.from(new Set(String(answer).split(",").map(s => s.trim().toLowerCase())));
-          const correctCount = answerArr.filter(a => correctSet.has(a)).length;
-          const wrongCount = answerArr.filter(a => !correctSet.has(a)).length;
-          const totalCorrect = correctSet.size;
-          if (wrongCount === 0 && correctCount > 0) {
-            const ratio = correctCount / totalCorrect;
-            const timeBonus = Math.max(0, question.timeLimit - timeSpent);
-            points = Math.floor((question.points + Math.floor(timeBonus * 2)) * ratio);
-            isCorrect = correctCount === totalCorrect;
-          }
         } else {
-          isCorrect = question.correctAnswer.toLowerCase().trim() === String(answer).toLowerCase().trim();
-          const timeBonus = Math.max(0, question.timeLimit - timeSpent);
-          points = isCorrect ? question.points + Math.floor(timeBonus * 2) : 0;
+          const graded = gradeAnswer(question as any, answer);
+          isCorrect = graded.isCorrect;
+          if (graded.ratio > 0) {
+            const timeBonus = Math.max(0, question.timeLimit - timeSpent);
+            points = Math.floor((question.points + Math.floor(timeBonus * 2)) * graded.ratio);
+          }
         }
 
         await storage.saveAnswer({
@@ -1820,6 +1812,7 @@ export function setupWebSocket(httpServer: HttpServer) {
                 timeLimit: remainingTime,
                 points: q.type === "poll" ? 0 : q.points,
                 mediaUrl: q.mediaUrl,
+                config: (q as any).config ?? null,
               },
               passage: rejoinPassage,
               index: room.currentQuestionIndex,
@@ -1896,23 +1889,13 @@ export function setupWebSocket(httpServer: HttpServer) {
         if (question.type === "poll") {
           isCorrect = true;
           points = 0;
-        } else if (question.type === "multiple_select") {
-          const correctArr = question.correctAnswer.split(",").map((s: string) => s.trim().toLowerCase());
-          const correctSet = new Set(correctArr);
-          const answerArr = Array.from(new Set(String(answer).split(",").map((s: string) => s.trim().toLowerCase())));
-          const correctCount = answerArr.filter((a: string) => correctSet.has(a)).length;
-          const wrongCount = answerArr.filter((a: string) => !correctSet.has(a)).length;
-          const totalCorrect = correctSet.size;
-          if (wrongCount === 0 && correctCount > 0) {
-            const ratio = correctCount / totalCorrect;
-            const timeBonus = Math.max(0, room.currentEffectiveTimeLimit - timeSpent);
-            points = Math.floor(((question.points || 100) + Math.floor(timeBonus * 2)) * ratio);
-            isCorrect = correctCount === totalCorrect;
-          }
         } else {
-          isCorrect = question.correctAnswer.toLowerCase().trim() === String(answer).toLowerCase().trim();
-          const timeBonus = Math.max(0, room.currentEffectiveTimeLimit - timeSpent);
-          points = isCorrect ? (question.points || 100) + Math.floor(timeBonus * 2) : 0;
+          const graded = gradeAnswer(question as any, answer);
+          isCorrect = graded.isCorrect;
+          if (graded.ratio > 0) {
+            const timeBonus = Math.max(0, room.currentEffectiveTimeLimit - timeSpent);
+            points = Math.floor(((question.points || 100) + Math.floor(timeBonus * 2)) * graded.ratio);
+          }
         }
 
         player.score += points;
@@ -2008,6 +1991,7 @@ export function setupWebSocket(httpServer: HttpServer) {
               timeLimit: remainingTime,
               points: q.type === "poll" ? 0 : q.points,
               mediaUrl: q.mediaUrl,
+              config: (q as any).config ?? null,
             } : null,
             questionIndex: room.currentQuestionIndex,
             totalQuestions: room.questions.length,

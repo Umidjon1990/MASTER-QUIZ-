@@ -13,6 +13,7 @@ import * as XLSX from "xlsx";
 import mammoth from "mammoth";
 import bcrypt from "bcryptjs";
 import { fisherYatesShuffle, balancedShuffleOptions } from "./shuffle";
+import { gradeAnswer } from "@shared/grading";
 import { generateQuizPDF, generateQuizDOCX } from "./quiz-export";
 import { startAiBot, stopAiBot, activeBots } from "./ai-bot";
 
@@ -814,7 +815,7 @@ export async function registerRoutes(
 
   app.post("/api/quizzes/:quizId/questions", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
-      const { questionText, options, correctAnswer, points, timeLimit, mediaUrl, mediaType, orderIndex } = req.body;
+      const { questionText, options, correctAnswer, points, timeLimit, mediaUrl, mediaType, orderIndex, config } = req.body;
       const type = req.body.type || "multiple_choice";
       if (!questionText || (!correctAnswer && type !== "poll")) {
         return res.status(400).json({ message: "Savol matni va to'g'ri javob kerak" });
@@ -863,6 +864,7 @@ export async function registerRoutes(
         mediaUrl: mediaUrl || null,
         mediaType: mediaType || null,
         orderIndex: orderIndex || 0,
+        config: config || null,
       });
       res.json(question);
     } catch (error: any) {
@@ -971,6 +973,8 @@ export async function registerRoutes(
       const rawLines = expandInlineMCQLines(text.split("\n"));
       const imported: any[] = [];
       let currentQ: any = null;
+      // Pending Duolingo-style question being assembled from a template block
+      let pendingNew: any = null;
 
       // Reading section tracking
       interface ReadingSection { passageTitle: string; passageText: string; fromIndex: number; toIndex: number; timePerQuestion?: number; }
@@ -1009,6 +1013,66 @@ export async function registerRoutes(
         }
       };
 
+      // Finalize a pending Duolingo-style question block into the DB.
+      const saveNewQ = async () => {
+        if (!pendingNew) return;
+        const pn = pendingNew;
+        pendingNew = null;
+        let type: string = pn.type;
+        let questionText: string = (pn.questionText || "").trim();
+        let options: string[] | null = null;
+        let correctAnswer = "";
+        let config: any = null;
+
+        if (type === "translate") {
+          const acc = (pn.accepted || []).map((s: string) => s.trim()).filter(Boolean);
+          if (!questionText || acc.length === 0) return;
+          correctAnswer = acc[0];
+          config = { accepted: acc.slice(1) };
+        } else if (type === "reorder") {
+          const toks = questionText.split(/\s+/).filter(Boolean);
+          if (toks.length < 2) return;
+          config = { tokens: toks };
+          correctAnswer = toks.join(" ");
+          questionText = (pn.prompt || "So'zlardan to'g'ri gap tuzing").trim();
+        } else if (type === "match") {
+          const pairs = (pn.pairs || []).filter((p: any) => p.left && p.right);
+          if (pairs.length < 2) return;
+          config = { pairs };
+          correctAnswer = "match";
+          questionText = (pn.prompt || "Juftlarni o'zaro moslang").trim();
+        } else if (type === "fill_blank") {
+          if (!/_{3,}/.test(questionText)) return;
+          const blanksCount = (questionText.match(/_{3,}/g) || []).length;
+          const groups = (pn.answerRaw || "")
+            .split(";")
+            .map((g: string) => g.split("|").map((x: string) => x.trim()).filter(Boolean))
+            .filter((g: string[]) => g.length > 0);
+          if (groups.length === 0) return;
+          const blanks: { answers: string[] }[] = [];
+          for (let i = 0; i < blanksCount; i++) {
+            blanks.push({ answers: groups[i] || groups[groups.length - 1] || [] });
+          }
+          config = { blanks };
+          correctAnswer = blanks.map((b) => b.answers[0]).join(" | ");
+        } else {
+          return;
+        }
+
+        const question = await storage.createQuestion({
+          quizId,
+          orderIndex: startIndex + imported.length,
+          type,
+          questionText,
+          options,
+          correctAnswer,
+          config,
+          points: 100,
+          timeLimit: 30,
+        } as any);
+        imported.push(question);
+      };
+
       const closeReadingSection = () => {
         if (inReading && readingStartQIndex >= 0 && imported.length >= readingStartQIndex) {
           newReadingSections.push({
@@ -1035,8 +1099,11 @@ export async function registerRoutes(
         const line = rawLines[li].replace(/\s+$/, "");
         const trimmed = line.trim();
 
-        // Skip empty lines and ::: markers always
-        if (!trimmed || /^:{3,}$/.test(trimmed)) continue;
+        // Skip empty lines and ::: markers always (closes any open template block)
+        if (!trimmed || /^:{3,}$/.test(trimmed)) {
+          if (pendingNew) await saveNewQ();
+          continue;
+        }
 
         // --- Format markers ---
         const readingStart = trimmed.match(/^reading\s*:?\s*(.*)?$/i);
@@ -1045,6 +1112,87 @@ export async function registerRoutes(
         const savollarMatch = /^savollar\s*:?/i.test(trimmed);
         const optMatch = trimmed.match(/^([A-Da-d])[\.\)\s]\s*(.*)/);
         const qMatch = trimmed.match(/^(\d+)\s*[\.\)\-\t]\s*(.*)/);
+
+        // --- Duolingo-style template markers (translate / reorder / match / fill_blank) ---
+        const transMatch = trimmed.match(/^tarjima\s*:\s*(.*)/i);
+        const reorderMatch = trimmed.match(/^tartib\s*:\s*(.*)/i);
+        const matchHdr = trimmed.match(/^moslash\s*:\s*(.*)/i);
+        const fillMatch = trimmed.match(/^(?:to['’‘ʻ]?ldirish|tuldirish|bo['’‘ʻ]?sh(?:\s*o['’‘ʻ]?rin)?)\s*:\s*(.*)/i);
+        const answerLine = trimmed.match(/^javob\s*:\s*(.*)/i);
+
+        // A separator / reading marker closes any open template block first
+        if ((isSeparator || readingStart) && pendingNew) await saveNewQ();
+
+        // Answer line for an open translate / fill block
+        if (answerLine && pendingNew && (pendingNew.type === "translate" || pendingNew.type === "fill_blank")) {
+          if (pendingNew.type === "translate") pendingNew.accepted = (answerLine[1] || "").split(/[;|]/);
+          else pendingNew.answerRaw = answerLine[1] || "";
+          await saveNewQ();
+          continue;
+        }
+
+        if (transMatch) {
+          await saveCurrentQ(); currentQ = null;
+          if (pendingNew) await saveNewQ();
+          const rest = (transMatch[1] || "").trim();
+          const eq = rest.indexOf("=");
+          if (eq >= 0) {
+            pendingNew = { type: "translate", questionText: rest.slice(0, eq).trim(), accepted: rest.slice(eq + 1).split(/[;|]/) };
+            await saveNewQ();
+          } else {
+            pendingNew = { type: "translate", questionText: rest, accepted: [] };
+          }
+          continue;
+        }
+
+        if (reorderMatch) {
+          await saveCurrentQ(); currentQ = null;
+          if (pendingNew) await saveNewQ();
+          pendingNew = { type: "reorder", questionText: (reorderMatch[1] || "").trim() };
+          await saveNewQ();
+          continue;
+        }
+
+        if (matchHdr) {
+          await saveCurrentQ(); currentQ = null;
+          if (pendingNew) await saveNewQ();
+          pendingNew = { type: "match", pairs: [] };
+          const rest = (matchHdr[1] || "").trim();
+          const pm0 = rest.match(/^(.+?)\s*[-=—–]\s*(.+)$/);
+          if (pm0) pendingNew.pairs.push({ left: pm0[1].trim(), right: pm0[2].trim() });
+          continue;
+        }
+
+        if (fillMatch) {
+          await saveCurrentQ(); currentQ = null;
+          if (pendingNew) await saveNewQ();
+          const rest = (fillMatch[1] || "").trim();
+          const eq = rest.indexOf("=");
+          if (eq >= 0) {
+            pendingNew = { type: "fill_blank", questionText: rest.slice(0, eq).trim(), answerRaw: rest.slice(eq + 1).trim() };
+            await saveNewQ();
+          } else {
+            pendingNew = { type: "fill_blank", questionText: rest, answerRaw: "" };
+          }
+          continue;
+        }
+
+        // Collect pairs for an open match block
+        if (pendingNew && pendingNew.type === "match" && !optMatch && !qMatch && !isSeparator) {
+          const pm = trimmed.match(/^(.+?)\s*[-=—–]\s*(.+)$/);
+          if (pm) { pendingNew.pairs.push({ left: pm[1].trim(), right: pm[2].trim() }); continue; }
+          await saveNewQ(); // not a pair — finalize and process line normally
+        }
+
+        // Forgiving: a plain line right after "Tarjima:" (no Javob/=) is the translation
+        if (pendingNew && pendingNew.type === "translate" && (!pendingNew.accepted || pendingNew.accepted.length === 0) && !optMatch && !qMatch && !isSeparator) {
+          pendingNew.accepted = trimmed.split(/[;|]/);
+          await saveNewQ();
+          continue;
+        }
+
+        // Any other still-open template block closes before normal processing
+        if (pendingNew) await saveNewQ();
 
         // --- Separator "---" closes reading block ---
         if (isSeparator) {
@@ -1179,6 +1327,7 @@ export async function registerRoutes(
       }
 
       await saveCurrentQ();
+      if (pendingNew) await saveNewQ();
       closeReadingSection();
 
       // Merge new reading sections into quiz questionSections
@@ -2262,6 +2411,15 @@ export async function registerRoutes(
           continue;
         }
 
+        if (q.type === "translate" || q.type === "reorder" || q.type === "match" || q.type === "fill_blank") {
+          const graded = gradeAnswer(q as any, userAnswer);
+          const pts = Math.round(q.points * graded.ratio);
+          if (graded.isCorrect) correctCount++;
+          score += pts;
+          answersDetail[q.id] = { answer: userAnswer ?? "", isCorrect: graded.isCorrect, points: pts };
+          continue;
+        }
+
         const singleAnswer = typeof userAnswer === "string" ? userAnswer : "";
         const isCorrect = singleAnswer === q.correctAnswer;
         const pts = isCorrect ? q.points : 0;
@@ -3229,6 +3387,7 @@ export async function registerRoutes(
         timeLimit: q.timeLimit,
         mediaUrl: q.mediaUrl,
         mediaType: q.mediaType,
+        config: (q as any).config ?? null,
       }));
 
       res.json({
@@ -3270,6 +3429,15 @@ export async function registerRoutes(
             selected.every((a: string) => correctAnswers.includes(a));
           if (isCorrect) { correctCount++; score += (q.points || 10); }
           results[q.id] = { answer: selected, isCorrect, correctAnswer: q.correctAnswer || "", points: isCorrect ? (q.points || 10) : 0 };
+          continue;
+        }
+
+        if (q.type === "translate" || q.type === "reorder" || q.type === "match" || q.type === "fill_blank") {
+          const graded = gradeAnswer(q as any, userAnswer);
+          const pts = Math.round((q.points || 10) * graded.ratio);
+          if (graded.isCorrect) correctCount++;
+          score += pts;
+          results[q.id] = { answer: userAnswer ?? "", isCorrect: graded.isCorrect, correctAnswer: q.correctAnswer || "", points: pts };
           continue;
         }
 

@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ClipboardList, Calendar, ArrowLeft, ArrowRight, Send, CheckCircle, X, Clock, BarChart3, Music } from "lucide-react";
+import DuoAnswerInput, { isDuoType } from "@/components/duo-answer";
 import type { Assignment, Question } from "@shared/schema";
 
 interface StudentAssignment extends Assignment {
@@ -190,7 +191,13 @@ export default function StudentAssignments() {
                 <img src={currentQuestion.mediaUrl} alt="Savol rasmi" className="rounded-md max-h-48 object-contain mb-3" data-testid="assignment-media-image" />
               )}
 
-              {currentQuestion.type === "multiple_select" && currentQuestion.options && (currentQuestion.options as string[]).length > 0 ? (
+              {isDuoType(currentQuestion.type) ? (
+                <DuoAnswerInput
+                  question={currentQuestion}
+                  value={(answers[currentQuestion.id] as string) || ""}
+                  onChange={(serialized) => handleSelectAnswer(currentQuestion.id, serialized)}
+                />
+              ) : currentQuestion.type === "multiple_select" && currentQuestion.options && (currentQuestion.options as string[]).length > 0 ? (
                 <div className="space-y-2">
                   {(currentQuestion.options as string[]).map((option, idx) => {
                     const selected = ((answers[currentQuestion.id] as string[]) || []).includes(option);

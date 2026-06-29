@@ -198,9 +198,20 @@ export const questions = pgTable("questions", {
   mediaUrl: text("media_url"),
   options: jsonb("options").$type<string[]>(),
   correctAnswer: text("correct_answer").notNull(),
+  config: jsonb("config").$type<QuestionConfig>(),
   points: integer("points").notNull().default(100),
   timeLimit: integer("time_limit").notNull().default(30),
 });
+
+// Type-specific configuration for advanced (Duolingo-style) question types.
+// Stored in questions.config (JSONB). Legacy types (multiple_choice, true_false,
+// open_ended, poll, multiple_select) leave this null.
+export type QuestionConfig =
+  | { accepted: string[] }                          // translate: extra accepted answers (primary = correctAnswer)
+  | { tokens: string[] }                            // reorder: correct word order
+  | { pairs: { left: string; right: string }[] }    // match: pairs to connect
+  | { blanks: { answers: string[] }[] }             // fill_blank: accepted answers per blank
+  | Record<string, unknown>;
 
 export const liveSessions = pgTable("live_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

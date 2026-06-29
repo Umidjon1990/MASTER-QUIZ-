@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import DuoAnswerInput, { isDuoType } from "@/components/duo-answer";
+import type { QuestionConfig } from "@shared/schema";
 import { io as socketIO, Socket } from "socket.io-client";
 import {
   CheckCircle2,
@@ -97,6 +99,8 @@ interface QuizQuestion {
   timeLimit: number;
   mediaUrl: string | null;
   mediaType: string | null;
+  config?: QuestionConfig | null;
+  correctAnswer?: string | null;
 }
 
 interface QuizSection {
@@ -1611,7 +1615,36 @@ export default function QuizPlayPage() {
                 </motion.div>
               ) : (
                 <div>
-                  {currentQuestion.type === "true_false" ? (
+                  {isDuoType(currentQuestion.type) ? (
+                    <motion.div
+                      className="space-y-4"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1 }}
+                    >
+                      <DuoAnswerInput
+                        question={currentQuestion}
+                        value={(multiCurrentAnswer as string) || ""}
+                        onChange={(serialized) => setAnswers(prev => ({ ...prev, [currentQuestion.id]: serialized }))}
+                        disabled={hasAnswered}
+                        tone="onDark"
+                      />
+                      <Button
+                        onClick={() => {
+                          const ans = answers[currentQuestion.id];
+                          if (!ans || hasAnswered) return;
+                          setHasAnswered(true);
+                          socketRef.current?.emit("public:answer", { questionId: currentQuestion.id, answer: ans });
+                        }}
+                        disabled={hasAnswered || !answers[currentQuestion.id]}
+                        className="w-full gradient-purple border-0 text-white"
+                        data-testid="button-submit-duo"
+                      >
+                        <Send className="w-5 h-5 mr-2" />
+                        Yuborish
+                      </Button>
+                    </motion.div>
+                  ) : currentQuestion.type === "true_false" ? (
                     <div className="grid grid-cols-2 gap-4">
                       {["true", "false"].map((opt, i) => {
                         const color = i === 0 ? KAHOOT_COLORS[3] : KAHOOT_COLORS[0];
@@ -1826,7 +1859,20 @@ export default function QuizPlayPage() {
               </div>
 
               <div>
-                {soloCurrentQuestion.type === "true_false" ? (
+                {isDuoType(soloCurrentQuestion.type) ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                  >
+                    <DuoAnswerInput
+                      question={soloCurrentQuestion}
+                      value={(soloAnswer as string) || ""}
+                      onChange={(serialized) => handleSoloAnswer(soloCurrentQuestion.id, serialized)}
+                      tone="onDark"
+                    />
+                  </motion.div>
+                ) : soloCurrentQuestion.type === "true_false" ? (
                   <div className="grid grid-cols-2 gap-4">
                     {["true", "false"].map((opt, i) => {
                       const color = i === 0 ? KAHOOT_COLORS[3] : KAHOOT_COLORS[0];

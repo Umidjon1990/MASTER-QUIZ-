@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, ListChecks, ToggleLeft, MessageSquare, Pencil, BarChart3, CheckSquare, ChevronDown, ChevronRight, BookOpen, Clock } from "lucide-react";
+import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, ListChecks, ToggleLeft, MessageSquare, Pencil, BarChart3, CheckSquare, ChevronDown, ChevronRight, BookOpen, Clock, Languages, ListOrdered, Link2, SquarePen } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Quiz, Question, QuizCategory } from "@shared/schema";
 
@@ -262,6 +262,10 @@ export default function QuizEditor() {
     timeLimit: 30,
     type: "multiple_choice" as string,
     openAnswer: "",
+    translateAccepted: "",
+    reorderText: "",
+    matchText: "",
+    fillAnswers: "",
   });
 
   const openEditDialog = (q: Question) => {
@@ -278,6 +282,7 @@ export default function QuizEditor() {
       const correctAnswers = q.correctAnswer.split(",").map(s => s.trim());
       correctIdxs = correctAnswers.map(ca => opts.findIndex(o => o.trim() === ca)).filter(i => i >= 0);
     }
+    const cfg = (q.config as any) || {};
     setEditQ({
       questionText: q.questionText,
       options: opts,
@@ -287,6 +292,10 @@ export default function QuizEditor() {
       timeLimit: q.timeLimit,
       type: q.type || "multiple_choice",
       openAnswer: q.type === "open_ended" ? q.correctAnswer : "",
+      translateAccepted: q.type === "translate" ? [q.correctAnswer, ...((cfg.accepted as string[]) || [])].filter(Boolean).join("; ") : "",
+      reorderText: q.type === "reorder" ? ((cfg.tokens as string[]) || []).join(" ") : "",
+      matchText: q.type === "match" ? (((cfg.pairs as { left: string; right: string }[]) || []).map(p => `${p.left} - ${p.right}`).join("\n")) : "",
+      fillAnswers: q.type === "fill_blank" ? (((cfg.blanks as { answers: string[] }[]) || []).map(b => b.answers.join("|")).join("; ")) : "",
     });
   };
 
@@ -297,6 +306,7 @@ export default function QuizEditor() {
     }
     let correctAnswer = "";
     let options: string[] | null = null;
+    let config: any = null;
 
     if (editQ.type === "multiple_choice") {
       const filledOptions = editQ.options.filter((o) => o.trim());
@@ -343,6 +353,51 @@ export default function QuizEditor() {
       }
       options = filledOptions;
       correctAnswer = editQ.correctIndices.filter(i => editQ.options[i]?.trim()).map(i => editQ.options[i].trim()).join(",");
+    } else if (editQ.type === "translate") {
+      const accepted = editQ.translateAccepted.split(/[;\n]/).map(s => s.trim()).filter(Boolean);
+      if (accepted.length === 0) {
+        toast({ title: "Kamida 1 ta to'g'ri tarjima kiriting", variant: "destructive" });
+        return;
+      }
+      correctAnswer = accepted[0];
+      config = { accepted: accepted.slice(1) };
+    } else if (editQ.type === "reorder") {
+      const tokens = editQ.reorderText.trim().split(/\s+/).filter(Boolean);
+      if (tokens.length < 2) {
+        toast({ title: "To'g'ri gapni (kamida 2 so'z) kiriting", variant: "destructive" });
+        return;
+      }
+      correctAnswer = tokens.join(" ");
+      config = { tokens };
+    } else if (editQ.type === "match") {
+      const pairs = editQ.matchText.split("\n").map(line => {
+        const m = line.split(/\s[-=—–]\s|[-=—–]/);
+        if (m.length < 2) return null;
+        const left = m[0].trim();
+        const right = m.slice(1).join(" ").trim();
+        return left && right ? { left, right } : null;
+      }).filter(Boolean) as { left: string; right: string }[];
+      if (pairs.length < 2) {
+        toast({ title: "Kamida 2 ta juftlik kiriting (har qatorda: chap - o'ng)", variant: "destructive" });
+        return;
+      }
+      correctAnswer = "match";
+      config = { pairs };
+    } else if (editQ.type === "fill_blank") {
+      const blankCount = (editQ.questionText.match(/_{3,}/g) || []).length;
+      if (blankCount === 0) {
+        toast({ title: "Savol matnida ___ (bo'sh o'rin) bo'lishi kerak", variant: "destructive" });
+        return;
+      }
+      const blanks = editQ.fillAnswers.split(";").map(part => ({
+        answers: part.split("|").map(s => s.trim()).filter(Boolean),
+      })).filter(b => b.answers.length > 0);
+      if (blanks.length !== blankCount) {
+        toast({ title: `${blankCount} ta bo'sh o'rin uchun ${blankCount} ta javob guruhi kerak ( ; bilan ajrating)`, variant: "destructive" });
+        return;
+      }
+      correctAnswer = blanks.map(b => b.answers[0]).join(" | ");
+      config = { blanks };
     }
 
     updateQuestion.mutate({
@@ -354,6 +409,7 @@ export default function QuizEditor() {
         type: editQ.type,
         points: editQ.type === "poll" ? 0 : editQ.points,
         timeLimit: editQ.timeLimit,
+        config,
       },
     });
   };
@@ -414,8 +470,12 @@ export default function QuizEditor() {
     timeLimit: 30,
     mediaUrl: "",
     mediaType: "",
-    type: "multiple_choice" as "multiple_choice" | "true_false" | "open_ended" | "poll" | "multiple_select",
+    type: "multiple_choice" as "multiple_choice" | "true_false" | "open_ended" | "poll" | "multiple_select" | "translate" | "reorder" | "match" | "fill_blank",
     openAnswer: "",
+    translateAccepted: "",
+    reorderText: "",
+    matchText: "",
+    fillAnswers: "",
   });
 
   const [uploading, setUploading] = useState(false);
@@ -451,6 +511,7 @@ export default function QuizEditor() {
     }
     let correctAnswer = "";
     let options: string[] | null = null;
+    let config: any = null;
 
     if (newQ.type === "multiple_choice") {
       const filledOptions = newQ.options.filter((o) => o.trim());
@@ -497,6 +558,51 @@ export default function QuizEditor() {
       }
       options = filledOptions;
       correctAnswer = newQ.correctIndices.filter(i => newQ.options[i]?.trim()).map(i => newQ.options[i].trim()).join(",");
+    } else if (newQ.type === "translate") {
+      const accepted = newQ.translateAccepted.split(/[;\n]/).map(s => s.trim()).filter(Boolean);
+      if (accepted.length === 0) {
+        toast({ title: "Kamida 1 ta to'g'ri tarjima kiriting", variant: "destructive" });
+        return;
+      }
+      correctAnswer = accepted[0];
+      config = { accepted: accepted.slice(1) };
+    } else if (newQ.type === "reorder") {
+      const tokens = newQ.reorderText.trim().split(/\s+/).filter(Boolean);
+      if (tokens.length < 2) {
+        toast({ title: "To'g'ri gapni (kamida 2 so'z) kiriting", variant: "destructive" });
+        return;
+      }
+      correctAnswer = tokens.join(" ");
+      config = { tokens };
+    } else if (newQ.type === "match") {
+      const pairs = newQ.matchText.split("\n").map(line => {
+        const m = line.split(/\s[-=—–]\s|[-=—–]/);
+        if (m.length < 2) return null;
+        const left = m[0].trim();
+        const right = m.slice(1).join(" ").trim();
+        return left && right ? { left, right } : null;
+      }).filter(Boolean) as { left: string; right: string }[];
+      if (pairs.length < 2) {
+        toast({ title: "Kamida 2 ta juftlik kiriting (har qatorda: chap - o'ng)", variant: "destructive" });
+        return;
+      }
+      correctAnswer = "match";
+      config = { pairs };
+    } else if (newQ.type === "fill_blank") {
+      const blankCount = (newQ.questionText.match(/_{3,}/g) || []).length;
+      if (blankCount === 0) {
+        toast({ title: "Savol matnida ___ (bo'sh o'rin) bo'lishi kerak", variant: "destructive" });
+        return;
+      }
+      const blanks = newQ.fillAnswers.split(";").map(part => ({
+        answers: part.split("|").map(s => s.trim()).filter(Boolean),
+      })).filter(b => b.answers.length > 0);
+      if (blanks.length !== blankCount) {
+        toast({ title: `${blankCount} ta bo'sh o'rin uchun ${blankCount} ta javob guruhi kerak ( ; bilan ajrating)`, variant: "destructive" });
+        return;
+      }
+      correctAnswer = blanks.map(b => b.answers[0]).join(" | ");
+      config = { blanks };
     }
 
     addQuestion.mutate({
@@ -509,8 +615,9 @@ export default function QuizEditor() {
       mediaUrl: newQ.mediaUrl || null,
       mediaType: newQ.mediaType || null,
       orderIndex: (questionsList?.length || 0),
+      config,
     });
-    setNewQ({ questionText: "", options: ["", "", "", ""], correctIndex: -1, correctIndices: [], points: 100, timeLimit: 30, mediaUrl: "", mediaType: "", type: newQ.type, openAnswer: "" });
+    setNewQ({ questionText: "", options: ["", "", "", ""], correctIndex: -1, correctIndices: [], points: 100, timeLimit: 30, mediaUrl: "", mediaType: "", type: newQ.type, openAnswer: "", translateAccepted: "", reorderText: "", matchText: "", fillAnswers: "" });
   };
 
   if (quizLoading) {
@@ -752,6 +859,32 @@ export default function QuizEditor() {
                       <p>• <span className="font-medium">---</span> — reading blokni tugatadi</p>
                       <p>• To'g'ri javob yoniga <span className="font-medium">*</span> belgisi qo'ying</p>
                     </div>
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium text-muted-foreground">Yangi savol turlari uchun namunalar (bosib qo'shing):</p>
+                      <div className="flex gap-2 flex-wrap">
+                        <Button type="button" variant="secondary" size="sm" data-testid="button-sample-translate" onClick={() => setImportText((t) => (t ? t.trimEnd() + "\n\n" : "") + "Tarjima: kitob\nJavob: book; the book")}>
+                          <Languages className="w-3.5 h-3.5 mr-1" /> Tarjima namuna
+                        </Button>
+                        <Button type="button" variant="secondary" size="sm" data-testid="button-sample-reorder" onClick={() => setImportText((t) => (t ? t.trimEnd() + "\n\n" : "") + "Tartib: Men har kuni maktabga boraman")}>
+                          <ListOrdered className="w-3.5 h-3.5 mr-1" /> So'z tartibi namuna
+                        </Button>
+                        <Button type="button" variant="secondary" size="sm" data-testid="button-sample-match" onClick={() => setImportText((t) => (t ? t.trimEnd() + "\n\n" : "") + "Moslash:\napple - olma\nbook - kitob\nwater - suv")}>
+                          <Link2 className="w-3.5 h-3.5 mr-1" /> Moslash namuna
+                        </Button>
+                        <Button type="button" variant="secondary" size="sm" data-testid="button-sample-fill" onClick={() => setImportText((t) => (t ? t.trimEnd() + "\n\n" : "") + "To'ldirish: Quyosh ___ dan chiqadi.\nJavob: sharq; sharqdan")}>
+                          <SquarePen className="w-3.5 h-3.5 mr-1" /> To'ldirish namuna
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" data-testid="button-sample-all" onClick={() => setImportText("Tarjima: kitob\nJavob: book; the book\n\nTartib: Men har kuni maktabga boraman\n\nMoslash:\napple - olma\nbook - kitob\nwater - suv\n\nTo'ldirish: Quyosh ___ dan chiqadi.\nJavob: sharq; sharqdan")}>
+                          Hammasi
+                        </Button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-4">
+                        <span className="font-medium">Tarjima:</span> so'z + keyingi qatorda Javob (yoki ; bilan bir nechta). •{" "}
+                        <span className="font-medium">Tartib:</span> to'g'ri gap. •{" "}
+                        <span className="font-medium">Moslash:</span> har qatorda "chap - o'ng". •{" "}
+                        <span className="font-medium">To'ldirish:</span> matnda ___ va Javob ( ; — har bo'sh o'rin, | — variantlar). Turlarni aralashtirib yozsa ham bo'ladi.
+                      </p>
+                    </div>
                     <Textarea
                       value={importText}
                       onChange={(e) => setImportText(e.target.value)}
@@ -783,7 +916,7 @@ export default function QuizEditor() {
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <Badge variant="secondary" className="text-xs">{idx + 1}</Badge>
                           <Badge variant="outline" className="text-xs">
-                            {q.type === "true_false" ? "To'g'ri/Noto'g'ri" : q.type === "open_ended" ? "Yozma" : q.type === "poll" ? "So'rovnoma" : q.type === "multiple_select" ? "Ko'p tanlov" : "Variantli"}
+                            {q.type === "true_false" ? "To'g'ri/Noto'g'ri" : q.type === "open_ended" ? "Yozma" : q.type === "poll" ? "So'rovnoma" : q.type === "multiple_select" ? "Ko'p tanlov" : q.type === "translate" ? "Tarjima" : q.type === "reorder" ? "So'z tartibi" : q.type === "match" ? "Moslash" : q.type === "fill_blank" ? "To'ldirish" : "Variantli"}
                           </Badge>
                           <span className="text-xs text-muted-foreground">{q.points} ball | {q.timeLimit}s</span>
                         </div>
@@ -794,6 +927,30 @@ export default function QuizEditor() {
                         {q.type === "open_ended" ? (
                           <div className="mt-2">
                             <span className="text-xs px-2 py-1 rounded-sm gradient-teal text-white" dir="auto">Javob: {q.correctAnswer}</span>
+                          </div>
+                        ) : q.type === "translate" ? (
+                          <div className="mt-2 flex gap-2 flex-wrap">
+                            {[q.correctAnswer, ...(((q.config as any)?.accepted as string[]) || [])].filter(Boolean).map((a, ai) => (
+                              <span key={ai} className={`text-xs px-2 py-1 rounded-sm ${ai === 0 ? "gradient-teal text-white" : "bg-muted"}`} dir="auto">{a}</span>
+                            ))}
+                          </div>
+                        ) : q.type === "reorder" ? (
+                          <div className="mt-2 flex gap-2 flex-wrap items-center">
+                            {(((q.config as any)?.tokens as string[]) || []).map((t, ti) => (
+                              <span key={ti} className="text-xs px-2 py-1 rounded-sm bg-muted" dir="auto">{ti + 1}. {t}</span>
+                            ))}
+                          </div>
+                        ) : q.type === "match" ? (
+                          <div className="mt-2 flex flex-col gap-1">
+                            {(((q.config as any)?.pairs as { left: string; right: string }[]) || []).map((p, pi) => (
+                              <span key={pi} className="text-xs" dir="auto"><span className="px-2 py-0.5 rounded-sm bg-muted">{p.left}</span> <span className="text-muted-foreground">→</span> <span className="px-2 py-0.5 rounded-sm gradient-teal text-white">{p.right}</span></span>
+                            ))}
+                          </div>
+                        ) : q.type === "fill_blank" ? (
+                          <div className="mt-2 flex flex-col gap-1">
+                            {(((q.config as any)?.blanks as { answers: string[] }[]) || []).map((b, bi) => (
+                              <span key={bi} className="text-xs" dir="auto"><span className="text-muted-foreground">{bi + 1}-bo'sh o'rin: </span>{b.answers.map((a, aii) => (<span key={aii} className={`ml-1 px-2 py-0.5 rounded-sm ${aii === 0 ? "gradient-teal text-white" : "bg-muted"}`}>{a}</span>))}</span>
+                            ))}
                           </div>
                         ) : q.options && (
                           <div className="flex gap-2 mt-2 flex-wrap">
@@ -838,7 +995,7 @@ export default function QuizEditor() {
 
             <div>
               <Label>Savol turi</Label>
-              <Select value={newQ.type} onValueChange={(v: "multiple_choice" | "true_false" | "open_ended" | "poll" | "multiple_select") => setNewQ({ ...newQ, type: v, correctIndex: -1, correctIndices: [], openAnswer: "" })}>
+              <Select value={newQ.type} onValueChange={(v: "multiple_choice" | "true_false" | "open_ended" | "poll" | "multiple_select" | "translate" | "reorder" | "match" | "fill_blank") => setNewQ({ ...newQ, type: v, correctIndex: -1, correctIndices: [], openAnswer: "" })}>
                 <SelectTrigger data-testid="select-question-type">
                   <SelectValue />
                 </SelectTrigger>
@@ -857,6 +1014,18 @@ export default function QuizEditor() {
                   </SelectItem>
                   <SelectItem value="multiple_select">
                     <span className="flex items-center gap-2"><CheckSquare className="w-4 h-4" /> Ko'p tanlov (bir nechta to'g'ri)</span>
+                  </SelectItem>
+                  <SelectItem value="translate">
+                    <span className="flex items-center gap-2"><Languages className="w-4 h-4" /> Tarjima</span>
+                  </SelectItem>
+                  <SelectItem value="reorder">
+                    <span className="flex items-center gap-2"><ListOrdered className="w-4 h-4" /> So'z tartibi</span>
+                  </SelectItem>
+                  <SelectItem value="match">
+                    <span className="flex items-center gap-2"><Link2 className="w-4 h-4" /> Moslash (juftlash)</span>
+                  </SelectItem>
+                  <SelectItem value="fill_blank">
+                    <span className="flex items-center gap-2"><SquarePen className="w-4 h-4" /> Bo'sh o'rinni to'ldirish</span>
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -1069,6 +1238,63 @@ export default function QuizEditor() {
               </div>
             )}
 
+            {newQ.type === "translate" && (
+              <div className="space-y-2">
+                <Label>To'g'ri tarjima(lar)</Label>
+                <Textarea
+                  value={newQ.translateAccepted}
+                  onChange={(e) => setNewQ({ ...newQ, translateAccepted: e.target.value })}
+                  placeholder="Masalan: salom; assalomu alaykum"
+                  dir="auto"
+                  data-testid="input-translate-accepted"
+                />
+                <p className="text-xs text-muted-foreground">Savol matniga tarjima qilinadigan so'z/gapni yozing. Bu yerga to'g'ri javoblarni <span className="font-medium">;</span> yoki yangi qator bilan ajratib yozing (birinchisi asosiy).</p>
+              </div>
+            )}
+
+            {newQ.type === "reorder" && (
+              <div className="space-y-2">
+                <Label>To'g'ri gap (so'zlar tartibi)</Label>
+                <Input
+                  value={newQ.reorderText}
+                  onChange={(e) => setNewQ({ ...newQ, reorderText: e.target.value })}
+                  placeholder="Masalan: Men maktabga boraman"
+                  dir="auto"
+                  data-testid="input-reorder-text"
+                />
+                <p className="text-xs text-muted-foreground">So'zlar talabaga aralashtirilgan holda ko'rsatiladi. To'g'ri tartibni shu yerga yozing.</p>
+              </div>
+            )}
+
+            {newQ.type === "match" && (
+              <div className="space-y-2">
+                <Label>Juftliklar (har qatorda: chap - o'ng)</Label>
+                <Textarea
+                  value={newQ.matchText}
+                  onChange={(e) => setNewQ({ ...newQ, matchText: e.target.value })}
+                  placeholder={"apple - olma\nbook - kitob\nwater - suv"}
+                  dir="auto"
+                  className="min-h-[120px] font-mono"
+                  data-testid="input-match-pairs"
+                />
+                <p className="text-xs text-muted-foreground">Har bir qatorda bitta juftlik. Chap va o'ng tomonni <span className="font-medium">-</span> (yoki = ) bilan ajrating. O'ng tomon talabaga aralashtirilgan ko'rsatiladi.</p>
+              </div>
+            )}
+
+            {newQ.type === "fill_blank" && (
+              <div className="space-y-2">
+                <Label>Bo'sh o'rin javoblari</Label>
+                <Input
+                  value={newQ.fillAnswers}
+                  onChange={(e) => setNewQ({ ...newQ, fillAnswers: e.target.value })}
+                  placeholder="Masalan: olma|apple; kitob"
+                  dir="auto"
+                  data-testid="input-fill-answers"
+                />
+                <p className="text-xs text-muted-foreground">Savol matniga bo'sh o'rin uchun <span className="font-medium">___</span> (3 ta pastki chiziq) yozing. Har bir bo'sh o'rin javobini <span className="font-medium">;</span> bilan, bir xil javobning variantlarini <span className="font-medium">|</span> bilan ajrating.</p>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Ball</Label>
@@ -1113,6 +1339,18 @@ export default function QuizEditor() {
                   </SelectItem>
                   <SelectItem value="multiple_select">
                     <span className="flex items-center gap-2"><CheckSquare className="w-4 h-4" /> Ko'p tanlov (bir nechta to'g'ri)</span>
+                  </SelectItem>
+                  <SelectItem value="translate">
+                    <span className="flex items-center gap-2"><Languages className="w-4 h-4" /> Tarjima</span>
+                  </SelectItem>
+                  <SelectItem value="reorder">
+                    <span className="flex items-center gap-2"><ListOrdered className="w-4 h-4" /> So'z tartibi</span>
+                  </SelectItem>
+                  <SelectItem value="match">
+                    <span className="flex items-center gap-2"><Link2 className="w-4 h-4" /> Moslash (juftlash)</span>
+                  </SelectItem>
+                  <SelectItem value="fill_blank">
+                    <span className="flex items-center gap-2"><SquarePen className="w-4 h-4" /> Bo'sh o'rinni to'ldirish</span>
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -1252,6 +1490,61 @@ export default function QuizEditor() {
                     />
                   </label>
                 ))}
+              </div>
+            )}
+
+            {editQ.type === "translate" && (
+              <div className="space-y-2">
+                <Label>To'g'ri tarjima(lar)</Label>
+                <Textarea
+                  value={editQ.translateAccepted}
+                  onChange={(e) => setEditQ({ ...editQ, translateAccepted: e.target.value })}
+                  placeholder="Masalan: salom; assalomu alaykum"
+                  dir="auto"
+                  data-testid="edit-input-translate-accepted"
+                />
+                <p className="text-xs text-muted-foreground">To'g'ri javoblarni <span className="font-medium">;</span> yoki yangi qator bilan ajrating (birinchisi asosiy).</p>
+              </div>
+            )}
+
+            {editQ.type === "reorder" && (
+              <div className="space-y-2">
+                <Label>To'g'ri gap (so'zlar tartibi)</Label>
+                <Input
+                  value={editQ.reorderText}
+                  onChange={(e) => setEditQ({ ...editQ, reorderText: e.target.value })}
+                  placeholder="Masalan: Men maktabga boraman"
+                  dir="auto"
+                  data-testid="edit-input-reorder-text"
+                />
+              </div>
+            )}
+
+            {editQ.type === "match" && (
+              <div className="space-y-2">
+                <Label>Juftliklar (har qatorda: chap - o'ng)</Label>
+                <Textarea
+                  value={editQ.matchText}
+                  onChange={(e) => setEditQ({ ...editQ, matchText: e.target.value })}
+                  placeholder={"apple - olma\nbook - kitob"}
+                  dir="auto"
+                  className="min-h-[120px] font-mono"
+                  data-testid="edit-input-match-pairs"
+                />
+              </div>
+            )}
+
+            {editQ.type === "fill_blank" && (
+              <div className="space-y-2">
+                <Label>Bo'sh o'rin javoblari</Label>
+                <Input
+                  value={editQ.fillAnswers}
+                  onChange={(e) => setEditQ({ ...editQ, fillAnswers: e.target.value })}
+                  placeholder="Masalan: olma|apple; kitob"
+                  dir="auto"
+                  data-testid="edit-input-fill-answers"
+                />
+                <p className="text-xs text-muted-foreground">Savol matnida <span className="font-medium">___</span> ishlating. Bo'sh o'rinlar <span className="font-medium">;</span>, variantlar <span className="font-medium">|</span> bilan.</p>
               </div>
             )}
 

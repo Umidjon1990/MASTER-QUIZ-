@@ -1,0 +1,1 @@
+- [Duo question grading paths](duo-grading-paths.md) — the 4 Duo question types must be graded via shared/grading.ts gradeAnswer in EVERY scoring path or grading silently breaks.
