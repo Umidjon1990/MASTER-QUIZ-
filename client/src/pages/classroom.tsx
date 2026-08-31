@@ -263,6 +263,7 @@ export default function ClassroomQuizPage() {
   const [isHost, setIsHost] = useState(false);
   const [players, setPlayers] = useState<{ playerId: string; name: string }[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<QuizQuestion | null>(null);
+  const [currentPassage, setCurrentPassage] = useState<{ title: string; text: string } | null>(null);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -401,6 +402,7 @@ export default function ClassroomQuizPage() {
                   setStage("result");
                 } else if (stateRes.gameStatus === "playing" && stateRes.question) {
                   setCurrentQuestion(stateRes.question);
+                  setCurrentPassage(stateRes.passage || null);
                   setQuestionIndex(stateRes.questionIndex);
                   setTotalQuestions(stateRes.totalQuestions);
                   setTimeLeft(stateRes.question.timeLimit || 0);
@@ -436,6 +438,7 @@ export default function ClassroomQuizPage() {
 
     s.on("public:question", (data) => {
       setCurrentQuestion(data.question);
+      setCurrentPassage(data.passage || null);
       setQuestionIndex(data.index);
       setTotalQuestions(data.total);
       const tl = data.question.timeLimit || 30;
@@ -902,6 +905,37 @@ export default function ClassroomQuizPage() {
                 )}
               </div>
             </Blackboard>
+
+            {currentPassage && (
+              <div className="mt-4 max-w-2xl mx-auto w-full rounded-xl border border-amber-300/30 bg-amber-950/70 p-4 text-white" data-testid="panel-reading-passage">
+                <p className="font-semibold text-amber-200 mb-2">📖 {currentPassage.title || "Reading matni"}</p>
+                <p className="leading-relaxed whitespace-pre-wrap" dir="auto">{currentPassage.text}</p>
+              </div>
+            )}
+
+            {!hasAnswered && currentQuestion.type === "open_ended" && (
+              <div className="mt-4 max-w-2xl mx-auto w-full space-y-3" data-testid="answer-open-ended">
+                <Input
+                  value={selectedAnswer || ""}
+                  onChange={(e) => setSelectedAnswer(e.target.value)}
+                  placeholder="Javobingizni yozing..."
+                  className="bg-white/10 border-white/20 text-white placeholder:text-white/40"
+                  dir="auto"
+                />
+                <Button
+                  onClick={() => {
+                    if (!selectedAnswer || hasAnswered) return;
+                    setHasAnswered(true);
+                    socketRef.current?.emit("public:answer", { questionId: currentQuestion.id, answer: selectedAnswer });
+                  }}
+                  disabled={!selectedAnswer}
+                  className="w-full bg-gradient-to-r from-emerald-500 to-green-600 text-white border-0"
+                  data-testid="button-submit-open-ended"
+                >
+                  <CheckCircle2 className="w-4 h-4 mr-2" /> Tasdiqlash
+                </Button>
+              </div>
+            )}
 
             {!hasAnswered && isDuoType(currentQuestion.type) && (
               <div className="mt-4 max-w-2xl mx-auto w-full space-y-4" data-testid="answer-duo">

@@ -12,6 +12,7 @@ import { io, Socket } from "socket.io-client";
 import confetti from "canvas-confetti";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import DuoAnswerInput, { isDuoType } from "@/components/duo-answer";
 import { Play, Trophy, Clock, CheckCircle, X, Zap, Star, Music, Lock, BarChart3, Medal, Crown, Award, Flame, WifiOff, Loader2 } from "lucide-react";
 
 let socket: Socket | null = null;
@@ -100,6 +101,7 @@ export default function JoinPlay() {
   const [participantId, setParticipantId] = useState("");
   const [phase, setPhase] = useState<"join" | "waiting" | "question" | "result" | "leaderboard" | "finished">("join");
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
+  const [currentPassage, setCurrentPassage] = useState<{ title: string; text: string } | null>(null);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
@@ -183,6 +185,7 @@ export default function JoinPlay() {
 
     socket.on("question:show", (data) => {
       setCurrentQuestion(data.question);
+      setCurrentPassage(data.passage || null);
       setQuestionIndex(data.index);
       setTotalQuestions(data.total);
       setPhase("question");
@@ -445,6 +448,13 @@ export default function JoinPlay() {
               )}
             </Card>
 
+            {currentPassage && (
+              <Card className="p-5 border-amber-500/30 bg-amber-500/5 space-y-2" data-testid="panel-reading-passage">
+                <p className="font-semibold text-amber-700 dark:text-amber-300">📖 {currentPassage.title || "Reading matni"}</p>
+                <p className="leading-relaxed whitespace-pre-wrap text-left" dir="auto" data-testid="text-reading-passage">{currentPassage.text}</p>
+              </Card>
+            )}
+
             {(currentQuestion.type === "multiple_choice" || currentQuestion.type === "poll") && currentQuestion.options && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {(currentQuestion.options as string[]).map((opt: string, i: number) => (
@@ -522,6 +532,25 @@ export default function JoinPlay() {
                   data-testid="input-open-answer"
                 />
                 <Button className="w-full gradient-purple border-0" onClick={() => selectedAnswer && submitAnswer(selectedAnswer)} disabled={answered || !selectedAnswer} data-testid="button-submit-open">
+                  Javobni yuborish
+                </Button>
+              </div>
+            )}
+
+            {isDuoType(currentQuestion.type) && (
+              <div className="space-y-3">
+                <DuoAnswerInput
+                  question={currentQuestion}
+                  value={selectedAnswer || ""}
+                  onChange={(value) => !answered && setSelectedAnswer(value)}
+                  disabled={answered}
+                />
+                <Button
+                  className="w-full gradient-purple border-0"
+                  onClick={() => selectedAnswer && submitAnswer(selectedAnswer)}
+                  disabled={answered || !selectedAnswer}
+                  data-testid="button-submit-duo"
+                >
                   Javobni yuborish
                 </Button>
               </div>

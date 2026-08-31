@@ -9,6 +9,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useParams, useLocation } from "wouter";
 import { Loader2, Clock, CheckCircle, XCircle, ArrowRight, RotateCcw, Trophy, Home } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import DuoAnswerInput, { isDuoType } from "@/components/duo-answer";
+import { gradeAnswer } from "@shared/grading";
+import type { QuestionConfig } from "@shared/schema";
 
 interface ReplayQuestion {
   id: string;
@@ -20,6 +23,8 @@ interface ReplayQuestion {
   timeLimit: number;
   mediaUrl?: string;
   mediaType?: string;
+  config?: QuestionConfig | null;
+  passage?: { title: string; text: string } | null;
 }
 
 interface ReplayQuiz {
@@ -128,6 +133,16 @@ export default function QuizReplay() {
     setAnswers(prev => ({ ...prev, [currentIndex]: answer }));
   };
 
+  const toggleMultiAnswer = (option: string) => {
+    let selected: string[] = [];
+    try {
+      const parsed = JSON.parse(answers[currentIndex] || "[]");
+      if (Array.isArray(parsed)) selected = parsed;
+    } catch {}
+    const next = selected.includes(option) ? selected.filter((item) => item !== option) : [...selected, option];
+    handleAnswer(JSON.stringify(next));
+  };
+
   const handleNext = () => {
     if (currentIndex < preparedQuestions.length - 1) {
       const nextIdx = currentIndex + 1;
@@ -190,8 +205,9 @@ export default function QuizReplay() {
     let correct = 0;
     preparedQuestions.forEach((q, i) => {
       const userAnswer = answers[i];
-      if (userAnswer && userAnswer === q.correctAnswer) {
-        score += q.points || 10;
+      const graded = gradeAnswer(q as any, userAnswer);
+      if (graded.ratio > 0) score += Math.round((q.points || 10) * graded.ratio);
+      if (graded.isCorrect) {
         correct++;
       }
     });
@@ -234,7 +250,7 @@ export default function QuizReplay() {
         <div className="space-y-4">
           {preparedQuestions.map((q, i) => {
             const userAnswer = answers[i];
-            const isCorrect = userAnswer === q.correctAnswer;
+            const isCorrect = gradeAnswer(q as any, userAnswer).isCorrect;
             return (
               <Card key={i} className={`p-4 border-l-4 ${isCorrect ? "border-l-green-500" : "border-l-red-500"}`}>
                 <div className="flex items-start gap-2 mb-2">
@@ -294,6 +310,12 @@ export default function QuizReplay() {
       <AnimatePresence mode="wait">
         <motion.div key={currentIndex} initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }}>
           <Card className="p-6 mb-4">
+            {currentQ.passage && (
+              <div className="mb-5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4" data-testid="panel-reading-passage">
+                <p className="font-semibold text-amber-700 dark:text-amber-300 mb-2">📖 {currentQ.passage.title || "Reading matni"}</p>
+                <p className="leading-relaxed whitespace-pre-wrap" dir="auto">{currentQ.passage.text}</p>
+              </div>
+            )}
             <h2 className={`text-lg font-semibold mb-4 ${questionDir === "rtl" ? "text-right" : ""}`} dir={questionDir} data-testid="text-question">
               {currentQ.questionText}
             </h2>
@@ -301,17 +323,43 @@ export default function QuizReplay() {
               <img src={currentQ.mediaUrl} alt="" className="max-h-48 rounded-md mb-4 mx-auto" />
             )}
             <div className="space-y-2">
-              {currentQ.type === "true_false" ? (
-                <>
-                  {["To'g'ri", "Noto'g'ri"].map(opt => (
+              {isDuoType(currentQ.type) ? (
+                <DuoAnswerInput
+                  question={currentQ}
+                  value={answers[currentIndex] || ""}
+                  onChange={handleAnswer}
+                />
+              ) : currentQ.type === "multiple_select" && Array.isArray(currentQ.options) ? (
+                currentQ.options.map((option: string, index: number) => {
+                  let selected: string[] = [];
+                  try {
+                    const parsed = JSON.parse(answers[currentIndex] || "[]");
+                    if (Array.isArray(parsed)) selected = parsed;
+                  } catch {}
+                  const checked = selected.includes(option);
+                  return (
                     <Button
-                      key={opt}
-                      variant={answers[currentIndex] === opt ? "default" : "outline"}
+                      key={index}
+                      variant={checked ? "default" : "outline"}
                       className="w-full justify-start text-left h-auto py-3 px-4"
-                      onClick={() => handleAnswer(opt)}
-                      data-testid={`button-answer-${opt}`}
+                      onClick={() => toggleMultiAnswer(option)}
+                      data-testid={`button-multi-answer-${index}`}
                     >
-                      {opt}
+                      <span className="mr-2">{checked ? "☑" : "☐"}</span><span dir="auto">{option}</span>
+                    </Button>
+                  );
+                })
+              ) : currentQ.type === "true_false" ? (
+                <>
+                  {[{ value: "true", label: "To'g'ri" }, { value: "false", label: "Noto'g'ri" }].map(opt => (
+                    <Button
+                      key={opt.value}
+                      variant={answers[currentIndex] === opt.value ? "default" : "outline"}
+                      className="w-full justify-start text-left h-auto py-3 px-4"
+                      onClick={() => handleAnswer(opt.value)}
+                      data-testid={`button-answer-${opt.value}`}
+                    >
+                      {opt.label}
                     </Button>
                   ))}
                 </>

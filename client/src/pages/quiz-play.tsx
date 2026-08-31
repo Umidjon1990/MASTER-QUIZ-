@@ -101,6 +101,7 @@ interface QuizQuestion {
   mediaType: string | null;
   config?: QuestionConfig | null;
   correctAnswer?: string | null;
+  orderIndex: number;
 }
 
 interface QuizSection {
@@ -264,6 +265,7 @@ export default function QuizPlayPage() {
         setStage("multi-result");
       } else if (res.gameStatus === "playing" && res.question) {
         setCurrentQuestion(res.question);
+        setCurrentPassage(res.passage || null);
         setQuestionIndex(res.questionIndex);
         setTotalQuestions(res.totalQuestions);
         setTimeLeft(res.question.timeLimit || 0);
@@ -664,6 +666,7 @@ export default function QuizPlayPage() {
           setMyScore(res.myScore || 0);
           setStage("multi-result");
         } else if (res.gameStatus === "playing" && res.question) {
+          setCurrentPassage(res.passage || null);
           if (res.questionIndex !== questionIndex || (stage === "leaderboard" && res.questionIndex >= 0)) {
             setCurrentQuestion(res.question);
             setQuestionIndex(res.questionIndex);
@@ -685,7 +688,7 @@ export default function QuizPlayPage() {
 
   const soloPassage = (() => {
     if (!data?.questionSections?.length || !soloCurrentQuestion) return null;
-    const q1Based = currentIndex + 1;
+    const q1Based = soloCurrentQuestion.orderIndex + 1;
     const section = data.questionSections.find(s => q1Based >= s.fromIndex && q1Based <= s.toIndex);
     return section?.passageText ? { title: section.passageTitle || "", text: section.passageText } : null;
   })();
@@ -693,7 +696,7 @@ export default function QuizPlayPage() {
   useEffect(() => {
     if (stage !== "playing" || !soloCurrentQuestion || gameMode !== "solo") return;
     const sections = data?.questionSections || [];
-    const q1Based = currentIndex + 1;
+    const q1Based = soloCurrentQuestion.orderIndex + 1;
     const section = sections.find(s => q1Based >= s.fromIndex && q1Based <= s.toIndex);
     const effectiveTime = section?.timePerQuestion || soloCurrentQuestion.timeLimit || 30;
     setTimeLeft(effectiveTime);

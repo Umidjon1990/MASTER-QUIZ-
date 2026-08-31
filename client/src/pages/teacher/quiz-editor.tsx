@@ -312,6 +312,8 @@ export default function QuizEditor() {
       reorderText: q.type === "reorder" ? ((cfg.tokens as string[]) || []).join(" ") : "",
       matchText: q.type === "match" ? (((cfg.pairs as { left: string; right: string }[]) || []).map(p => `${p.left} - ${p.right}`).join("\n")) : "",
       fillAnswers: q.type === "fill_blank" ? (((cfg.blanks as { answers: string[] }[]) || []).map(b => b.answers.join("|")).join("; ")) : "",
+      readingTitle: "",
+      readingText: "",
     });
   };
 
@@ -492,6 +494,8 @@ export default function QuizEditor() {
     reorderText: "",
     matchText: "",
     fillAnswers: "",
+    readingTitle: "",
+    readingText: "",
   });
 
   const [uploading, setUploading] = useState(false);

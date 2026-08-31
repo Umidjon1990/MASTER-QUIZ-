@@ -13,6 +13,8 @@ import { ClipboardList, Calendar, ArrowLeft, ArrowRight, Send, CheckCircle, X, C
 import DuoAnswerInput, { isDuoType } from "@/components/duo-answer";
 import type { Assignment, Question } from "@shared/schema";
 
+type StudentQuestion = Question & { passage?: { title: string; text: string } | null };
+
 interface StudentAssignment extends Assignment {
   quizTitle?: string;
   attemptsUsed?: number;
@@ -21,7 +23,7 @@ interface StudentAssignment extends Assignment {
 export default function StudentAssignments() {
   const { toast } = useToast();
   const [activeAssignment, setActiveAssignment] = useState<StudentAssignment | null>(null);
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [questions, setQuestions] = useState<StudentQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [result, setResult] = useState<{ score: number; correctAnswers: number; totalQuestions: number } | null>(null);
@@ -160,6 +162,12 @@ export default function StudentAssignments() {
             exit={{ opacity: 0, x: -20 }}
           >
             <Card className="p-6">
+              {currentQuestion.passage && (
+                <div className="mb-5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4" data-testid="panel-reading-passage">
+                  <p className="font-semibold text-amber-700 dark:text-amber-300 mb-2">📖 {currentQuestion.passage.title || "Reading matni"}</p>
+                  <p className="leading-relaxed whitespace-pre-wrap" dir="auto">{currentQuestion.passage.text}</p>
+                </div>
+              )}
               <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <h3 className="text-lg font-semibold" data-testid="text-question">{currentQuestion.questionText}</h3>
                 {currentQuestion.type === "poll" && (

@@ -7,6 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, CheckCircle, XCircle, ArrowRight, Trophy, Loader2, AlertCircle, User } from "lucide-react";
+import DuoAnswerInput, { isDuoType } from "@/components/duo-answer";
+import { gradeAnswer } from "@shared/grading";
+import type { QuestionConfig } from "@shared/schema";
 
 type QuestionData = {
   id: string;
@@ -19,6 +22,7 @@ type QuestionData = {
   orderIndex: number;
   mediaUrl?: string;
   mediaType?: string;
+  config?: QuestionConfig | null;
 };
 
 type QuizSection = {
@@ -177,22 +181,12 @@ export default function SharedQuizPage() {
     let isCorrect = false;
     let points = 0;
 
-    if (currentQuestion.type === "multiple_select") {
-      const selected = Array.isArray(answer) ? answer.sort() : [];
-      const correct = currentQuestion.correctAnswer.split(",").map(s => s.trim()).sort();
-      isCorrect = JSON.stringify(selected) === JSON.stringify(correct);
-    } else if (currentQuestion.type === "true_false") {
-      isCorrect = String(answer).toLowerCase() === currentQuestion.correctAnswer.toLowerCase();
-    } else if (currentQuestion.type === "open_ended") {
-      isCorrect = String(answer).trim().toLowerCase() === currentQuestion.correctAnswer.trim().toLowerCase();
-    } else {
-      isCorrect = String(answer) === currentQuestion.correctAnswer;
-    }
-
-    if (isCorrect) {
+    const graded = gradeAnswer(currentQuestion as any, answer);
+    isCorrect = graded.isCorrect;
+    if (graded.ratio > 0) {
       const maxTime = currentQuestion.timeLimit;
       const ratio = Math.max(0, 1 - (timeSpent / maxTime) * 0.5);
-      points = Math.round(currentQuestion.points * ratio);
+      points = Math.round(currentQuestion.points * ratio * graded.ratio);
     }
 
     const newAnswers = { ...answers, [currentQuestion.id]: { answer: answer as string | string[], isCorrect, points, timeSpent } };
@@ -443,7 +437,14 @@ export default function SharedQuizPage() {
 
               <h2 className="text-xl font-semibold text-center" data-testid="text-question" dir={getTextDir(currentQuestion.questionText)}>{currentQuestion.questionText}</h2>
 
-              {currentQuestion.type === "open_ended" ? (
+              {isDuoType(currentQuestion.type) ? (
+                <DuoAnswerInput
+                  question={currentQuestion}
+                  value={typeof selectedAnswer === "string" ? selectedAnswer : ""}
+                  onChange={(value) => setSelectedAnswer(value)}
+                  disabled={showFeedback}
+                />
+              ) : currentQuestion.type === "open_ended" ? (
                 <div className="space-y-3">
                   <Input
                     value={typeof selectedAnswer === "string" ? selectedAnswer : ""}

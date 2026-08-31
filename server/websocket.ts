@@ -393,8 +393,13 @@ async function serverNextQuestion(sessionId: string) {
     const q = questionsList[nextIndex];
     let questionOptions = q.options ? [...(q.options as string[])] : null;
 
+    const sections: any[] = (quiz as any)?.questionSections || [];
+    const questionNumber = q.orderIndex + 1;
+    const activeSection = sections.find((s: any) => questionNumber >= s.fromIndex && questionNumber <= s.toIndex);
+    const passage = activeSection?.passageText ? { title: activeSection.passageTitle || "", text: activeSection.passageText } : null;
+
     const timerEnabled = quiz?.timerEnabled ?? true;
-    const effectiveTimeLimit = timerEnabled ? (q.timeLimit || quiz?.timePerQuestion || 30) : 0;
+    const effectiveTimeLimit = timerEnabled ? (activeSection?.timePerQuestion || q.timeLimit || quiz?.timePerQuestion || 30) : 0;
 
     const qKey = `${sessionId}:${q.id}`;
     questionAnswerCounts.set(qKey, 0);
@@ -404,6 +409,7 @@ async function serverNextQuestion(sessionId: string) {
       index: nextIndex,
       total: questionsList.length,
       timerEnabled,
+      passage,
       question: {
         id: q.id,
         type: q.type,
@@ -413,6 +419,7 @@ async function serverNextQuestion(sessionId: string) {
         options: questionOptions,
         timeLimit: effectiveTimeLimit,
         points: q.type === "poll" ? 0 : q.points,
+        config: (q as any).config ?? null,
       },
     });
 
@@ -494,7 +501,7 @@ function sendPublicQuestion(roomId: string) {
 
   let questionOptions = q.options ? [...(q.options as string[])] : null;
 
-  const questionIndex1Based = room.currentQuestionIndex + 1;
+  const questionIndex1Based = q.orderIndex + 1;
   const sections: any[] = (room.quiz as any).questionSections || [];
   const activeSection = sections.find((s: any) => questionIndex1Based >= s.fromIndex && questionIndex1Based <= s.toIndex);
   const passage = activeSection?.passageText ? { title: activeSection.passageTitle || "", text: activeSection.passageText } : null;
@@ -1164,18 +1171,25 @@ export function setupWebSocket(httpServer: HttpServer) {
               remainingTime = Math.max(0, st.effectiveTimeLimit - elapsed);
             }
 
+            const sections: any[] = (quiz as any)?.questionSections || [];
+            const questionNumber = q.orderIndex + 1;
+            const activeSection = sections.find((s: any) => questionNumber >= s.fromIndex && questionNumber <= s.toIndex);
+            const passage = activeSection?.passageText ? { title: activeSection.passageTitle || "", text: activeSection.passageText } : null;
+
             socket.emit("question:show", {
               index: currentIdx,
               total: questionsList.length,
+              passage,
               question: {
                 id: q.id,
-                text: q.questionText,
+                questionText: q.questionText,
                 type: q.type,
                 options: q.options,
                 mediaUrl: q.mediaUrl,
                 mediaType: q.mediaType,
-                timeLimit: remainingTime > 0 ? remainingTime : (q.timeLimit || quiz?.timePerQuestion || 30),
+                timeLimit: remainingTime > 0 ? remainingTime : (activeSection?.timePerQuestion || q.timeLimit || quiz?.timePerQuestion || 30),
                 points: q.points,
+                config: (q as any).config ?? null,
               },
               timerEnabled,
             });
@@ -1225,7 +1239,11 @@ export function setupWebSocket(httpServer: HttpServer) {
         let questionOptions = q.options ? [...(q.options as string[])] : null;
 
         const timerEnabled = quiz?.timerEnabled ?? true;
-        const effectiveTimeLimit = timerEnabled ? (q.timeLimit || quiz?.timePerQuestion || 30) : 0;
+        const sections: any[] = (quiz as any)?.questionSections || [];
+        const questionNumber = q.orderIndex + 1;
+        const activeSection = sections.find((s: any) => questionNumber >= s.fromIndex && questionNumber <= s.toIndex);
+        const passage = activeSection?.passageText ? { title: activeSection.passageTitle || "", text: activeSection.passageText } : null;
+        const effectiveTimeLimit = timerEnabled ? (activeSection?.timePerQuestion || q.timeLimit || quiz?.timePerQuestion || 30) : 0;
 
         liveSessionTimers.set(sessionId, {
           sessionId,
@@ -1249,6 +1267,7 @@ export function setupWebSocket(httpServer: HttpServer) {
           index: 0,
           total: questionsList.length,
           timerEnabled,
+          passage,
           question: {
             id: q.id,
             type: q.type,
@@ -1258,6 +1277,7 @@ export function setupWebSocket(httpServer: HttpServer) {
             options: questionOptions,
             timeLimit: effectiveTimeLimit,
             points: q.type === "poll" ? 0 : q.points,
+            config: (q as any).config ?? null,
           },
         });
 
@@ -1347,7 +1367,8 @@ export function setupWebSocket(httpServer: HttpServer) {
           const graded = gradeAnswer(question as any, answer);
           isCorrect = graded.isCorrect;
           if (graded.ratio > 0) {
-            const timeBonus = Math.max(0, question.timeLimit - timeSpent);
+            const effectiveTimeLimit = questionStartTimes.get(`${sessionId}:${question.id}`)?.timeLimit || question.timeLimit;
+            const timeBonus = Math.max(0, effectiveTimeLimit - timeSpent);
             points = Math.floor((question.points + Math.floor(timeBonus * 2)) * graded.ratio);
           }
         }
@@ -1792,7 +1813,7 @@ export function setupWebSocket(httpServer: HttpServer) {
         if ((isLateJoin || isRejoin) && room.currentQuestionIndex >= 0) {
           const q = room.questions[room.currentQuestionIndex];
           if (q) {
-            const rejoinIdx1Based = room.currentQuestionIndex + 1;
+            const rejoinIdx1Based = q.orderIndex + 1;
             const rejoinSections: any[] = (room.quiz as any).questionSections || [];
             const rejoinSection = rejoinSections.find((s: any) => rejoinIdx1Based >= s.fromIndex && rejoinIdx1Based <= s.toIndex);
             const rejoinPassage = rejoinSection?.passageText ? { title: rejoinSection.passageTitle || "", text: rejoinSection.passageText } : null;
@@ -1973,7 +1994,11 @@ export function setupWebSocket(httpServer: HttpServer) {
         if (room.status === "playing") {
           const q = room.questions[room.currentQuestionIndex];
           const alreadyAnswered = room.answeredThisQuestion.has(playerId);
-          const timeLimit = q ? (q.timeLimit || room.quiz.timePerQuestion || 30) : 30;
+          const questionNumber = q ? q.orderIndex + 1 : 0;
+          const sections: any[] = (room.quiz as any).questionSections || [];
+          const activeSection = sections.find((s: any) => questionNumber >= s.fromIndex && questionNumber <= s.toIndex);
+          const passage = activeSection?.passageText ? { title: activeSection.passageTitle || "", text: activeSection.passageText } : null;
+          const timeLimit = q ? (activeSection?.timePerQuestion || q.timeLimit || room.quiz.timePerQuestion || 30) : 30;
           const elapsed = Math.floor((Date.now() - room.questionStartTime) / 1000);
           const remainingTime = Math.max(0, timeLimit - elapsed);
 
@@ -1993,6 +2018,7 @@ export function setupWebSocket(httpServer: HttpServer) {
               config: (q as any).config ?? null,
             } : null,
             questionIndex: room.currentQuestionIndex,
+            passage,
             totalQuestions: room.questions.length,
             hasAnswered: alreadyAnswered,
             myScore: player?.score || 0,
