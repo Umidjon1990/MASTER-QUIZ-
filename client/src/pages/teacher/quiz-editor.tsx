@@ -280,6 +280,8 @@ export default function QuizEditor() {
     reorderText: "",
     matchText: "",
     fillAnswers: "",
+    readingTitle: "",
+    readingText: "",
   });
 
   const openEditDialog = (q: Question) => {
@@ -506,6 +508,8 @@ export default function QuizEditor() {
       reorderText: "",
       matchText: "",
       fillAnswers: "",
+      readingTitle: type === "reading" ? prev.readingTitle : "",
+      readingText: type === "reading" ? prev.readingText : "",
     }));
   };
 
@@ -546,7 +550,11 @@ export default function QuizEditor() {
     let options: string[] | null = null;
     let config: any = null;
 
-    if (newQ.type === "multiple_choice") {
+    if (newQ.type === "multiple_choice" || newQ.type === "reading") {
+      if (newQ.type === "reading" && !newQ.readingText.trim()) {
+        toast({ title: "Reading matnini kiriting", variant: "destructive" });
+        return;
+      }
       const filledOptions = newQ.options.filter((o) => o.trim());
       if (filledOptions.length < 2) {
         toast({ title: "Kamida 2 ta variant kiriting", variant: "destructive" });
@@ -649,6 +657,10 @@ export default function QuizEditor() {
       mediaType: newQ.mediaType || null,
       orderIndex: (questionsList?.length || 0),
       config,
+      readingPassage: newQ.type === "reading" ? {
+        title: newQ.readingTitle.trim(),
+        text: newQ.readingText.trim(),
+      } : undefined,
     }, {
       onSuccess: () => {
         setNewQ((prev) => ({
@@ -666,6 +678,8 @@ export default function QuizEditor() {
           reorderText: "",
           matchText: "",
           fillAnswers: "",
+          readingTitle: prev.type === "reading" ? prev.readingTitle : "",
+          readingText: prev.type === "reading" ? prev.readingText : "",
         }));
       },
     });
@@ -1073,6 +1087,33 @@ export default function QuizEditor() {
               <QuestionTemplateGuide type={newQ.type} onCopy={() => copyAiTemplate(newQ.type)} />
             </div>
 
+            {newQ.type === "reading" && (
+              <Card className="p-4 border-amber-500/30 bg-amber-500/5 space-y-3">
+                <div>
+                  <Label>Reading sarlavhasi (ixtiyoriy)</Label>
+                  <Input
+                    value={newQ.readingTitle}
+                    onChange={(e) => setNewQ({ ...newQ, readingTitle: e.target.value })}
+                    placeholder="Masalan: Kutubxonadagi kun"
+                    dir="auto"
+                    data-testid="input-reading-title"
+                  />
+                </div>
+                <div>
+                  <Label>Reading matni</Label>
+                  <Textarea
+                    value={newQ.readingText}
+                    onChange={(e) => setNewQ({ ...newQ, readingText: e.target.value })}
+                    placeholder="O'quvchi o'qiydigan matnni kiriting..."
+                    className="min-h-[160px]"
+                    dir="auto"
+                    data-testid="input-reading-text"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Shu matnga yana savol qo'shish uchun Reading turida qoling va faqat savol hamda variantlarni almashtiring.</p>
+                </div>
+              </Card>
+            )}
+
             <div>
               <Label>3. Savol matni</Label>
               <Textarea dir="auto" value={newQ.questionText} onChange={(e) => setNewQ({ ...newQ, questionText: e.target.value })} placeholder="Savolingizni yozing..." data-testid="input-question-text" />
@@ -1115,7 +1156,7 @@ export default function QuizEditor() {
               )}
             </div>
 
-            {newQ.type === "multiple_choice" && (
+            {(newQ.type === "multiple_choice" || newQ.type === "reading") && (
               <div className="space-y-2">
                 <Label>Javob variantlari (to'g'ri javobni tanlang)</Label>
                 {newQ.options.map((opt, i) => (

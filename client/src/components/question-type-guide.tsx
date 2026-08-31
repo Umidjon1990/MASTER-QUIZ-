@@ -7,6 +7,7 @@ import {
   ListChecks,
   ListOrdered,
   MessageSquare,
+  BookOpenText,
   SquarePen,
   ToggleLeft,
   Copy,
@@ -23,7 +24,8 @@ export type QuestionType =
   | "translate"
   | "reorder"
   | "match"
-  | "fill_blank";
+  | "fill_blank"
+  | "reading";
 
 export type QuestionTypeDefinition = {
   type: QuestionType;
@@ -36,6 +38,15 @@ export type QuestionTypeDefinition = {
 };
 
 export const QUESTION_TYPE_DEFINITIONS: QuestionTypeDefinition[] = [
+  {
+    type: "reading",
+    label: "Reading — matn asosida",
+    shortLabel: "Reading",
+    description: "Bitta matn va unga bog'langan bir yoki bir nechta savol.",
+    icon: BookOpenText,
+    template: "Reading: [Matn sarlavhasi] | [vaqt, daqiqada]\nMatn:\n[O'qish matnini shu yerga yozing]\nSavollar:\n1. [1-savol]\nA) [1-variant]\nB) [2-variant] *\nC) [3-variant]\nD) [4-variant]\n\n2. [2-savol]\nA) [1-variant] *\nB) [2-variant]\nC) [3-variant]\nD) [4-variant]\n---",
+    example: "Reading: Kutubxonadagi kun | 2\nMatn:\nAziza har shanba kuni shahar kutubxonasiga boradi. U tarixiy kitoblarni o'qishni yaxshi ko'radi. Bu hafta u Amir Temur haqidagi kitobni tanladi.\nSavollar:\n1. Aziza kutubxonaga qachon boradi?\nA) Har dushanba\nB) Har shanba *\nC) Har yakshanba\nD) Har juma\n\n2. U bu hafta kim haqidagi kitobni tanladi?\nA) Ibn Sino\nB) Alisher Navoiy\nC) Amir Temur *\nD) Mirzo Ulug'bek\n---",
+  },
   {
     type: "multiple_choice",
     label: "Variantli savol",

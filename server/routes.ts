@@ -890,17 +890,20 @@ export async function registerRoutes(
       if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
         return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
       }
-      const { questionText, options, correctAnswer, points, timeLimit, mediaUrl, mediaType, orderIndex, config } = req.body;
+      const { questionText, options, correctAnswer, points, timeLimit, mediaUrl, mediaType, orderIndex, config, readingPassage } = req.body;
       const type = req.body.type || "multiple_choice";
       if (!questionText || (!correctAnswer && type !== "poll")) {
         return res.status(400).json({ message: "Savol matni va to'g'ri javob kerak" });
       }
-      if (type === "multiple_choice") {
+      if (type === "multiple_choice" || type === "reading") {
         if (!options || !Array.isArray(options) || options.length < 2) {
           return res.status(400).json({ message: "Kamida 2 ta variant kerak" });
         }
         if (!options.includes(correctAnswer)) {
           return res.status(400).json({ message: "To'g'ri javob variantlar ichida bo'lishi kerak" });
+        }
+        if (type === "reading" && (!readingPassage || typeof readingPassage.text !== "string" || !readingPassage.text.trim())) {
+          return res.status(400).json({ message: "Reading matni kerak" });
         }
       }
       if (type === "true_false") {
@@ -921,19 +924,20 @@ export async function registerRoutes(
           return res.status(400).json({ message: "To'g'ri javoblarni tanlang" });
         }
       }
-      const questionOptions = type === "multiple_choice" ? options
+      const questionOptions = type === "multiple_choice" || type === "reading" ? options
         : type === "true_false" ? ["To'g'ri", "Noto'g'ri"]
         : type === "poll" ? options
         : type === "multiple_select" ? options
         : null;
       const finalCorrectAnswer = type === "poll" ? (correctAnswer || "poll") : correctAnswer;
       const finalPoints = type === "poll" ? 0 : (points || 100);
+      const storedType = type === "reading" ? "multiple_choice" : type;
       const question = await storage.createQuestion({
         quizId: req.params.quizId,
         questionText,
         options: questionOptions,
         correctAnswer: finalCorrectAnswer,
-        type,
+        type: storedType,
         points: finalPoints,
         timeLimit: timeLimit || 30,
         mediaUrl: mediaUrl || null,
@@ -941,6 +945,31 @@ export async function registerRoutes(
         orderIndex: orderIndex || 0,
         config: config || null,
       });
+      if (type === "reading") {
+        const questionNumber = (Number(orderIndex) || 0) + 1;
+        const passageTitle = typeof readingPassage.title === "string" ? readingPassage.title.trim() : "";
+        const passageText = readingPassage.text.trim();
+        const existingSections: any[] = [...((quiz as any).questionSections || [])];
+        const previousSection = existingSections[existingSections.length - 1];
+        if (
+          previousSection
+          && previousSection.toIndex === questionNumber - 1
+          && (previousSection.passageTitle || "") === passageTitle
+          && previousSection.passageText === passageText
+        ) {
+          previousSection.toIndex = questionNumber;
+        } else {
+          existingSections.push({
+            id: `reading-${Date.now()}-${question.id}`,
+            fromIndex: questionNumber,
+            toIndex: questionNumber,
+            passageTitle: passageTitle || undefined,
+            passageText,
+            timePerQuestion: timeLimit || 30,
+          });
+        }
+        await storage.updateQuiz(req.params.quizId, { questionSections: existingSections } as any);
+      }
       res.json(question);
     } catch (error: any) {
       console.error("Question create error:", error?.message || error);
