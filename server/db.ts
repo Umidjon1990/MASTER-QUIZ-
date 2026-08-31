@@ -13,7 +13,10 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: process.env.PREVIEW_DATABASE === "pglite" ? 1 : undefined,
+});
 export const db = drizzle(pool, { schema });
 
 async function runManualMigrations() {

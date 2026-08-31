@@ -9,16 +9,22 @@ import { eq } from "drizzle-orm";
 
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000;
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (process.env.NODE_ENV === "production" && !sessionSecret) {
+    throw new Error("SESSION_SECRET must be set in production");
+  }
   const pgStore = connectPg(session);
-  const sessionStore = new pgStore({
-    conString: process.env.DATABASE_URL,
-    createTableIfMissing: false,
-    ttl: sessionTtl,
-    tableName: "sessions",
-  });
+  const sessionStore = process.env.PREVIEW_DATABASE === "pglite"
+    ? undefined
+    : new pgStore({
+        conString: process.env.DATABASE_URL,
+        createTableIfMissing: false,
+        ttl: sessionTtl,
+        tableName: "sessions",
+      });
   return session({
-    secret: process.env.SESSION_SECRET || "quizlive-secret-key-2024",
-    store: sessionStore,
+    secret: sessionSecret || "quizlive-development-only-secret",
+    ...(sessionStore ? { store: sessionStore } : {}),
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -34,11 +40,46 @@ export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
   app.use(getSession());
 
+  if (process.env.PREVIEW_MODE === "true") {
+    app.post("/api/auth/preview-login", async (req, res) => {
+      try {
+        const email = "preview-teacher@local.test";
+        let user = await authStorage.getUserByEmail(email);
+        if (!user) {
+          user = await authStorage.upsertUser({
+            email,
+            password: null,
+            firstName: "Preview",
+            lastName: "O'qituvchi",
+          });
+        }
+        const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.userId, user.id));
+        if (!profile) {
+          await db.insert(userProfiles).values({
+            userId: user.id,
+            role: "teacher",
+            displayName: "Preview o'qituvchi",
+            plan: "premium",
+            quizLimit: 999,
+          });
+        }
+        (req.session as any).userId = user.id;
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Preview login error:", error);
+        res.status(500).json({ message: "Preview hisobini ochib bo'lmadi" });
+      }
+    });
+  }
+
   app.post("/api/auth/register", async (req, res) => {
     try {
       const { email, password, firstName, lastName } = req.body;
       if (!email || !password) {
         return res.status(400).json({ message: "Email va parol kerak" });
+      }
+      if (typeof password !== "string" || password.length < 8) {
+        return res.status(400).json({ message: "Parol kamida 8 ta belgidan iborat bo'lishi kerak" });
       }
 
       const existing = await authStorage.getUserByEmail(email);

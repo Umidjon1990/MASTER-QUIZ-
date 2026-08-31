@@ -1,8 +1,24 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 
 const app = express();
 const httpServer = createServer(app);
+let isReady = false;
+
+app.disable("x-powered-by");
+app.use(helmet({ contentSecurityPolicy: false }));
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Juda ko'p urinish. 15 daqiqadan so'ng qayta urinib ko'ring." },
+});
+
+app.use(["/api/auth/login", "/api/auth/register", "/api/reset-password"], authLimiter);
 
 declare module "http" {
   interface IncomingMessage {
@@ -35,23 +51,11 @@ export function log(message: string, source = "express") {
 app.use((req, res, next) => {
   const start = Date.now();
   const reqPath = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
 
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (reqPath.startsWith("/api")) {
-      let logLine = `${req.method} ${reqPath} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
+      log(`${req.method} ${reqPath} ${res.statusCode} in ${duration}ms`);
     }
   });
 
@@ -59,7 +63,10 @@ app.use((req, res, next) => {
 });
 
 app.get("/health", (_req, res) => {
-  res.status(200).json({ status: "ok", uptime: process.uptime() });
+  res.status(isReady ? 200 : 503).json({
+    status: isReady ? "ok" : "starting",
+    uptime: process.uptime(),
+  });
 });
 
 process.on("unhandledRejection", (reason, promise) => {
@@ -85,12 +92,14 @@ if (process.env.NODE_ENV === "production") {
   const { registerRoutes } = await import("./routes");
   await registerRoutes(httpServer, app);
 
-  const { restoreActiveBots } = await import("./ai-bot");
-  const { storage } = await import("./storage");
-  restoreActiveBots(storage).catch(err => console.error("[AI-BOT] Restore failed:", err));
+  if (process.env.PREVIEW_MODE !== "true") {
+    const { restoreActiveBots } = await import("./ai-bot");
+    const { storage } = await import("./storage");
+    restoreActiveBots(storage).catch(err => console.error("[AI-BOT] Restore failed:", err));
 
-  const { startFeedbackScheduler } = await import("./ai-feedback-scheduler");
-  startFeedbackScheduler();
+    const { startFeedbackScheduler } = await import("./ai-feedback-scheduler");
+    startFeedbackScheduler();
+  }
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -108,10 +117,12 @@ if (process.env.NODE_ENV === "production") {
   if (process.env.NODE_ENV === "production") {
     const { serveStatic } = await import("./static");
     serveStatic(app);
+    isReady = true;
     log(`fully loaded, serving static files`);
   } else {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
+    isReady = true;
     httpServer.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
       log(`serving on port ${port}`);
     });

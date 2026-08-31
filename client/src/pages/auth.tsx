@@ -23,6 +23,24 @@ export default function AuthPage() {
   const [, navigate] = useLocation();
   const { theme, toggleTheme } = useTheme();
 
+  const handlePreviewLogin = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/preview-login", { method: "POST", credentials: "include" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || "Preview hisobini ochib bo'lmadi");
+      }
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
+      navigate("/teacher/quizzes/new");
+    } catch (error: any) {
+      toast({ title: error.message || "Preview hisobini ochib bo'lmadi", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
@@ -111,6 +129,15 @@ export default function AuthPage() {
         </div>
 
         <Card className="p-6">
+          {import.meta.env.DEV && (
+            <div className="mb-5 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <p className="text-sm font-semibold">Mahalliy preview</p>
+              <p className="text-xs text-muted-foreground mt-0.5 mb-2">Parolsiz test o'qituvchi hisobida yangi sahifani sinang.</p>
+              <Button type="button" variant="outline" className="w-full" onClick={handlePreviewLogin} disabled={loading} data-testid="button-preview-login">
+                Preview hisobida davom etish
+              </Button>
+            </div>
+          )}
           <div className="flex rounded-md bg-muted p-1 mb-6">
             <button
               onClick={() => setMode("login")}

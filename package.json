@@ -4,7 +4,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "NODE_ENV=development tsx server/index.ts",
+    "dev": "node --import tsx script/dev.ts",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
@@ -65,10 +65,12 @@
     "drizzle-zod": "^0.7.0",
     "embla-carousel-react": "^8.6.0",
     "express": "^5.0.1",
+    "express-rate-limit": "^8.7.0",
     "express-session": "^1.19.0",
     "form-data": "^4.0.5",
     "framer-motion": "^11.13.1",
     "google-auth-library": "^10.5.0",
+    "helmet": "^8.3.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.453.0",
     "mammoth": "^1.12.0",
@@ -104,6 +106,8 @@
     "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-socket": "^0.2.11",
     "@replit/vite-plugin-cartographer": "^0.4.4",
     "@replit/vite-plugin-dev-banner": "^0.1.1",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",

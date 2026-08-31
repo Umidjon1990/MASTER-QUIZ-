@@ -17,7 +17,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, ListChecks, ToggleLeft, MessageSquare, Pencil, BarChart3, CheckSquare, ChevronDown, ChevronRight, BookOpen, Clock, Languages, ListOrdered, Link2, SquarePen } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { Quiz, Question, QuizCategory } from "@shared/schema";
+import type { Quiz, Question, QuizCategory, QuizFolder } from "@shared/schema";
+import {
+  QuestionTemplateGuide,
+  QuestionTypePicker,
+  buildAiQuestionPrompt,
+  getQuestionTypeDefinition,
+  type QuestionType,
+} from "@/components/question-type-guide";
 
 function MediaPreview({ mediaUrl, mediaType, className }: { mediaUrl: string; mediaType: string; className?: string }) {
   if (!mediaUrl) return null;
@@ -50,6 +57,7 @@ export default function QuizEditor() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
+  const [folderId, setFolderId] = useState(() => new URLSearchParams(window.location.search).get("folderId") || "");
   const [isPublic, setIsPublic] = useState(false);
   const [timerEnabled, setTimerEnabled] = useState(true);
   const [shuffleQuestions, setShuffleQuestions] = useState(false);
@@ -60,6 +68,7 @@ export default function QuizEditor() {
   const [initialized, setInitialized] = useState(false);
   const [textImportOpen, setTextImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
+  const [importQuestionType, setImportQuestionType] = useState<QuestionType>("multiple_choice");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [sections, setSections] = useState<Array<{ id: string; fromIndex: number; toIndex: number; passageTitle: string; passageText: string; timePerQuestion: number }>>([]);
@@ -67,6 +76,10 @@ export default function QuizEditor() {
 
   const { data: categories } = useQuery<QuizCategory[]>({
     queryKey: ["/api/quiz-categories"],
+  });
+
+  const { data: folders } = useQuery<QuizFolder[]>({
+    queryKey: ["/api/quiz-folders"],
   });
 
   const createCategory = useMutation({
@@ -112,6 +125,7 @@ export default function QuizEditor() {
     setTitle(quiz.title);
     setDescription(quiz.description || "");
     setCategory(quiz.category || "");
+    setFolderId(quiz.folderId || "");
     setIsPublic(quiz.isPublic);
     setTimerEnabled(quiz.timerEnabled ?? true);
     setShuffleQuestions(quiz.shuffleQuestions ?? false);
@@ -137,7 +151,7 @@ export default function QuizEditor() {
       const res = await fetch("/api/quizzes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, category: category === "__none" ? "" : category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, showCorrectAnswers, practiceMode, timePerQuestion, status: "draft" }),
+        body: JSON.stringify({ title, description, category: category === "__none" ? "" : category, folderId: folderId === "__none" ? null : folderId || null, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, showCorrectAnswers, practiceMode, timePerQuestion, status: "draft" }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed");
@@ -162,7 +176,7 @@ export default function QuizEditor() {
       const res = await fetch(`/api/quizzes/${quizId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, category: category === "__none" ? "" : category, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, showCorrectAnswers, practiceMode, timePerQuestion, questionSections: sections.map(s => ({ id: s.id, fromIndex: s.fromIndex, toIndex: s.toIndex, passageTitle: s.passageTitle || undefined, passageText: s.passageText || undefined, timePerQuestion: s.timePerQuestion ? s.timePerQuestion * 60 : undefined })) }),
+        body: JSON.stringify({ title, description, category: category === "__none" ? "" : category, folderId: folderId === "__none" ? null : folderId || null, isPublic, timerEnabled, shuffleQuestions, shuffleOptions, showCorrectAnswers, practiceMode, timePerQuestion, questionSections: sections.map(s => ({ id: s.id, fromIndex: s.fromIndex, toIndex: s.toIndex, passageTitle: s.passageTitle || undefined, passageText: s.passageText || undefined, timePerQuestion: s.timePerQuestion ? s.timePerQuestion * 60 : undefined })) }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed");
@@ -470,7 +484,7 @@ export default function QuizEditor() {
     timeLimit: 30,
     mediaUrl: "",
     mediaType: "",
-    type: "multiple_choice" as "multiple_choice" | "true_false" | "open_ended" | "poll" | "multiple_select" | "translate" | "reorder" | "match" | "fill_blank",
+    type: "multiple_choice" as QuestionType,
     openAnswer: "",
     translateAccepted: "",
     reorderText: "",
@@ -480,6 +494,25 @@ export default function QuizEditor() {
 
   const [uploading, setUploading] = useState(false);
   const mediaInputRef = useRef<HTMLInputElement>(null);
+
+  const handleQuestionTypeChange = (type: QuestionType) => {
+    setNewQ((prev) => ({
+      ...prev,
+      type,
+      correctIndex: -1,
+      correctIndices: [],
+      openAnswer: "",
+      translateAccepted: "",
+      reorderText: "",
+      matchText: "",
+      fillAnswers: "",
+    }));
+  };
+
+  const copyAiTemplate = async (type: QuestionType) => {
+    await navigator.clipboard.writeText(buildAiQuestionPrompt(type));
+    toast({ title: "AI uchun shablon nusxalandi!" });
+  };
 
   const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -616,8 +649,26 @@ export default function QuizEditor() {
       mediaType: newQ.mediaType || null,
       orderIndex: (questionsList?.length || 0),
       config,
+    }, {
+      onSuccess: () => {
+        setNewQ((prev) => ({
+          questionText: "",
+          options: ["", "", "", ""],
+          correctIndex: -1,
+          correctIndices: [],
+          points: prev.points,
+          timeLimit: prev.timeLimit,
+          mediaUrl: "",
+          mediaType: "",
+          type: prev.type,
+          openAnswer: "",
+          translateAccepted: "",
+          reorderText: "",
+          matchText: "",
+          fillAnswers: "",
+        }));
+      },
     });
-    setNewQ({ questionText: "", options: ["", "", "", ""], correctIndex: -1, correctIndices: [], points: 100, timeLimit: 30, mediaUrl: "", mediaType: "", type: newQ.type, openAnswer: "", translateAccepted: "", reorderText: "", matchText: "", fillAnswers: "" });
   };
 
   if (quizLoading) {
@@ -666,6 +717,9 @@ export default function QuizEditor() {
           <Label>Tavsif</Label>
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Quiz haqida qisqacha..." data-testid="input-quiz-description" />
         </div>
+        <div className="border-t pt-4">
+          <p className="text-sm font-semibold mb-3">Test qayerda saqlanadi?</p>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label>Kategoriya</Label>
@@ -709,36 +763,85 @@ export default function QuizEditor() {
               </div>
             )}
           </div>
-          {timerEnabled && (
+          <div className="space-y-1.5">
+            <Label>Papka / dars</Label>
+            <Select value={folderId || "__none"} onValueChange={(value) => setFolderId(value === "__none" ? "" : value)}>
+              <SelectTrigger data-testid="select-quiz-folder">
+                <SelectValue placeholder="Papka tanlang" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">Papkasiz testlar</SelectItem>
+                {folders?.map((folder, index) => (
+                  <SelectItem key={folder.id} value={folder.id}>{index + 1}-dars — {folder.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Test saqlangach shu papka ichida ko'rinadi.</p>
+          </div>
+        </div>
+        <Card className="p-4 space-y-3 bg-muted/20">
+          <div className="flex items-center justify-between gap-4">
             <div>
-              <Label>Har bir savol uchun vaqt (soniya)</Label>
-              <Input type="number" value={timePerQuestion} onChange={(e) => setTimePerQuestion(Number(e.target.value))} data-testid="input-time-per-question" />
+              <Label className="text-sm font-semibold">Umumiy taymer</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">Barcha yangi savollar uchun standart vaqt.</p>
+            </div>
+            <Switch checked={timerEnabled} onCheckedChange={setTimerEnabled} data-testid="switch-timer-enabled" />
+          </div>
+          {timerEnabled && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                {[15, 30, 45, 60, 90].map((seconds) => (
+                  <Button
+                    key={seconds}
+                    type="button"
+                    size="sm"
+                    variant={timePerQuestion === seconds ? "default" : "outline"}
+                    onClick={() => {
+                      setTimePerQuestion(seconds);
+                      setNewQ((prev) => ({ ...prev, timeLimit: seconds }));
+                    }}
+                    data-testid={`timer-preset-${seconds}`}
+                  >
+                    {seconds} soniya
+                  </Button>
+                ))}
+                <Input
+                  type="number"
+                  min={5}
+                  max={3600}
+                  value={timePerQuestion}
+                  onChange={(e) => {
+                    const seconds = Number(e.target.value);
+                    setTimePerQuestion(seconds);
+                    setNewQ((prev) => ({ ...prev, timeLimit: seconds }));
+                  }}
+                  className="w-28"
+                  aria-label="Boshqa vaqt"
+                  data-testid="input-time-per-question"
+                />
+              </div>
             </div>
           )}
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch checked={timerEnabled} onCheckedChange={setTimerEnabled} data-testid="switch-timer-enabled" />
-          <Label>Taymer yoqish (vaqt chegarasi)</Label>
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch checked={isPublic} onCheckedChange={setIsPublic} data-testid="switch-is-public" />
-          <Label>Ommaviy quiz (bepul)</Label>
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch checked={shuffleQuestions} onCheckedChange={setShuffleQuestions} data-testid="switch-shuffle-questions" />
-          <Label>Savollar tartibini aralashtirish</Label>
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch checked={shuffleOptions} onCheckedChange={setShuffleOptions} data-testid="switch-shuffle-options" />
-          <Label>Variant javoblarni aralashtirish</Label>
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch checked={showCorrectAnswers} onCheckedChange={setShowCorrectAnswers} data-testid="switch-show-correct-answers" />
-          <Label>To'g'ri javobni ko'rsatish</Label>
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch checked={practiceMode} onCheckedChange={setPracticeMode} data-testid="switch-practice-mode" />
-          <Label>Mashq rejimi (natija saqlanmaydi)</Label>
+        </Card>
+        <div>
+          <p className="text-sm font-semibold mb-3">Qo'shimcha sozlamalar</p>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {[
+              { label: "Ommaviy test", help: "Boshqalar ham topa oladi", checked: isPublic, set: setIsPublic, testId: "switch-is-public" },
+              { label: "Savollarni aralashtirish", help: "Har urinishda tartib o'zgaradi", checked: shuffleQuestions, set: setShuffleQuestions, testId: "switch-shuffle-questions" },
+              { label: "Variantlarni aralashtirish", help: "A/B/C/D tartibi o'zgaradi", checked: shuffleOptions, set: setShuffleOptions, testId: "switch-shuffle-options" },
+              { label: "To'g'ri javobni ko'rsatish", help: "Javobdan keyin natijani ko'rsatadi", checked: showCorrectAnswers, set: setShowCorrectAnswers, testId: "switch-show-correct-answers" },
+              { label: "Mashq rejimi", help: "Natija tarixga saqlanmaydi", checked: practiceMode, set: setPracticeMode, testId: "switch-practice-mode" },
+            ].map((item) => (
+              <label key={item.testId} className="flex items-center justify-between gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/30">
+                <span>
+                  <span className="block text-sm font-medium">{item.label}</span>
+                  <span className="block text-xs text-muted-foreground">{item.help}</span>
+                </span>
+                <Switch checked={item.checked} onCheckedChange={item.set} data-testid={item.testId} />
+              </label>
+            ))}
+          </div>
         </div>
         {!isNew && (
           <div>
@@ -825,65 +928,29 @@ export default function QuizEditor() {
                     <FileText className="w-4 h-4 mr-1" /> Matndan import
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-xl">
+                <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>Matndan savollar yuklash</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      Oddiy savollar yoki Reading (matnli) bloklar bilan import qiling:
-                    </p>
-                    <Card className="p-3 text-xs font-mono bg-muted/50 space-y-0.5 leading-5 text-foreground/80 overflow-x-auto">
-                      <p className="text-amber-600 font-semibold">Reading: O'rmon hayvonlari | 60</p>
-                      <p className="text-amber-600">Vaqt: 60</p>
-                      <p className="text-amber-600">Matn: O'rmonda turli xil hayvonlar yashaydi.</p>
-                      <p className="text-amber-600">Ular bir-biri bilan do'st bo'lib yashaydi.</p>
-                      <p className="text-amber-600">Savollar:</p>
-                      <p>1. O'rmonda nimalar yashaydi?</p>
-                      <p>A) Baliqlar</p>
-                      <p>B) Hayvonlar *</p>
-                      <p>C) Tog'lar</p>
-                      <p>2. Hayvonlar qanday yashaydi?</p>
-                      <p>A) Janjallashib</p>
-                      <p>B) Do'st bo'lib *</p>
-                      <p className="text-muted-foreground">---</p>
-                      <p className="text-muted-foreground">3. Oddiy savol (reading siz, 30s)</p>
-                      <p className="text-muted-foreground">A) Variant *</p>
-                      <p className="text-muted-foreground">B) Variant</p>
-                    </Card>
-                    <div className="text-xs text-muted-foreground space-y-1">
-                      <p>• <span className="text-amber-600 font-medium">Reading: Sarlavha | 60</span> — reading blok + timer (soniyada)</p>
-                      <p>• <span className="text-amber-600 font-medium">Vaqt: 60</span> — timer alohida qatorda ham yozsa bo'ladi</p>
-                      <p>• <span className="text-amber-600 font-medium">Matn:</span> — reading matni (bir yoki ko'p qator)</p>
-                      <p>• <span className="text-amber-600 font-medium">Savollar:</span> — savollar boshlanishini bildiradi</p>
-                      <p>• <span className="font-medium">---</span> — reading blokni tugatadi</p>
-                      <p>• To'g'ri javob yoniga <span className="font-medium">*</span> belgisi qo'ying</p>
+                    <div>
+                      <p className="text-sm font-semibold mb-2">1. Savol turini tanlang</p>
+                      <QuestionTypePicker value={importQuestionType} onChange={setImportQuestionType} compact />
                     </div>
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-medium text-muted-foreground">Yangi savol turlari uchun namunalar (bosib qo'shing):</p>
-                      <div className="flex gap-2 flex-wrap">
-                        <Button type="button" variant="secondary" size="sm" data-testid="button-sample-translate" onClick={() => setImportText((t) => (t ? t.trimEnd() + "\n\n" : "") + "Tarjima: kitob\nJavob: book; the book")}>
-                          <Languages className="w-3.5 h-3.5 mr-1" /> Tarjima namuna
-                        </Button>
-                        <Button type="button" variant="secondary" size="sm" data-testid="button-sample-reorder" onClick={() => setImportText((t) => (t ? t.trimEnd() + "\n\n" : "") + "Tartib: Men har kuni maktabga boraman")}>
-                          <ListOrdered className="w-3.5 h-3.5 mr-1" /> So'z tartibi namuna
-                        </Button>
-                        <Button type="button" variant="secondary" size="sm" data-testid="button-sample-match" onClick={() => setImportText((t) => (t ? t.trimEnd() + "\n\n" : "") + "Moslash:\napple - olma\nbook - kitob\nwater - suv")}>
-                          <Link2 className="w-3.5 h-3.5 mr-1" /> Moslash namuna
-                        </Button>
-                        <Button type="button" variant="secondary" size="sm" data-testid="button-sample-fill" onClick={() => setImportText((t) => (t ? t.trimEnd() + "\n\n" : "") + "To'ldirish: Quyosh ___ dan chiqadi.\nJavob: sharq; sharqdan")}>
-                          <SquarePen className="w-3.5 h-3.5 mr-1" /> To'ldirish namuna
-                        </Button>
-                        <Button type="button" variant="outline" size="sm" data-testid="button-sample-all" onClick={() => setImportText("Tarjima: kitob\nJavob: book; the book\n\nTartib: Men har kuni maktabga boraman\n\nMoslash:\napple - olma\nbook - kitob\nwater - suv\n\nTo'ldirish: Quyosh ___ dan chiqadi.\nJavob: sharq; sharqdan")}>
-                          Hammasi
-                        </Button>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground leading-4">
-                        <span className="font-medium">Tarjima:</span> so'z + keyingi qatorda Javob (yoki ; bilan bir nechta). •{" "}
-                        <span className="font-medium">Tartib:</span> to'g'ri gap. •{" "}
-                        <span className="font-medium">Moslash:</span> har qatorda "chap - o'ng". •{" "}
-                        <span className="font-medium">To'ldirish:</span> matnda ___ va Javob ( ; — har bo'sh o'rin, | — variantlar). Turlarni aralashtirib yozsa ham bo'ladi.
-                      </p>
+                    <div>
+                      <p className="text-sm font-semibold mb-2">2. Shablonni ko'ring yoki AI uchun nusxalang</p>
+                      <QuestionTemplateGuide
+                        type={importQuestionType}
+                        onCopy={() => copyAiTemplate(importQuestionType)}
+                        onUseExample={() => {
+                          const example = getQuestionTypeDefinition(importQuestionType).example;
+                          setImportText((current) => current ? `${current.trimEnd()}\n\n${example}` : example);
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold mb-2">3. Tayyor savollarni joylang</p>
+                      <p className="text-xs text-muted-foreground mb-2">Bir xil yoki turli savol shablonlarini ketma-ket joylash mumkin.</p>
                     </div>
                     <Textarea
                       value={importText}
@@ -990,49 +1057,24 @@ export default function QuizEditor() {
             </motion.div>
           )}
 
-          <Card className="p-6 space-y-4 border-dashed">
-            <h3 className="font-semibold">Yangi savol qo'shish</h3>
-
+          <Card className="p-6 space-y-5 border-2 border-primary/20 shadow-sm">
             <div>
-              <Label>Savol turi</Label>
-              <Select value={newQ.type} onValueChange={(v: "multiple_choice" | "true_false" | "open_ended" | "poll" | "multiple_select" | "translate" | "reorder" | "match" | "fill_blank") => setNewQ({ ...newQ, type: v, correctIndex: -1, correctIndices: [], openAnswer: "" })}>
-                <SelectTrigger data-testid="select-question-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="multiple_choice">
-                    <span className="flex items-center gap-2"><ListChecks className="w-4 h-4" /> Variantli (A/B/C/D)</span>
-                  </SelectItem>
-                  <SelectItem value="true_false">
-                    <span className="flex items-center gap-2"><ToggleLeft className="w-4 h-4" /> To'g'ri / Noto'g'ri</span>
-                  </SelectItem>
-                  <SelectItem value="open_ended">
-                    <span className="flex items-center gap-2"><MessageSquare className="w-4 h-4" /> Yozma javob</span>
-                  </SelectItem>
-                  <SelectItem value="poll">
-                    <span className="flex items-center gap-2"><BarChart3 className="w-4 h-4" /> So'rovnoma (ball yo'q)</span>
-                  </SelectItem>
-                  <SelectItem value="multiple_select">
-                    <span className="flex items-center gap-2"><CheckSquare className="w-4 h-4" /> Ko'p tanlov (bir nechta to'g'ri)</span>
-                  </SelectItem>
-                  <SelectItem value="translate">
-                    <span className="flex items-center gap-2"><Languages className="w-4 h-4" /> Tarjima</span>
-                  </SelectItem>
-                  <SelectItem value="reorder">
-                    <span className="flex items-center gap-2"><ListOrdered className="w-4 h-4" /> So'z tartibi</span>
-                  </SelectItem>
-                  <SelectItem value="match">
-                    <span className="flex items-center gap-2"><Link2 className="w-4 h-4" /> Moslash (juftlash)</span>
-                  </SelectItem>
-                  <SelectItem value="fill_blank">
-                    <span className="flex items-center gap-2"><SquarePen className="w-4 h-4" /> Bo'sh o'rinni to'ldirish</span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <h3 className="font-semibold text-lg">Yangi savol qo'shish</h3>
+              <p className="text-sm text-muted-foreground">Turni tanlang, savolni to'ldiring va keyingi savolga o'ting.</p>
+            </div>
+
+            <div data-testid="question-type-picker">
+              <p className="text-sm font-semibold mb-2">1. Savol turini tanlang</p>
+              <QuestionTypePicker value={newQ.type} onChange={handleQuestionTypeChange} />
             </div>
 
             <div>
-              <Label>Savol matni</Label>
+              <p className="text-sm font-semibold mb-2">2. Tanlangan tur shabloni</p>
+              <QuestionTemplateGuide type={newQ.type} onCopy={() => copyAiTemplate(newQ.type)} />
+            </div>
+
+            <div>
+              <Label>3. Savol matni</Label>
               <Textarea dir="auto" value={newQ.questionText} onChange={(e) => setNewQ({ ...newQ, questionText: e.target.value })} placeholder="Savolingizni yozing..." data-testid="input-question-text" />
             </div>
 
@@ -1295,18 +1337,54 @@ export default function QuizEditor() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Ball</Label>
-                <Input type="number" value={newQ.points} onChange={(e) => setNewQ({ ...newQ, points: Number(e.target.value) })} data-testid="input-points" />
+            <Card className="p-4 bg-muted/20 space-y-3">
+              <p className="text-sm font-semibold">4. Ball va vaqt</p>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <Label>Ball</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={newQ.type === "poll" ? 0 : newQ.points}
+                    disabled={newQ.type === "poll"}
+                    onChange={(e) => setNewQ({ ...newQ, points: Number(e.target.value) })}
+                    data-testid="input-points"
+                  />
+                  {newQ.type === "poll" && <p className="text-xs text-muted-foreground mt-1">So'rovnomaga ball berilmaydi.</p>}
+                </div>
+                <div>
+                  <Label>Vaqt (soniya)</Label>
+                  <div className="flex gap-1.5 flex-wrap mt-1.5">
+                    {[15, 30, 45, 60].map((seconds) => (
+                      <Button
+                        key={seconds}
+                        type="button"
+                        size="sm"
+                        variant={newQ.timeLimit === seconds ? "default" : "outline"}
+                        onClick={() => setNewQ({ ...newQ, timeLimit: seconds })}
+                      >
+                        {seconds}s
+                      </Button>
+                    ))}
+                    <Input
+                      type="number"
+                      min={5}
+                      value={newQ.timeLimit}
+                      onChange={(e) => setNewQ({ ...newQ, timeLimit: Number(e.target.value) })}
+                      className="w-20 h-9"
+                      data-testid="input-time-limit"
+                    />
+                  </div>
+                  {timerEnabled && newQ.timeLimit !== timePerQuestion && (
+                    <button type="button" className="text-xs text-primary mt-1.5" onClick={() => setNewQ({ ...newQ, timeLimit: timePerQuestion })}>
+                      Umumiy vaqtga qaytarish: {timePerQuestion}s
+                    </button>
+                  )}
+                </div>
               </div>
-              <div>
-                <Label>Vaqt (soniya)</Label>
-                <Input type="number" value={newQ.timeLimit} onChange={(e) => setNewQ({ ...newQ, timeLimit: Number(e.target.value) })} data-testid="input-time-limit" />
-              </div>
-            </div>
-            <Button onClick={handleAddQuestion} disabled={addQuestion.isPending} className="gradient-purple border-0" data-testid="button-add-question">
-              <Plus className="w-4 h-4 mr-1" /> Savol qo'shish
+            </Card>
+            <Button onClick={handleAddQuestion} disabled={addQuestion.isPending} className="w-full gradient-purple border-0" data-testid="button-add-question">
+              <Plus className="w-4 h-4 mr-1" /> Saqlash va keyingi savolni qo'shish
             </Button>
           </Card>
         </>

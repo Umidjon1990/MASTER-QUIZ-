@@ -16,11 +16,20 @@ import { fisherYatesShuffle, balancedShuffleOptions } from "./shuffle";
 import { gradeAnswer } from "@shared/grading";
 import { generateQuizPDF, generateQuizDOCX } from "./quiz-export";
 import { startAiBot, stopAiBot, activeBots } from "./ai-bot";
+import { timingSafeEqual } from "crypto";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
 function generateJoinCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+function secretsMatch(provided: unknown, expected: string): boolean {
+  if (typeof provided !== "string") return false;
+  const providedBuffer = Buffer.from(provided);
+  const expectedBuffer = Buffer.from(expected);
+  return providedBuffer.length === expectedBuffer.length
+    && timingSafeEqual(providedBuffer, expectedBuffer);
 }
 
 export async function registerRoutes(
@@ -29,16 +38,23 @@ export async function registerRoutes(
 ): Promise<Server> {
   await setupAuth(app);
   registerAuthRoutes(app);
-  registerObjectStorageRoutes(app);
+  registerObjectStorageRoutes(app, isAuthenticated);
 
   app.post("/api/reset-password", async (req: any, res) => {
     try {
       const { email, newPassword, secret } = req.body;
-      if (secret !== "quizlive-reset-2024") {
+      const resetSecret = process.env.RESET_PASSWORD_SECRET;
+      if (!resetSecret) {
+        return res.status(503).json({ message: "Parolni tiklash xizmati sozlanmagan" });
+      }
+      if (!secretsMatch(secret, resetSecret)) {
         return res.status(403).json({ message: "Forbidden" });
       }
       if (!email || !newPassword) {
         return res.status(400).json({ message: "Email va yangi parol kerak" });
+      }
+      if (typeof newPassword !== "string" || newPassword.length < 8) {
+        return res.status(400).json({ message: "Yangi parol kamida 8 ta belgidan iborat bo'lishi kerak" });
       }
       const user = await authStorage.getUserByEmail(email);
       if (!user) return res.status(404).json({ message: "User not found" });
@@ -56,8 +72,15 @@ export async function registerRoutes(
 
   app.post("/api/setup-admin", async (req: any, res) => {
     try {
-      const { email } = req.body;
-      const allProfiles = await storage.getAllUserProfiles();
+      const { email, secret } = req.body;
+      const setupSecret = process.env.SETUP_ADMIN_SECRET;
+      if (!setupSecret || !secretsMatch(secret, setupSecret)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      if (!email || typeof email !== "string") {
+        return res.status(400).json({ message: "Email kerak" });
+      }
+      const allProfiles = await storage.getAllProfiles();
       const hasAdmin = allProfiles.some((p: any) => p.role === "admin");
       if (hasAdmin) {
         return res.status(403).json({ message: "Admin already exists" });
@@ -127,8 +150,28 @@ export async function registerRoutes(
   app.patch("/api/profile", requireAuth, async (req: any, res) => {
     try {
       const userId = req.userId;
-      const { telegramBotToken: _tbt, ...safeBody } = req.body;
+      const { displayName, bio } = req.body;
+      const safeBody: { displayName?: string | null; bio?: string | null } = {};
+
+      if (displayName !== undefined) {
+        if (displayName !== null && (typeof displayName !== "string" || displayName.length > 150)) {
+          return res.status(400).json({ message: "Ism 150 belgidan oshmasligi kerak" });
+        }
+        safeBody.displayName = displayName?.trim() || null;
+      }
+      if (bio !== undefined) {
+        if (bio !== null && (typeof bio !== "string" || bio.length > 1000)) {
+          return res.status(400).json({ message: "Bio 1000 belgidan oshmasligi kerak" });
+        }
+        safeBody.bio = bio?.trim() || null;
+      }
+
+      if (Object.keys(safeBody).length === 0) {
+        return res.status(400).json({ message: "O'zgartiriladigan maydon topilmadi" });
+      }
+
       const updated = await storage.updateUserProfile(userId, safeBody);
+      if (!updated) return res.status(404).json({ message: "Profil topilmadi" });
       const { telegramBotToken, ...safeResult } = updated as any;
       res.json({ ...safeResult, hasTelegramBot: !!telegramBotToken, telegramBotToken: telegramBotToken ? `****${telegramBotToken.slice(-6)}` : null });
     } catch (error) {
@@ -301,6 +344,12 @@ export async function registerRoutes(
   app.post("/api/quizzes", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
       const userId = req.userId;
+      if (req.body.folderId) {
+        const ownFolders = await storage.getQuizFoldersByCreator(userId);
+        if (!ownFolders.some((folder) => folder.id === req.body.folderId)) {
+          return res.status(403).json({ message: "Bu papkadan foydalanishga ruxsat yo'q" });
+        }
+      }
       const quiz = await storage.createQuiz({
         ...req.body,
         creatorId: userId,
@@ -363,6 +412,17 @@ export async function registerRoutes(
 
   app.patch("/api/quizzes/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
+      }
+      if (req.body.folderId) {
+        const ownFolders = await storage.getQuizFoldersByCreator(quiz.creatorId);
+        if (!ownFolders.some((folder) => folder.id === req.body.folderId)) {
+          return res.status(403).json({ message: "Bu papkadan foydalanishga ruxsat yo'q" });
+        }
+      }
       const updated = await storage.updateQuiz(req.params.id, req.body);
       if (req.body.timePerQuestion !== undefined) {
         const questions = await storage.getQuestionsByQuiz(req.params.id);
@@ -796,6 +856,11 @@ export async function registerRoutes(
 
   app.delete("/api/quizzes/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
+      const quiz = await storage.getQuiz(req.params.id);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
+      }
       await storage.deleteQuestionsByQuiz(req.params.id);
       await storage.deleteQuiz(req.params.id);
       res.json({ success: true });
@@ -804,8 +869,13 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/quizzes/:quizId/questions", async (req, res) => {
+  app.get("/api/quizzes/:quizId/questions", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
+      const quiz = await storage.getQuiz(req.params.quizId);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
+      }
       const questionsList = await storage.getQuestionsByQuiz(req.params.quizId);
       res.json(questionsList);
     } catch (error) {
@@ -815,6 +885,11 @@ export async function registerRoutes(
 
   app.post("/api/quizzes/:quizId/questions", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
+      const quiz = await storage.getQuiz(req.params.quizId);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
+      }
       const { questionText, options, correctAnswer, points, timeLimit, mediaUrl, mediaType, orderIndex, config } = req.body;
       const type = req.body.type || "multiple_choice";
       if (!questionText || (!correctAnswer && type !== "poll")) {
@@ -875,6 +950,12 @@ export async function registerRoutes(
 
   app.patch("/api/questions/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
+      const question = await storage.getQuestion(req.params.id);
+      if (!question) return res.status(404).json({ message: "Savol topilmadi" });
+      const quiz = await storage.getQuiz(question.quizId);
+      if (!quiz || (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Bu savolni o'zgartirishga ruxsat yo'q" });
+      }
       const updated = await storage.updateQuestion(req.params.id, req.body);
       res.json(updated);
     } catch (error) {
@@ -912,6 +993,12 @@ export async function registerRoutes(
 
   app.delete("/api/questions/:id", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
+      const question = await storage.getQuestion(req.params.id);
+      if (!question) return res.status(404).json({ message: "Savol topilmadi" });
+      const quiz = await storage.getQuiz(question.quizId);
+      if (!quiz || (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin")) {
+        return res.status(403).json({ message: "Bu savolni o'chirishga ruxsat yo'q" });
+      }
       await storage.deleteQuestion(req.params.id);
       res.json({ success: true });
     } catch (error) {
@@ -1055,6 +1142,31 @@ export async function registerRoutes(
           }
           config = { blanks };
           correctAnswer = blanks.map((b) => b.answers[0]).join(" | ");
+        } else if (type === "true_false") {
+          const rawAnswer = String(pn.answerRaw || "").trim().toLowerCase();
+          if (!questionText || !rawAnswer) return;
+          const isTrue = /^(true|to['’‘ʻ]?g['’‘ʻ]?ri|togri|ha)$/.test(rawAnswer);
+          const isFalse = /^(false|noto['’‘ʻ]?g['’‘ʻ]?ri|notogri|yo['’‘ʻ]?q)$/.test(rawAnswer);
+          if (!isTrue && !isFalse) return;
+          options = ["To'g'ri", "Noto'g'ri"];
+          correctAnswer = isTrue ? "true" : "false";
+        } else if (type === "open_ended") {
+          correctAnswer = String(pn.answerRaw || "").trim();
+          if (!questionText || !correctAnswer) return;
+        } else if (type === "poll") {
+          const pollOptions: string[] = (pn.options || []).map((value: string) => value.replace(/\s*\*+$/, "").trim()).filter(Boolean);
+          if (!questionText || pollOptions.length < 2) return;
+          options = pollOptions;
+          correctAnswer = "poll";
+        } else if (type === "multiple_select") {
+          const rawOptions = (pn.options || []).map((value: string) => String(value).trim()).filter(Boolean);
+          const correctOptions = rawOptions
+            .filter((value: string) => /\*+$/.test(value))
+            .map((value: string) => value.replace(/\s*\*+$/, "").trim());
+          const multipleOptions: string[] = rawOptions.map((value: string) => value.replace(/\s*\*+$/, "").trim());
+          if (!questionText || multipleOptions.length < 2 || correctOptions.length === 0) return;
+          options = multipleOptions;
+          correctAnswer = correctOptions.join(",");
         } else {
           return;
         }
@@ -1067,7 +1179,7 @@ export async function registerRoutes(
           options,
           correctAnswer,
           config,
-          points: 100,
+          points: type === "poll" ? 0 : 100,
           timeLimit: 30,
         } as any);
         imported.push(question);
@@ -1118,16 +1230,48 @@ export async function registerRoutes(
         const reorderMatch = trimmed.match(/^tartib\s*:\s*(.*)/i);
         const matchHdr = trimmed.match(/^moslash\s*:\s*(.*)/i);
         const fillMatch = trimmed.match(/^(?:to['’‘ʻ]?ldirish|tuldirish|bo['’‘ʻ]?sh(?:\s*o['’‘ʻ]?rin)?)\s*:\s*(.*)/i);
+        const trueFalseMatch = trimmed.match(/^(?:to['’‘ʻ]?g['’‘ʻ]?ri\s*\/\s*noto['’‘ʻ]?g['’‘ʻ]?ri|true\s*\/\s*false)\s*:\s*(.*)/i);
+        const openEndedMatch = trimmed.match(/^(?:yozma|ochiq\s*javob)\s*:\s*(.*)/i);
+        const pollMatch = trimmed.match(/^so['’‘ʻ]?rovnoma\s*:\s*(.*)/i);
+        const multipleSelectMatch = trimmed.match(/^ko['’‘ʻ]?p\s*tanlov\s*:\s*(.*)/i);
         const answerLine = trimmed.match(/^javob\s*:\s*(.*)/i);
 
         // A separator / reading marker closes any open template block first
         if ((isSeparator || readingStart) && pendingNew) await saveNewQ();
 
         // Answer line for an open translate / fill block
-        if (answerLine && pendingNew && (pendingNew.type === "translate" || pendingNew.type === "fill_blank")) {
+        if (answerLine && pendingNew && ["translate", "fill_blank", "true_false", "open_ended"].includes(pendingNew.type)) {
           if (pendingNew.type === "translate") pendingNew.accepted = (answerLine[1] || "").split(/[;|]/);
           else pendingNew.answerRaw = answerLine[1] || "";
           await saveNewQ();
+          continue;
+        }
+
+        if (trueFalseMatch) {
+          await saveCurrentQ(); currentQ = null;
+          if (pendingNew) await saveNewQ();
+          pendingNew = { type: "true_false", questionText: (trueFalseMatch[1] || "").trim(), answerRaw: "" };
+          continue;
+        }
+
+        if (openEndedMatch) {
+          await saveCurrentQ(); currentQ = null;
+          if (pendingNew) await saveNewQ();
+          pendingNew = { type: "open_ended", questionText: (openEndedMatch[1] || "").trim(), answerRaw: "" };
+          continue;
+        }
+
+        if (pollMatch) {
+          await saveCurrentQ(); currentQ = null;
+          if (pendingNew) await saveNewQ();
+          pendingNew = { type: "poll", questionText: (pollMatch[1] || "").trim(), options: [] };
+          continue;
+        }
+
+        if (multipleSelectMatch) {
+          await saveCurrentQ(); currentQ = null;
+          if (pendingNew) await saveNewQ();
+          pendingNew = { type: "multiple_select", questionText: (multipleSelectMatch[1] || "").trim(), options: [] };
           continue;
         }
 
@@ -1174,6 +1318,11 @@ export async function registerRoutes(
           } else {
             pendingNew = { type: "fill_blank", questionText: rest, answerRaw: "" };
           }
+          continue;
+        }
+
+        if (pendingNew && (pendingNew.type === "poll" || pendingNew.type === "multiple_select") && optMatch) {
+          pendingNew.options.push((optMatch[2] || "").trim());
           continue;
         }
 
@@ -1353,6 +1502,11 @@ export async function registerRoutes(
 
   app.post("/api/quizzes/:quizId/import-text", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
+      const quiz = await storage.getQuiz(req.params.quizId);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
+      }
       const { text } = req.body;
       if (!text) return res.status(400).json({ message: "Matn kerak" });
       const result = await importQuestionsFromText(req.params.quizId, text);
@@ -1365,6 +1519,11 @@ export async function registerRoutes(
 
   app.post("/api/quizzes/:quizId/import", requireAuth, requireRole(["teacher", "admin"]), upload.single("file"), async (req: any, res) => {
     try {
+      const quiz = await storage.getQuiz(req.params.quizId);
+      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
+      if (quiz.creatorId !== req.userId && req.userProfile?.role !== "admin") {
+        return res.status(403).json({ message: "Bu quiz sizga tegishli emas" });
+      }
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
       const filename = (req.file.originalname || "").toLowerCase();
