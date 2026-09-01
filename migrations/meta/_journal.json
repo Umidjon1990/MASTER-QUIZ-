@@ -29,6 +29,13 @@
       "when": 1788267600000,
       "tag": "0003_postgresql_library_fallback",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788271200000,
+      "tag": "0004_admin_quiz_assignments",
+      "breakpoints": true
     }
   ]
 }

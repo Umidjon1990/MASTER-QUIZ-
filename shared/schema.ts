@@ -88,6 +88,23 @@ export const quizFolders = pgTable("quiz_folders", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const adminQuizAssignments = pgTable("admin_quiz_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sourceQuizId: varchar("source_quiz_id").notNull(),
+  sourceTeacherId: varchar("source_teacher_id").notNull(),
+  targetQuizId: varchar("target_quiz_id").notNull(),
+  targetTeacherId: varchar("target_teacher_id").notNull(),
+  assignedBy: varchar("assigned_by").notNull(),
+  sourceTitle: varchar("source_title", { length: 255 }).notNull(),
+  sourceFolderName: varchar("source_folder_name", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("admin_quiz_assignments_source_target_unique").on(table.sourceQuizId, table.targetTeacherId),
+  uniqueIndex("admin_quiz_assignments_target_quiz_unique").on(table.targetQuizId),
+  index("admin_quiz_assignments_target_teacher_idx").on(table.targetTeacherId),
+  index("admin_quiz_assignments_created_idx").on(table.createdAt),
+]);
+
 export const assignments = pgTable("assignments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   quizId: varchar("quiz_id").notNull(),
@@ -447,6 +464,7 @@ export type InsertLiveLesson = z.infer<typeof insertLiveLessonSchema>;
 export type LiveLesson = typeof liveLessons.$inferSelect;
 export type InsertQuizFolder = z.infer<typeof insertQuizFolderSchema>;
 export type QuizFolder = typeof quizFolders.$inferSelect;
+export type AdminQuizAssignment = typeof adminQuizAssignments.$inferSelect;
 export type LibraryBook = typeof libraryBooks.$inferSelect;
 export type LibraryAssignment = typeof libraryAssignments.$inferSelect;
 export type LibraryViewSession = typeof libraryViewSessions.$inferSelect;
