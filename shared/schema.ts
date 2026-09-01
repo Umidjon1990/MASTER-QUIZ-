@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, index, uniqueIndex, customType } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -280,6 +280,20 @@ export const liveLessons = pgTable("live_lessons", {
   startedAt: timestamp("started_at"),
   endedAt: timestamp("ended_at"),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
+
+export const libraryFileBlobs = pgTable("library_file_blobs", {
+  storageKey: text("storage_key").primaryKey(),
+  encryptedContent: bytea("encrypted_content").notNull(),
+  encryptedSize: integer("encrypted_size").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const libraryBooks = pgTable("library_books", {

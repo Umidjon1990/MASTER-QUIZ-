@@ -1,24 +1,28 @@
 import { GetObjectCommand, PutObjectCommand, DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { promises as fs } from "fs";
-import path from "path";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
+import { eq } from "drizzle-orm";
+import { db } from "./db";
+import { libraryFileBlobs } from "@shared/schema";
 
-function env(...names: string[]): string | undefined {
+function envFrom(source: NodeJS.ProcessEnv, ...names: string[]): string | undefined {
   for (const name of names) {
-    const value = process.env[name]?.trim();
+    const value = source[name]?.trim();
     if (value) return value;
   }
   return undefined;
 }
 
-const bucketName = env("LIBRARY_BUCKET_NAME", "BUCKET_NAME", "BUCKET");
-const endpointRaw = env("LIBRARY_S3_ENDPOINT", "AWS_ENDPOINT_URL_S3", "ENDPOINT");
-const accessKeyId = env("LIBRARY_S3_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID", "ACCESS_KEY_ID");
-const secretAccessKey = env("LIBRARY_S3_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY", "SECRET_ACCESS_KEY");
-const region = env("LIBRARY_S3_REGION", "AWS_REGION", "REGION") || "auto";
+export function resolveLibraryS3Config(source: NodeJS.ProcessEnv) {
+  const bucketName = envFrom(source, "LIBRARY_BUCKET_NAME", "BUCKET_NAME", "BUCKET");
+  const endpointRaw = envFrom(source, "LIBRARY_S3_ENDPOINT", "AWS_ENDPOINT_URL_S3", "ENDPOINT");
+  const accessKeyId = envFrom(source, "LIBRARY_S3_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID", "ACCESS_KEY_ID");
+  const secretAccessKey = envFrom(source, "LIBRARY_S3_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY", "SECRET_ACCESS_KEY");
+  const region = envFrom(source, "LIBRARY_S3_REGION", "AWS_REGION", "REGION") || "auto";
+  return { bucketName, endpointRaw, accessKeyId, secretAccessKey, region, enabled: !!(bucketName && endpointRaw && accessKeyId && secretAccessKey) };
+}
+
+const { bucketName, endpointRaw, accessKeyId, secretAccessKey, region, enabled: hasS3 } = resolveLibraryS3Config(process.env);
 const forcePathStyle = process.env.LIBRARY_S3_FORCE_PATH_STYLE === "true";
-const hasS3 = !!(bucketName && endpointRaw && accessKeyId && secretAccessKey);
-const localRoot = path.resolve(process.env.LIBRARY_LOCAL_STORAGE_DIR || ".library-private");
 const encryptionMagic = Buffer.from("MQLIB1", "ascii");
 
 function loadEncryptionKey(): Buffer | null {
@@ -28,9 +32,9 @@ function loadEncryptionKey(): Buffer | null {
     if (key.length !== 32) throw new Error("LIBRARY_ENCRYPTION_KEY must contain exactly 32 bytes");
     return key;
   }
-  if (process.env.NODE_ENV !== "production") {
-    return createHash("sha256").update(process.env.SESSION_SECRET || "master-quiz-local-library-key").digest();
-  }
+  const sessionSecret = process.env.SESSION_SECRET?.trim();
+  if (sessionSecret) return createHash("sha256").update(sessionSecret).digest();
+  if (process.env.NODE_ENV !== "production") return createHash("sha256").update("master-quiz-local-library-key").digest();
   return null;
 }
 
@@ -72,19 +76,27 @@ async function streamToBuffer(body: any): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-function assertProductionStorage() {
-  if (!hasS3 && process.env.NODE_ENV === "production") {
-    throw new Error("Private library bucket is not configured");
-  }
+function assertEncryptionReady() {
   if (!encryptionKey) throw new Error("Library encryption key is not configured");
 }
 
+async function getPostgresObject(key: string): Promise<Buffer | null> {
+  const [row] = await db.select({ content: libraryFileBlobs.encryptedContent })
+    .from(libraryFileBlobs)
+    .where(eq(libraryFileBlobs.storageKey, key));
+  return row?.content ? Buffer.from(row.content) : null;
+}
+
+function isMissingS3Object(error: any): boolean {
+  return error?.name === "NoSuchKey" || error?.Code === "NoSuchKey" || error?.$metadata?.httpStatusCode === 404;
+}
+
 export const libraryFileStorage = {
-  configured: (hasS3 && !!encryptionKey) || process.env.NODE_ENV !== "production",
-  provider: hasS3 ? "private-s3" : "local-development",
+  configured: !!encryptionKey,
+  provider: hasS3 ? "private-s3" : "postgresql-encrypted",
 
   async put(key: string, content: Buffer): Promise<void> {
-    assertProductionStorage();
+    assertEncryptionReady();
     const protectedContent = encrypt(content);
     if (s3) {
       await s3.send(new PutObjectCommand({
@@ -97,28 +109,44 @@ export const libraryFileStorage = {
       }));
       return;
     }
-    const target = path.join(localRoot, key);
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, protectedContent, { mode: 0o600 });
+    await db.insert(libraryFileBlobs).values({
+      storageKey: key,
+      encryptedContent: protectedContent,
+      encryptedSize: protectedContent.length,
+    }).onConflictDoUpdate({
+      target: libraryFileBlobs.storageKey,
+      set: {
+        encryptedContent: protectedContent,
+        encryptedSize: protectedContent.length,
+        updatedAt: new Date(),
+      },
+    });
   },
 
   async get(key: string): Promise<Buffer> {
-    assertProductionStorage();
+    assertEncryptionReady();
     if (s3) {
-      const result = await s3.send(new GetObjectCommand({ Bucket: bucketName!, Key: key }));
-      return decrypt(await streamToBuffer(result.Body));
+      try {
+        const result = await s3.send(new GetObjectCommand({ Bucket: bucketName!, Key: key }));
+        return decrypt(await streamToBuffer(result.Body));
+      } catch (error) {
+        if (!isMissingS3Object(error)) throw error;
+      }
     }
-    return decrypt(await fs.readFile(path.join(localRoot, key)));
+    const protectedContent = await getPostgresObject(key);
+    if (!protectedContent) throw new Error("Library file was not found in private storage");
+    return decrypt(protectedContent);
   },
 
   async remove(key: string): Promise<void> {
-    assertProductionStorage();
+    assertEncryptionReady();
     if (s3) {
-      await s3.send(new DeleteObjectCommand({ Bucket: bucketName!, Key: key }));
-      return;
+      try {
+        await s3.send(new DeleteObjectCommand({ Bucket: bucketName!, Key: key }));
+      } catch (error) {
+        if (!isMissingS3Object(error)) throw error;
+      }
     }
-    await fs.unlink(path.join(localRoot, key)).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== "ENOENT") throw error;
-    });
+    await db.delete(libraryFileBlobs).where(eq(libraryFileBlobs.storageKey, key));
   },
 };

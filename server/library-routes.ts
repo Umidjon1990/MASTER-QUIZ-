@@ -4,11 +4,19 @@ import { createHash, randomBytes, randomUUID } from "crypto";
 import { promises as fs, createReadStream } from "fs";
 import path from "path";
 import os from "os";
-import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib";
+import { PDFDocument } from "pdf-lib";
 import rateLimit from "express-rate-limit";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import { libraryFileStorage } from "./library-storage";
+import {
+  createWatermarkedPdf,
+  forbiddenPdfFeature,
+  MAX_PDF_BYTES,
+  MAX_PDF_MB,
+  MAX_PDF_PAGES,
+  parseSingleByteRange,
+} from "./library-security";
 import {
   libraryAssignments,
   libraryAuditLogs,
@@ -18,9 +26,7 @@ import {
 } from "@shared/schema";
 
 type RoleMiddleware = (roles: string[]) => RequestHandler;
-const MAX_PDF_BYTES = Number(process.env.LIBRARY_MAX_PDF_MB || 100) * 1024 * 1024;
 const SESSION_HOURS = Math.max(1, Number(process.env.LIBRARY_SESSION_HOURS || 2));
-const MAX_PDF_PAGES = Math.max(1, Number(process.env.LIBRARY_MAX_PAGES || 2500));
 const watermarkRoot = path.join(os.tmpdir(), "master-quiz-library-watermarks");
 const generationLocks = new Map<string, Promise<string>>();
 
@@ -34,6 +40,16 @@ const uploadPdf = multer({
     callback(null, true);
   },
 });
+
+const acceptSinglePdf: RequestHandler = (req, res, next) => {
+  uploadPdf.single("pdf")(req, res, (error: any) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ message: `PDF hajmi ${MAX_PDF_MB} MB dan oshmasligi kerak` });
+    }
+    return res.status(400).json({ message: error.message || "PDF yuklash so'rovi noto'g'ri" });
+  });
+};
 
 function hash(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
@@ -50,18 +66,7 @@ function asDate(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function forbiddenPdfFeature(content: Buffer): string | null {
-  const source = content.toString("latin1");
-  const checks: Array<[RegExp, string]> = [
-    [/\/JavaScript\b|\/JS\s*\(/i, "JavaScript"],
-    [/\/Launch\b/i, "external launch action"],
-    [/\/EmbeddedFile\b/i, "embedded file"],
-    [/\/OpenAction\b|\/AA\b/i, "automatic action"],
-  ];
-  return checks.find(([pattern]) => pattern.test(source))?.[1] || null;
-}
-
-function isAssignmentAvailable(assignment: typeof libraryAssignments.$inferSelect, now = new Date(), ignoreExhaustedQuota = false): string | null {
+export function isAssignmentAvailable(assignment: typeof libraryAssignments.$inferSelect, now = new Date(), ignoreExhaustedQuota = false): string | null {
   if (assignment.status !== "active") return "Ruxsat faol emas";
   if (assignment.startsAt && assignment.startsAt > now) return "Ruxsat muddati hali boshlanmagan";
   if (assignment.expiresAt && assignment.expiresAt <= now) return "Ruxsat muddati tugagan";
@@ -88,10 +93,6 @@ async function audit(req: any, values: Omit<typeof libraryAuditLogs.$inferInsert
   }
 }
 
-function safeWinAnsi(value: string): string {
-  return value.normalize("NFKD").replace(/[^\x20-\x7E]/g, "").slice(0, 100) || "Teacher";
-}
-
 async function buildWatermarkedPdf(session: typeof libraryViewSessions.$inferSelect, book: typeof libraryBooks.$inferSelect, teacherName: string): Promise<string> {
   await fs.mkdir(watermarkRoot, { recursive: true, mode: 0o700 });
   const target = path.join(watermarkRoot, `${session.id}.pdf`);
@@ -101,35 +102,13 @@ async function buildWatermarkedPdf(session: typeof libraryViewSessions.$inferSel
   } catch {}
 
   const source = await libraryFileStorage.get(book.storageKey);
-  const document = await PDFDocument.load(source, { updateMetadata: false });
-  const font = await document.embedFont(StandardFonts.HelveticaBold);
-  const opened = (session.activatedAt || session.openedAt || new Date()).toISOString().replace("T", " ").slice(0, 16);
-  const teacherCode = `T-${session.teacherId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
-  const sessionCode = session.id.replace(/-/g, "").slice(0, 8).toUpperCase();
-  const identityLine = safeWinAnsi(`${teacherName} | ${teacherCode}`);
-  const traceLine = `${opened.slice(0, 10)} | SESSION:${sessionCode}`;
-  const usageLine = "FAQAT DARS UCHUN | NUSXA TARQATISH TAQIQLANADI";
-
-  for (const page of document.getPages()) {
-    const { width, height } = page.getSize();
-    const size = Math.max(9, Math.min(13, width / 40));
-    for (let y = 25; y < height; y += Math.max(125, height / 4.5)) {
-      page.drawText(identityLine, {
-        x: 10, y, size, font, color: rgb(0.58, 0.08, 0.12), opacity: 0.18, rotate: degrees(32),
-      });
-      page.drawText(traceLine, {
-        x: Math.max(10, width * 0.08), y: y + 30, size: Math.max(8, size - 1), font,
-        color: rgb(0.58, 0.08, 0.12), opacity: 0.16, rotate: degrees(32),
-      });
-      page.drawText(usageLine, {
-        x: Math.max(10, width * 0.12), y: y + 60, size: Math.max(8, size - 1), font,
-        color: rgb(0.58, 0.08, 0.12), opacity: 0.14, rotate: degrees(32),
-      });
-    }
-  }
-  document.setTitle(book.title);
-  document.setProducer("Zamonaviy Ta'lim Secure Library");
-  const output = await document.save({ useObjectStreams: true });
+  const output = await createWatermarkedPdf(source, {
+    teacherName,
+    teacherId: session.teacherId,
+    sessionId: session.id,
+    openedAt: session.activatedAt || session.openedAt || new Date(),
+    title: book.title,
+  });
   await fs.writeFile(target, output, { mode: 0o600 });
   return target;
 }
@@ -198,10 +177,10 @@ export function registerLibraryRoutes(app: Express, requireAuth: RequestHandler,
   const viewerLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 1200, standardHeaders: "draft-7", legacyHeaders: false, message: { message: "Viewer so'rovlari limiti oshib ketdi" } });
   app.get("/api/admin/library/books", requireAuth, requireRole(["admin"]), async (_req, res) => {
     const books = await db.select().from(libraryBooks).orderBy(desc(libraryBooks.createdAt));
-    res.json({ books, storage: { configured: libraryFileStorage.configured, provider: libraryFileStorage.provider, maxPdfMb: MAX_PDF_BYTES / 1024 / 1024 } });
+    res.json({ books, storage: { configured: libraryFileStorage.configured, provider: libraryFileStorage.provider, maxPdfMb: MAX_PDF_MB } });
   });
 
-  app.post("/api/admin/library/books", requireAuth, requireRole(["admin"]), uploadLimiter, uploadPdf.single("pdf"), async (req: any, res) => {
+  app.post("/api/admin/library/books", requireAuth, requireRole(["admin"]), uploadLimiter, acceptSinglePdf, async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "PDF fayl tanlanmagan" });
       if (req.file.buffer.subarray(0, 5).toString("ascii") !== "%PDF-") {
@@ -247,7 +226,7 @@ export function registerLibraryRoutes(app: Express, requireAuth: RequestHandler,
           uploadedBy: req.userId,
           status: "active",
         }).returning();
-        await audit(req, { action: "book.upload", bookId: book.id, result: "success", metadata: { pageCount: book.pageCount, fileSize: book.fileSize, activeContentChecked: true, encryptedAtRest: true } });
+        await audit(req, { action: "book.upload", bookId: book.id, result: "success", metadata: { pageCount: book.pageCount, fileSize: book.fileSize, activeContentChecked: true, encryptedAtRest: true, storageProvider: libraryFileStorage.provider } });
         res.status(201).json(book);
       } catch (error) {
         await libraryFileStorage.remove(storageKey);
@@ -401,11 +380,9 @@ export function registerLibraryRoutes(app: Express, requireAuth: RequestHandler,
       setPdfSecurityHeaders(res);
       const range = req.headers.range;
       if (range) {
-        const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-        if (!match) return res.status(416).end();
-        const start = match[1] ? Number(match[1]) : 0;
-        const end = match[2] ? Math.min(Number(match[2]), stat.size - 1) : stat.size - 1;
-        if (start > end || start >= stat.size) return res.status(416).set("Content-Range", `bytes */${stat.size}`).end();
+        const parsedRange = parseSingleByteRange(range, stat.size);
+        if (!parsedRange) return res.status(416).set({ "Accept-Ranges": "bytes", "Content-Range": `bytes */${stat.size}` }).end();
+        const { start, end } = parsedRange;
         res.status(206).set({ "Accept-Ranges": "bytes", "Content-Range": `bytes ${start}-${end}/${stat.size}`, "Content-Length": String(end - start + 1) });
         return createReadStream(target, { start, end }).pipe(res);
       }

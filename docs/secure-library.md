@@ -4,22 +4,26 @@ The library is optional. Teachers without active book assignments retain the exi
 
 ## Railway production setup
 
-1. Create a private Railway Storage Bucket in the same environment as the application.
-2. Add variable references from the bucket to the application service:
+No additional Railway service or variable is required. When no bucket is configured, PDFs are encrypted by the application and stored automatically in the existing PostgreSQL database.
+
+An optional private Railway Storage Bucket can be added later. When all of the following variable references are present, new uploads use S3 automatically:
+
    - `BUCKET`
    - `ENDPOINT`
    - `ACCESS_KEY_ID`
    - `SECRET_ACCESS_KEY`
    - `REGION`
-3. Generate a 32-byte encryption key and store it as `LIBRARY_ENCRYPTION_KEY` (base64 or 64-character hex). Never reuse `SESSION_SECRET` in production.
-4. Redeploy. `/api/admin/library/books` reports `storage.configured: true` when private storage and encryption are ready.
+
+`LIBRARY_ENCRYPTION_KEY` remains optional. When it is absent, the application derives a 32-byte file-encryption key from the existing required `SESSION_SECRET`. If it is supplied, it must be base64 or 64-character hex and decode to exactly 32 bytes.
+
+`/api/admin/library/books` reports the active provider as `postgresql-encrypted` or `private-s3`. PostgreSQL files remain readable if a Bucket is enabled later.
 
 Older Railway buckets that explicitly require path-style URLs can set `LIBRARY_S3_FORCE_PATH_STYLE=true`. New buckets use virtual-hosted style by default.
 
 Optional controls:
 
-- `LIBRARY_MAX_PDF_MB` — upload size limit, default `100`.
-- `LIBRARY_MAX_PAGES` — page limit, default `2500`.
+- `LIBRARY_MAX_PDF_MB` — upload size limit, default `25`; the hard safety ceiling is `50` MB.
+- `LIBRARY_MAX_PAGES` — page limit, default `1500`; the hard safety ceiling is `2500` pages.
 - `LIBRARY_SESSION_HOURS` — viewer session lifetime, default `2`.
 - `LIBRARY_AUDIT_SALT` — dedicated random value used to hash IP addresses in audit records.
 
@@ -27,7 +31,7 @@ Optional controls:
 
 - Only admins can upload and change books or teacher assignments.
 - Files are validated as PDFs, password-protected/corrupt files are rejected, duplicates are detected by SHA-256, and PDFs containing JavaScript, embedded files, launch actions, or automatic actions are rejected.
-- Original PDFs are encrypted with AES-256-GCM before private-bucket upload. The stored object is not a readable PDF.
+- Original PDFs are encrypted with AES-256-GCM before PostgreSQL or private-bucket storage. The stored object is not a readable PDF.
 - The browser never receives a storage URL or the original PDF.
 - On first successful view, one quota unit is consumed transactionally and a teacher-specific PDF is generated with repeated permanent watermarks on every page.
 - Viewer tokens are random, short-lived, stored only as SHA-256 hashes on the server, and bound to the authenticated teacher.
