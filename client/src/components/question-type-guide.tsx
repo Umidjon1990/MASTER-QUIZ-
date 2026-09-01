@@ -37,6 +37,11 @@ export type QuestionTypeDefinition = {
   example: string;
 };
 
+export type QuestionTypeSelection = {
+  type: QuestionType;
+  count: number;
+};
+
 export const QUESTION_TYPE_DEFINITIONS: QuestionTypeDefinition[] = [
   {
     type: "reading",
@@ -137,6 +142,123 @@ export function getQuestionTypeDefinition(type: QuestionType) {
 export function buildAiQuestionPrompt(type: QuestionType) {
   const definition = getQuestionTypeDefinition(type);
   return `Quyidagi talab asosida ${definition.label.toLowerCase()} yarating. Natijani izohsiz, aynan ko'rsatilgan matn formatida bering. Maydon nomlari va maxsus belgilarni o'zgartirmang. To'g'ri variant yonidagi * belgisini saqlang.\n\nSHABLON:\n${definition.template}\n\nNAMUNA:\n${definition.example}`;
+}
+
+export function buildCombinedAiQuestionPrompt(selections: QuestionTypeSelection[]) {
+  const normalized = selections
+    .map((selection) => ({
+      type: selection.type,
+      count: Math.max(1, Math.min(50, Math.round(selection.count || 1))),
+    }))
+    .filter((selection, index, items) => items.findIndex((item) => item.type === selection.type) === index);
+
+  if (normalized.length === 0) return "";
+
+  const requestedTypes = normalized.map((selection, index) => {
+    const definition = getQuestionTypeDefinition(selection.type);
+    if (selection.type === "reading") {
+      return `${index + 1}. ${definition.label}: bitta reading matni va unga bog'langan ${selection.count} ta savol`;
+    }
+    return `${index + 1}. ${definition.label}: ${selection.count} ta savol`;
+  }).join("\n");
+
+  const formats = normalized.map((selection, index) => {
+    const definition = getQuestionTypeDefinition(selection.type);
+    const quantity = selection.type === "reading"
+      ? `Bitta reading matni ichida ${selection.count} ta savol yarating.`
+      : `Shu turdan ${selection.count} ta savol yarating.`;
+    return `FORMAT ${index + 1}: ${definition.label.toUpperCase()}\n${quantity}\n\nSHABLON:\n${definition.template}\n\nNAMUNA:\n${definition.example}`;
+  }).join("\n\n==============================\n\n");
+
+  return `Siz professional test yaratuvchisiz. Quyida beriladigan MANBA MATN asosida tanlangan savol turlarining barchasini BITTA JAVOBDA yarating.\n\nTANLANGAN TURLAR VA SONI:\n${requestedTypes}\n\nQAT'IY QOIDALAR:\n1. Natijani izohsiz va Markdown kod blokisiz bering.\n2. Savollarni yuqoridagi tanlangan turlar tartibida yozing.\n3. Har bir savol turi uchun quyida berilgan maydon nomlari, belgilar va formatni aynan saqlang.\n4. Variantli va ko'p tanlov savollarida to'g'ri javob yoniga faqat * belgisini qo'ying.\n5. Noto'g'ri variantlar ham mazmunan yaqin, ishonarli va uzunligi muvozanatli bo'lsin.\n6. Har bir savolda faqat belgilangan javob yoki javoblar to'g'ri bo'lsin.\n7. Bir tur tugagach, keyingi turni yangi qatordan boshlang. Qo'shimcha sarlavha yozmang.\n8. Reading bloki albatta --- belgisi bilan tugasin.\n9. Savollar takrorlanmasin va faqat MANBA MATN mazmuniga tayansin.\n10. Javob tilini manba matn va topshiriq mazmuniga mos saqlang.\n\n${formats}\n\n==============================\n\nMANBA MATN:\n[Manba matnni shu yerga joylashtiring]`;
+}
+
+export function MultiQuestionTypePicker({
+  value,
+  onChange,
+}: {
+  value: QuestionTypeSelection[];
+  onChange: (value: QuestionTypeSelection[]) => void;
+}) {
+  const toggleType = (type: QuestionType) => {
+    const selected = value.some((item) => item.type === type);
+    if (selected) onChange(value.filter((item) => item.type !== type));
+    else onChange([...value, { type, count: 1 }]);
+  };
+
+  const setCount = (type: QuestionType, count: number) => {
+    const safeCount = Math.max(1, Math.min(50, Number.isFinite(count) ? Math.round(count) : 1));
+    onChange(value.map((item) => item.type === type ? { ...item, count: safeCount } : item));
+  };
+
+  return (
+    <div className="space-y-2" data-testid="multi-question-type-picker">
+      <div className="flex justify-end gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => onChange(QUESTION_TYPE_DEFINITIONS.map((definition) => ({
+            type: definition.type,
+            count: value.find((item) => item.type === definition.type)?.count || 1,
+          })))}
+        >
+          Barchasini tanlash
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => onChange([])} disabled={value.length === 0}>
+          Tozalash
+        </Button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        {QUESTION_TYPE_DEFINITIONS.map((definition) => {
+          const Icon = definition.icon;
+          const selection = value.find((item) => item.type === definition.type);
+          const selected = !!selection;
+          return (
+            <div
+              key={definition.type}
+              className={`rounded-lg border p-3 transition-all ${selected ? "border-primary bg-primary/10 ring-1 ring-primary" : "bg-card hover:border-primary/50"}`}
+            >
+              <button
+                type="button"
+                onClick={() => toggleType(definition.type)}
+                className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-md"
+                aria-pressed={selected}
+                data-testid={`multi-question-type-${definition.type}`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <span className={`rounded-md p-2 shrink-0 ${selected ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
+                    <Icon className="w-4 h-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold leading-5">{definition.label}</span>
+                    <span className="block text-xs text-muted-foreground">{selected ? "Tanlangan" : "Tanlash uchun bosing"}</span>
+                  </span>
+                  <span className={`w-5 h-5 rounded border flex items-center justify-center text-xs ${selected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40"}`}>
+                    {selected ? "✓" : ""}
+                  </span>
+                </span>
+              </button>
+              {selection && (
+                <label className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-primary/15 text-xs font-medium">
+                  <span>{definition.type === "reading" ? "Matnga bog'liq savollar" : "Savollar soni"}</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={selection.count}
+                    onChange={(event) => setCount(definition.type, Number(event.target.value))}
+                    className="h-8 w-20 rounded-md border bg-background px-2 text-center text-sm"
+                    data-testid={`multi-question-count-${definition.type}`}
+                  />
+                </label>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function QuestionTypePicker({

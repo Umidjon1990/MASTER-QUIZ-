@@ -15,15 +15,18 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, ListChecks, ToggleLeft, MessageSquare, Pencil, BarChart3, CheckSquare, ChevronDown, ChevronRight, BookOpen, Clock, Languages, ListOrdered, Link2, SquarePen } from "lucide-react";
+import { Plus, Trash2, Save, Upload, ArrowLeft, CheckCircle, Image, Video, Music, X, Loader2, Download, FileText, ListChecks, ToggleLeft, MessageSquare, Pencil, BarChart3, CheckSquare, ChevronDown, ChevronRight, BookOpen, Clock, Languages, ListOrdered, Link2, SquarePen, Copy } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Quiz, Question, QuizCategory, QuizFolder } from "@shared/schema";
 import {
   QuestionTemplateGuide,
   QuestionTypePicker,
   buildAiQuestionPrompt,
+  buildCombinedAiQuestionPrompt,
   getQuestionTypeDefinition,
+  MultiQuestionTypePicker,
   type QuestionType,
+  type QuestionTypeSelection,
 } from "@/components/question-type-guide";
 
 function MediaPreview({ mediaUrl, mediaType, className }: { mediaUrl: string; mediaType: string; className?: string }) {
@@ -69,6 +72,11 @@ export default function QuizEditor() {
   const [textImportOpen, setTextImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [importQuestionType, setImportQuestionType] = useState<QuestionType>("multiple_choice");
+  const [importTypeMode, setImportTypeMode] = useState<"single" | "multi">("single");
+  const [importQuestionTypes, setImportQuestionTypes] = useState<QuestionTypeSelection[]>([
+    { type: "multiple_choice", count: 3 },
+    { type: "true_false", count: 2 },
+  ]);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [sections, setSections] = useState<Array<{ id: string; fromIndex: number; toIndex: number; passageTitle: string; passageText: string; timePerQuestion: number }>>([]);
@@ -522,6 +530,27 @@ export default function QuizEditor() {
     toast({ title: "AI uchun shablon nusxalandi!" });
   };
 
+  const copyCombinedAiTemplate = async () => {
+    const prompt = buildCombinedAiQuestionPrompt(importQuestionTypes);
+    if (!prompt) {
+      toast({ title: "Kamida bitta savol turini tanlang", variant: "destructive" });
+      return;
+    }
+    await navigator.clipboard.writeText(prompt);
+    toast({ title: `${importQuestionTypes.length} ta savol turi uchun bitta AI prompt nusxalandi!` });
+  };
+
+  const useCombinedExamples = () => {
+    if (importQuestionTypes.length === 0) {
+      toast({ title: "Kamida bitta savol turini tanlang", variant: "destructive" });
+      return;
+    }
+    const examples = importQuestionTypes
+      .map((selection) => getQuestionTypeDefinition(selection.type).example)
+      .join("\n\n");
+    setImportText((current) => current ? `${current.trimEnd()}\n\n${examples}` : examples);
+  };
+
   const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -952,23 +981,91 @@ export default function QuizEditor() {
                   </DialogHeader>
                   <div className="space-y-3">
                     <div>
-                      <p className="text-sm font-semibold mb-2">1. Savol turini tanlang</p>
-                      <QuestionTypePicker value={importQuestionType} onChange={setImportQuestionType} compact />
+                      <p className="text-sm font-semibold mb-2">1. Yaratish usulini tanlang</p>
+                      <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted p-1" data-testid="import-type-mode">
+                        <Button
+                          type="button"
+                          variant={importTypeMode === "single" ? "default" : "ghost"}
+                          onClick={() => setImportTypeMode("single")}
+                          data-testid="button-import-mode-single"
+                        >
+                          Bitta savol turi
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={importTypeMode === "multi" ? "default" : "ghost"}
+                          onClick={() => setImportTypeMode("multi")}
+                          data-testid="button-import-mode-multi"
+                        >
+                          Bir nechta tur
+                        </Button>
+                      </div>
                     </div>
+
+                    {importTypeMode === "single" ? (
+                      <>
+                        <div>
+                          <p className="text-sm font-semibold mb-2">2. Savol turini tanlang</p>
+                          <QuestionTypePicker value={importQuestionType} onChange={setImportQuestionType} compact />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold mb-2">3. Shablonni ko'ring yoki AI uchun nusxalang</p>
+                          <QuestionTemplateGuide
+                            type={importQuestionType}
+                            onCopy={() => copyAiTemplate(importQuestionType)}
+                            onUseExample={() => {
+                              const example = getQuestionTypeDefinition(importQuestionType).example;
+                              setImportText((current) => current ? `${current.trimEnd()}\n\n${example}` : example);
+                            }}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                            <div>
+                              <p className="text-sm font-semibold">2. Savol turlari va sonini belgilang</p>
+                              <p className="text-xs text-muted-foreground">Har bir turdan nechta savol kerakligini alohida kiriting.</p>
+                            </div>
+                            <Badge variant="secondary">
+                              {importQuestionTypes.length} tur · {importQuestionTypes.reduce((sum, item) => sum + item.count, 0)} savol
+                            </Badge>
+                          </div>
+                          <MultiQuestionTypePicker value={importQuestionTypes} onChange={setImportQuestionTypes} />
+                        </div>
+
+                        <Card className="p-4 border-primary/30 bg-primary/[0.035] space-y-3" data-testid="combined-ai-prompt-guide">
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div>
+                              <p className="text-sm font-semibold">3. Barcha turlar uchun yagona AI prompt</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">Prompt tanlangan turlar, ularning soni, aniq shablonlar va qat'iy format qoidalarini birlashtiradi.</p>
+                            </div>
+                            <div className="flex gap-2 flex-wrap">
+                              <Button type="button" size="sm" variant="outline" onClick={useCombinedExamples} disabled={importQuestionTypes.length === 0}>
+                                Namunalarni qo'yish
+                              </Button>
+                              <Button type="button" size="sm" variant="secondary" onClick={copyCombinedAiTemplate} disabled={importQuestionTypes.length === 0} data-testid="button-copy-combined-ai-prompt">
+                                <Copy className="w-3.5 h-3.5 mr-1.5" /> Bitta promptni nusxalash
+                              </Button>
+                            </div>
+                          </div>
+                          {importQuestionTypes.length > 0 ? (
+                            <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-md border bg-background p-3 text-xs leading-5" dir="auto" data-testid="combined-ai-prompt-preview">
+                              {buildCombinedAiQuestionPrompt(importQuestionTypes)}
+                            </pre>
+                          ) : (
+                            <div className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">
+                              Prompt yaratish uchun yuqoridan kamida bitta savol turini tanlang.
+                            </div>
+                          )}
+                        </Card>
+                      </>
+                    )}
+
                     <div>
-                      <p className="text-sm font-semibold mb-2">2. Shablonni ko'ring yoki AI uchun nusxalang</p>
-                      <QuestionTemplateGuide
-                        type={importQuestionType}
-                        onCopy={() => copyAiTemplate(importQuestionType)}
-                        onUseExample={() => {
-                          const example = getQuestionTypeDefinition(importQuestionType).example;
-                          setImportText((current) => current ? `${current.trimEnd()}\n\n${example}` : example);
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold mb-2">3. Tayyor savollarni joylang</p>
-                      <p className="text-xs text-muted-foreground mb-2">Bir xil yoki turli savol shablonlarini ketma-ket joylash mumkin.</p>
+                      <p className="text-sm font-semibold mb-2">4. AI yaratgan tayyor savollarni joylang</p>
+                      <p className="text-xs text-muted-foreground mb-2">Bitta yoki turli savol shablonlarini shu maydonga birgalikda joylash mumkin.</p>
                     </div>
                     <Textarea
                       value={importText}
