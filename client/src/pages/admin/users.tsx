@@ -115,7 +115,7 @@ export default function AdminUsers() {
               <Plus className="w-4 h-4 mr-1" /> Yangi foydalanuvchi
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Yangi foydalanuvchi yaratish</DialogTitle>
             </DialogHeader>
@@ -271,6 +271,12 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
   const [plan, setPlan] = useState("free");
   const [subscriptionDays, setSubscriptionDays] = useState("30");
   const [loading, setLoading] = useState(false);
+  const [libraryEnabled, setLibraryEnabled] = useState(false);
+  const [selectedBooks, setSelectedBooks] = useState<Record<string, { selected: boolean; maxOpens: string }>>({});
+  const { data: libraryData } = useQuery<{ books: Array<{ id: string; title: string; author: string | null; status: string }> }>({
+    queryKey: ["/api/admin/library/books"],
+    enabled: role === "teacher",
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -293,6 +299,9 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
           plan,
           quizLimit: role === "admin" ? 999 : role === "teacher" ? 50 : 5,
           subscriptionDays: Number(subscriptionDays),
+          libraryAssignments: role === "teacher" && libraryEnabled
+            ? Object.entries(selectedBooks).filter(([, value]) => value.selected).map(([bookId, value]) => ({ bookId, maxOpens: value.maxOpens || null }))
+            : [],
         }),
         credentials: "include",
       });
@@ -371,6 +380,10 @@ function CreateUserForm({ onSuccess }: { onSuccess: () => void }) {
           <Input type="number" value={subscriptionDays} onChange={(e) => setSubscriptionDays(e.target.value)} placeholder="30" className="pl-9" min="1" data-testid="input-create-days" />
         </div>
       </div>
+      {role === "teacher" && <div className="rounded-lg border p-4 space-y-3">
+        <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" checked={libraryEnabled} onChange={e => setLibraryEnabled(e.target.checked)} className="w-4 h-4" /><div><p className="font-medium text-sm">Kutubxona biriktirish</p><p className="text-xs text-muted-foreground">Ixtiyoriy — biriktirilmasa ham o'qituvchi kabineti ishlaydi</p></div></label>
+        {libraryEnabled && <div className="space-y-2 max-h-52 overflow-y-auto">{(libraryData?.books || []).filter(book => book.status === "active").map(book => { const value = selectedBooks[book.id] || { selected: false, maxOpens: "" }; return <div key={book.id} className="rounded-md bg-muted/50 p-3"><label className="flex items-start gap-2"><input type="checkbox" checked={value.selected} onChange={e => setSelectedBooks(old => ({ ...old, [book.id]: { ...value, selected: e.target.checked } }))} className="mt-1" /><span className="flex-1 text-sm"><strong>{book.title}</strong><span className="block text-xs text-muted-foreground">{book.author || "Muallif ko'rsatilmagan"}</span></span></label>{value.selected && <Input type="number" min="1" placeholder="Kirish limiti (bo'sh = cheksiz)" value={value.maxOpens} onChange={e => setSelectedBooks(old => ({ ...old, [book.id]: { ...value, maxOpens: e.target.value } }))} className="mt-2 h-8" />}</div>})}{(libraryData?.books || []).filter(book => book.status === "active").length === 0 && <p className="text-xs text-muted-foreground">Avval Kutubxona bo'limida PDF kitob yuklang.</p>}</div>}
+      </div>}
       <Button type="submit" className="w-full" disabled={loading} data-testid="button-submit-create-user">
         <UserPlus className="w-4 h-4 mr-1" />
         {loading ? "Yaratilmoqda..." : "Foydalanuvchi yaratish"}

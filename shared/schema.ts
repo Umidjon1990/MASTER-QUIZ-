@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -282,6 +282,97 @@ export const liveLessons = pgTable("live_lessons", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const libraryBooks = pgTable("library_books", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: varchar("title", { length: 255 }).notNull(),
+  author: varchar("author", { length: 255 }),
+  description: text("description"),
+  category: varchar("category", { length: 120 }),
+  subject: varchar("subject", { length: 120 }),
+  level: varchar("level", { length: 50 }),
+  language: varchar("language", { length: 50 }).notNull().default("uz"),
+  coverUrl: text("cover_url"),
+  storageKey: text("storage_key").notNull().unique(),
+  originalFileName: varchar("original_file_name", { length: 255 }).notNull(),
+  mimeType: varchar("mime_type", { length: 100 }).notNull().default("application/pdf"),
+  fileSize: integer("file_size").notNull(),
+  pageCount: integer("page_count").notNull(),
+  checksumSha256: varchar("checksum_sha256", { length: 64 }).notNull(),
+  copyrightOwner: varchar("copyright_owner", { length: 255 }),
+  licenseNote: text("license_note"),
+  licensedUntil: timestamp("licensed_until"),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  version: integer("version").notNull().default(1),
+  uploadedBy: varchar("uploaded_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("library_books_status_idx").on(table.status),
+  index("library_books_category_idx").on(table.category),
+  index("library_books_checksum_idx").on(table.checksumSha256),
+]);
+
+export const libraryAssignments = pgTable("library_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  teacherId: varchar("teacher_id").notNull(),
+  bookId: varchar("book_id").notNull(),
+  maxOpens: integer("max_opens"),
+  usedOpens: integer("used_opens").notNull().default(0),
+  maxConcurrentSessions: integer("max_concurrent_sessions").notNull().default(1),
+  startsAt: timestamp("starts_at"),
+  expiresAt: timestamp("expires_at"),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  assignedBy: varchar("assigned_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("library_assignments_teacher_book_unique").on(table.teacherId, table.bookId),
+  index("library_assignments_teacher_idx").on(table.teacherId),
+  index("library_assignments_book_idx").on(table.bookId),
+]);
+
+export const libraryViewSessions = pgTable("library_view_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  assignmentId: varchar("assignment_id").notNull(),
+  teacherId: varchar("teacher_id").notNull(),
+  bookId: varchar("book_id").notNull(),
+  tokenHash: varchar("token_hash", { length: 64 }).notNull().unique(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  countConsumed: boolean("count_consumed").notNull().default(false),
+  ipHash: varchar("ip_hash", { length: 64 }),
+  userAgentHash: varchar("user_agent_hash", { length: 64 }),
+  openedAt: timestamp("opened_at").defaultNow(),
+  activatedAt: timestamp("activated_at"),
+  expiresAt: timestamp("expires_at").notNull(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow(),
+  lastPage: integer("last_page").notNull().default(1),
+  revokedAt: timestamp("revoked_at"),
+}, (table) => [
+  index("library_view_sessions_teacher_idx").on(table.teacherId),
+  index("library_view_sessions_assignment_idx").on(table.assignmentId),
+  index("library_view_sessions_expiry_idx").on(table.expiresAt),
+]);
+
+export const libraryAuditLogs = pgTable("library_audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  actorId: varchar("actor_id").notNull(),
+  actorRole: varchar("actor_role", { length: 20 }).notNull(),
+  action: varchar("action", { length: 60 }).notNull(),
+  bookId: varchar("book_id"),
+  teacherId: varchar("teacher_id"),
+  assignmentId: varchar("assignment_id"),
+  sessionId: varchar("session_id"),
+  result: varchar("result", { length: 20 }).notNull().default("success"),
+  reason: text("reason"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  ipHash: varchar("ip_hash", { length: 64 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("library_audit_created_idx").on(table.createdAt),
+  index("library_audit_book_idx").on(table.bookId),
+  index("library_audit_teacher_idx").on(table.teacherId),
+]);
+
 export const insertUserProfileSchema = createInsertSchema(userProfiles).omit({ id: true, createdAt: true });
 export const insertQuizSchema = createInsertSchema(quizzes).omit({ id: true, createdAt: true, updatedAt: true, totalQuestions: true, totalPlays: true, totalLikes: true });
 export const insertQuestionSchema = createInsertSchema(questions).omit({ id: true });
@@ -301,6 +392,8 @@ export const insertQuestionBankSchema = createInsertSchema(questionBank).omit({ 
 export const insertQuizLikeSchema = createInsertSchema(quizLikes).omit({ id: true, createdAt: true });
 export const insertLiveLessonSchema = createInsertSchema(liveLessons).omit({ id: true, createdAt: true, participantCount: true, currentPage: true });
 export const insertQuizFolderSchema = createInsertSchema(quizFolders).omit({ id: true, createdAt: true });
+export const insertLibraryBookSchema = createInsertSchema(libraryBooks).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertLibraryAssignmentSchema = createInsertSchema(libraryAssignments).omit({ id: true, createdAt: true, updatedAt: true, usedOpens: true });
 
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type UserProfile = typeof userProfiles.$inferSelect;
@@ -340,6 +433,10 @@ export type InsertLiveLesson = z.infer<typeof insertLiveLessonSchema>;
 export type LiveLesson = typeof liveLessons.$inferSelect;
 export type InsertQuizFolder = z.infer<typeof insertQuizFolderSchema>;
 export type QuizFolder = typeof quizFolders.$inferSelect;
+export type LibraryBook = typeof libraryBooks.$inferSelect;
+export type LibraryAssignment = typeof libraryAssignments.$inferSelect;
+export type LibraryViewSession = typeof libraryViewSessions.$inferSelect;
+export type LibraryAuditLog = typeof libraryAuditLogs.$inferSelect;
 
 export const sharedQuizzes = pgTable("shared_quizzes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

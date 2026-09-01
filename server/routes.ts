@@ -17,6 +17,7 @@ import { gradeAnswer } from "@shared/grading";
 import { generateQuizPDF, generateQuizDOCX } from "./quiz-export";
 import { startAiBot, stopAiBot, activeBots } from "./ai-bot";
 import { timingSafeEqual } from "crypto";
+import { registerLibraryRoutes } from "./library-routes";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -114,6 +115,8 @@ export async function registerRoutes(
       next();
     };
   };
+
+  registerLibraryRoutes(app, requireAuth, requireRole);
 
   async function isTeacherOrAssistant(userId: string, cls: any, permission?: string): Promise<{ allowed: boolean; isAssistant: boolean; assistant?: any }> {
     if (cls.teacherId === userId) return { allowed: true, isAssistant: false };
@@ -234,7 +237,7 @@ export async function registerRoutes(
 
   app.post("/api/admin/users", requireAuth, requireRole(["admin"]), async (req: any, res) => {
     try {
-      const { email, password, firstName, lastName, role, displayName, plan, quizLimit, subscriptionDays } = req.body;
+      const { email, password, firstName, lastName, role, displayName, plan, quizLimit, subscriptionDays, libraryAssignments: initialLibraryAssignments } = req.body;
       if (!email || !password) {
         return res.status(400).json({ message: "Email va parol kerak" });
       }
@@ -265,6 +268,30 @@ export async function registerRoutes(
         subscriptionExpiresAt: expiresAt,
         isActive: true,
       });
+
+      if ((role || "student") === "teacher" && Array.isArray(initialLibraryAssignments) && initialLibraryAssignments.length) {
+        const { db } = await import("./db");
+        const { libraryAssignments, libraryBooks, libraryAuditLogs } = await import("@shared/schema");
+        const { inArray } = await import("drizzle-orm");
+        const requestedBookIds = [...new Set(initialLibraryAssignments.map((item: any) => String(item.bookId)))];
+        const validBooks = await db.select({ id: libraryBooks.id }).from(libraryBooks).where(inArray(libraryBooks.id, requestedBookIds));
+        const validIds = new Set(validBooks.map(book => book.id));
+        const rows = initialLibraryAssignments.filter((item: any) => validIds.has(String(item.bookId))).map((item: any) => {
+          const numericLimit = Number(item.maxOpens);
+          return {
+            teacherId: user.id,
+            bookId: String(item.bookId),
+            maxOpens: item.maxOpens === null || item.maxOpens === "" ? null : Number.isFinite(numericLimit) ? Math.max(1, numericLimit) : null,
+            expiresAt: item.expiresAt ? new Date(item.expiresAt) : null,
+            assignedBy: req.userId,
+            status: "active",
+          };
+        });
+        if (rows.length) {
+          await db.insert(libraryAssignments).values(rows);
+          await db.insert(libraryAuditLogs).values({ actorId: req.userId, actorRole: "admin", action: "assignment.initial", teacherId: user.id, result: "success", metadata: { bookCount: rows.length } });
+        }
+      }
 
       res.json({ user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName }, profile });
     } catch (error) {

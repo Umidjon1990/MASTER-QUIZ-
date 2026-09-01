@@ -15,6 +15,13 @@
       "when": 1771666119889,
       "tag": "0001_solid_jubilee",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788264000000,
+      "tag": "0002_secure_library",
+      "breakpoints": true
     }
   ]
 }

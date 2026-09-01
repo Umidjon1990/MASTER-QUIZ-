@@ -16,6 +16,7 @@ import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import AdminDashboard from "@/pages/admin/index";
 import AdminUsers from "@/pages/admin/users";
+import AdminLibrary from "@/pages/admin/library";
 import AdminQuizzes from "@/pages/admin/quizzes";
 import TeacherDashboard from "@/pages/teacher/index";
 import TeacherQuizzes from "@/pages/teacher/quizzes";
@@ -28,6 +29,8 @@ import TeacherQuestionBank from "@/pages/teacher/question-bank";
 import TeacherTelegram from "@/pages/teacher/telegram";
 import TeacherLessons from "@/pages/teacher/lessons";
 import TeacherLessonLive from "@/pages/teacher/lesson-live";
+import TeacherLibrary from "@/pages/teacher/library";
+import LibraryViewer from "@/pages/teacher/library-viewer";
 import FolderDetail from "@/pages/teacher/folder-detail";
 import ClassTracker from "@/pages/teacher/class-tracker";
 import LessonJoin from "@/pages/lesson/join";
@@ -141,6 +144,9 @@ function App() {
             <Route path="/admin/quizzes">
               {() => <ProtectedPage component={AdminQuizzes} />}
             </Route>
+            <Route path="/admin/library">
+              {() => <ProtectedPage component={AdminLibrary} />}
+            </Route>
 
             <Route path="/teacher">
               {() => <ProtectedPage component={TeacherDashboard} />}
@@ -193,6 +199,12 @@ function App() {
                   <TeacherLessonLive />
                 </AuthGuard>
               )}
+            </Route>
+            <Route path="/teacher/library">
+              {() => <ProtectedPage component={TeacherLibrary} />}
+            </Route>
+            <Route path="/teacher/library/view/:sessionId">
+              {() => <ProtectedPage component={LibraryViewer} />}
             </Route>
 
             <Route path="/lesson/join" component={LessonJoin} />

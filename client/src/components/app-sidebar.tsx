@@ -23,6 +23,7 @@ const adminMenu = [
   { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
   { title: "Foydalanuvchilar", url: "/admin/users", icon: Users },
   { title: "Quizlar", url: "/admin/quizzes", icon: BookOpen },
+  { title: "Kutubxona", url: "/admin/library", icon: Library },
 ];
 
 const teacherMenu = [
@@ -58,7 +59,14 @@ export function AppSidebar() {
   });
 
   const role = profile?.role || "student";
-  const menuItems = role === "admin" ? adminMenu : role === "teacher" ? teacherMenu : studentMenu;
+  const { data: libraryAccess } = useQuery<{ enabled: boolean; bookCount: number }>({
+    queryKey: ["/api/library/me/access-summary"],
+    enabled: !!user && role === "teacher",
+  });
+  const teacherItems = libraryAccess?.enabled
+    ? [...teacherMenu.slice(0, 4), { title: "Kutubxona", url: "/teacher/library", icon: Library }, ...teacherMenu.slice(4)]
+    : teacherMenu;
+  const menuItems = role === "admin" ? adminMenu : role === "teacher" ? teacherItems : studentMenu;
 
   const roleLabel = role === "admin" ? "Administrator" : role === "teacher" ? "O'qituvchi" : "O'quvchi";
   const roleColor = role === "admin" ? "gradient-pink" : role === "teacher" ? "gradient-purple" : "gradient-teal";
