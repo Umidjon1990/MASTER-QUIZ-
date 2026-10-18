@@ -405,7 +405,7 @@ export const libraryAuditLogs = pgTable("library_audit_logs", {
 ]);
 
 export const insertUserProfileSchema = createInsertSchema(userProfiles).omit({ id: true, createdAt: true });
-export const insertQuizSchema = createInsertSchema(quizzes).omit({ id: true, createdAt: true, updatedAt: true, totalQuestions: true, totalPlays: true, totalLikes: true });
+export const insertQuizSchema = createInsertSchema(quizzes, {questionSections:z.array(z.object({id:z.string(),fromIndex:z.number(),toIndex:z.number(),passageTitle:z.string().optional(),passageText:z.string().optional(),timePerQuestion:z.number().optional()})).nullable().optional()}).omit({ id: true, createdAt: true, updatedAt: true, totalQuestions: true, totalPlays: true, totalLikes: true });
 export const insertQuestionSchema = createInsertSchema(questions).omit({ id: true });
 export const insertLiveSessionSchema = createInsertSchema(liveSessions).omit({ id: true, createdAt: true, participantCount: true, currentQuestionIndex: true });
 export const insertSessionParticipantSchema = createInsertSchema(sessionParticipants).omit({ id: true, joinedAt: true, score: true, correctAnswers: true, totalAnswered: true });
@@ -413,7 +413,7 @@ export const insertSessionAnswerSchema = createInsertSchema(sessionAnswers).omit
 export const insertQuizResultSchema = createInsertSchema(quizResults).omit({ id: true, completedAt: true });
 export const insertAssignmentSchema = createInsertSchema(assignments).omit({ id: true, createdAt: true });
 export const insertAssignmentAttemptSchema = createInsertSchema(assignmentAttempts).omit({ id: true, completedAt: true });
-export const insertClassSchema = createInsertSchema(classes).omit({ id: true, createdAt: true });
+export const insertClassSchema = createInsertSchema(classes, {scheduleDays:z.array(z.string()).nullable().optional()}).omit({ id: true, createdAt: true });
 export const insertClassMemberSchema = createInsertSchema(classMembers).omit({ id: true, joinedAt: true });
 export const insertClassLessonSchema = createInsertSchema(classLessons).omit({ id: true, createdAt: true });
 export const insertTaskColumnSchema = createInsertSchema(taskColumns).omit({ id: true, createdAt: true });

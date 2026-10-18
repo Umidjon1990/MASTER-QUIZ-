@@ -406,7 +406,7 @@ export default function AiClassDetail() {
   };
 
   const allTasks = aiClass.tasks || [];
-  const lessonNumbers = [...new Set(allTasks.map((t: any) => t.lessonNumber || 1))].sort((a: number, b: number) => a - b) as number[];
+  const lessonNumbers = [...new Set<number>(allTasks.map((t: any) => t.lessonNumber || 1))].sort((a: number, b: number) => a - b) as number[];
   const maxLessonNum = lessonNumbers.length > 0 ? Math.max(...lessonNumbers) : 0;
 
   const resultLessons = results?.lessons || [];
