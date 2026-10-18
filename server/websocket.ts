@@ -1,3 +1,4 @@
+import {quizRequiresPlatformAccess} from "./platform-sale-locks";
 import { Server as HttpServer } from "http";
 import { Server as SocketServer } from "socket.io";
 import { storage } from "./storage";
@@ -1640,6 +1641,7 @@ export function setupWebSocket(httpServer: HttpServer) {
 
         const quiz = await storage.getQuiz(quizId);
         if (!quiz || !quiz.isPublic) return callback?.({ success: false, error: "Quiz topilmadi yoki ommaviy emas" });
+        if(await quizRequiresPlatformAccess(quiz.id))return callback?.({success:false,error:"Bu test yagona kabinetdan ishlanadi"});
 
         const questionsList = await storage.getQuestionsByQuiz(quizId);
         if (questionsList.length === 0) return callback?.({ success: false, error: "Quizda savollar yo'q" });

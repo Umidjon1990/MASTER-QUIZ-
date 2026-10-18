@@ -1,3 +1,4 @@
+import { registerQuizPlatform } from "./platform-provider";
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import path from "path";
@@ -39,6 +40,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   await setupAuth(app);
+  await registerQuizPlatform(app);
   registerAuthRoutes(app);
   registerObjectStorageRoutes(app, isAuthenticated);
 
@@ -2075,7 +2077,7 @@ export async function registerRoutes(
       if (questionsList.length === 0) return res.status(400).json({ message: "Quizda savollar yo'q. Avval savollar qo'shing" });
 
       const TelegramBot = (await import("node-telegram-bot-api")).default;
-      const bot = new TelegramBot(profile.telegramBotToken);
+      const bot = new TelegramBot(profile.telegramBotToken!);
 
       let sent = 0;
       const targetChat = chatId.startsWith("@") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
@@ -2264,7 +2266,7 @@ export async function registerRoutes(
       results.sort((a, b) => { const pctA = (a.totalQuestions||0)>0 ? (a.correctAnswers||0)/(a.totalQuestions||1) : 0; const pctB = (b.totalQuestions||0)>0 ? (b.correctAnswers||0)/(b.totalQuestions||1) : 0; return pctB - pctA || (b.totalScore||0) - (a.totalScore||0); });
 
       const TelegramBot = (await import("node-telegram-bot-api")).default;
-      const bot = new TelegramBot(profile.telegramBotToken);
+      const bot = new TelegramBot(profile.telegramBotToken!);
       const targetChat = chatId.startsWith("@") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
 
       let quizChannelLink: string | undefined;
@@ -2461,7 +2463,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Avval bot tokenni saqlang" });
       }
       const TelegramBot = (await import("node-telegram-bot-api")).default;
-      const bot = new TelegramBot(profile.telegramBotToken);
+      const bot = new TelegramBot(profile.telegramBotToken!);
       const targetChat = chatId.trim().startsWith("@") ? chatId.trim() : (isNaN(Number(chatId.trim())) ? `@${chatId.trim()}` : Number(chatId.trim()));
       const chatInfo = await bot.getChat(targetChat);
       const newChat = {
@@ -3350,7 +3352,7 @@ export async function registerRoutes(
         let userName = null;
         if (a.userId) {
           const user = await authStorage.getUser(a.userId);
-          userName = user?.name || user?.email || null;
+          userName = [user?.firstName,user?.lastName].filter(Boolean).join(" ") || user?.email || null;
         }
         return { ...a, password: a.password ? "***" : null, userName };
       }));
@@ -3404,7 +3406,7 @@ export async function registerRoutes(
       if (cls) {
         try {
           const teacherUser = await authStorage.getUser(cls.teacherId);
-          teacherName = teacherUser?.name || teacherUser?.email || "—";
+          teacherName = [teacherUser?.firstName,teacherUser?.lastName].filter(Boolean).join(" ") || teacherUser?.email || "—";
         } catch {}
       }
       res.json({
@@ -3456,7 +3458,7 @@ export async function registerRoutes(
         let teacherName = "—";
         try {
           const teacherUser = await authStorage.getUser(cls.teacherId);
-          teacherName = teacherUser?.name || teacherUser?.email || "—";
+          teacherName = [teacherUser?.firstName,teacherUser?.lastName].filter(Boolean).join(" ") || teacherUser?.email || "—";
         } catch {}
         return { ...a, className: cls.name, teacherName };
       }));
@@ -4078,7 +4080,7 @@ export async function registerRoutes(
       }
 
       const TelegramBot = (await import("node-telegram-bot-api")).default;
-      const bot = new TelegramBot(profile.telegramBotToken);
+      const bot = new TelegramBot(profile.telegramBotToken!);
       const targetChat = chatId.startsWith("@") ? chatId : (isNaN(Number(chatId)) ? `@${chatId}` : Number(chatId));
 
       const sendOneMessage = async (text: string) => {
@@ -4237,7 +4239,7 @@ export async function registerRoutes(
         for (const m of members) {
           const user = await authStorage.getUser(m.userId);
           const p = await storage.getUserProfile(m.userId);
-          profileMap.set(m.userId, p?.displayName || user?.username || user?.email || "Noma'lum");
+          profileMap.set(m.userId, p?.displayName || [user?.firstName,user?.lastName].filter(Boolean).join(" ") || user?.email || "Noma'lum");
         }
         return { members, profileMap };
       };

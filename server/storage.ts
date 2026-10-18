@@ -1,3 +1,4 @@
+import {quizRequiresPlatformAccess} from "./platform-sale-locks";
 import {
   type UserProfile, type InsertUserProfile,
   type Quiz, type InsertQuiz,
@@ -196,7 +197,7 @@ export interface IStorage {
   getAiSubmissionsByClass(aiClassId: string): Promise<AiSubmission[]>;
   getAiSubmissionByStudentAndTask(aiStudentId: string, aiTaskId: string, partNumber?: number): Promise<AiSubmission | undefined>;
   getAiSubmissionsByStudentAndTask(aiStudentId: string, aiTaskId: string): Promise<AiSubmission[]>;
-  updateAiSubmission(id: string, data: Partial<InsertAiSubmission>): Promise<AiSubmission | undefined>;
+  updateAiSubmission(id: string, data: Partial<InsertAiSubmission> & {gradedAt?:Date|null}): Promise<AiSubmission | undefined>;
   deleteAiSubmission(id: string): Promise<void>;
   deleteAiSubmissionsByLesson(aiClassId: string, lessonNumber: number): Promise<number>;
 }
@@ -249,6 +250,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteQuiz(id: string): Promise<void> {
+    if(await quizRequiresPlatformAccess(id)){await db.update(quizzes).set({status:"archived",isPublic:false,updatedAt:new Date()}).where(eq(quizzes.id,id));return;}
     await db.delete(quizzes).where(eq(quizzes.id, id));
   }
 
@@ -969,7 +971,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(aiSubmissions.partNumber);
   }
 
-  async updateAiSubmission(id: string, data: Partial<InsertAiSubmission>): Promise<AiSubmission | undefined> {
+  async updateAiSubmission(id: string, data: Partial<InsertAiSubmission> & {gradedAt?:Date|null}): Promise<AiSubmission | undefined> {
     const [updated] = await db.update(aiSubmissions).set(data as any).where(eq(aiSubmissions.id, id)).returning();
     return updated;
   }
