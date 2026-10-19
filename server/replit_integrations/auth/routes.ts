@@ -4,8 +4,8 @@ import { authStorage } from "./storage";
 export function registerAuthRoutes(app: Express): void {
   app.get("/api/auth/user", async (req: any, res) => {
     try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) {
+      const userId = req.platformEditor?.nativeId || (req.session as any)?.userId;
+      if (!userId || userId.startsWith("zt-editor-")&&!req.platformEditor) {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const user = await authStorage.getUser(userId);

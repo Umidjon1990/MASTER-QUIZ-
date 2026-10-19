@@ -36,9 +36,10 @@ export function getSession() {
   });
 }
 
-export async function setupAuth(app: Express) {
+export async function setupAuth(app: Express, editorMiddleware?: RequestHandler) {
   app.set("trust proxy", 1);
   app.use(getSession());
+  if(editorMiddleware)app.use(editorMiddleware);
 
   if (process.env.PREVIEW_MODE === "true") {
     app.post("/api/auth/preview-login", async (req, res) => {
@@ -151,8 +152,8 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
-  const userId = (req.session as any)?.userId;
-  if (!userId) {
+  const userId = req.platformEditor?.nativeId || (req.session as any)?.userId;
+  if (!userId || userId.startsWith("zt-editor-")&&!req.platformEditor) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
