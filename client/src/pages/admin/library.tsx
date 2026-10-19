@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 
-type Book = { id: string; title: string; author: string | null; category: string | null; subject: string | null; level: string | null; status: string; pageCount: number; fileSize: number; createdAt: string };
+type Book = { platformSale?:{enabled:boolean;preview_pages:number}; id: string; title: string; author: string | null; category: string | null; subject: string | null; level: string | null; status: string; pageCount: number; fileSize: number; createdAt: string };
 type User = { userId: string; role: string; displayName: string | null; email: string | null; firstName: string | null; lastName: string | null };
 type Assignment = { id: string; bookId: string; maxOpens: number | null; usedOpens: number; startsAt: string | null; expiresAt: string | null; status: string };
 type AuditLog = { id: string; action: string; result: string; reason: string | null; bookId: string | null; teacherId: string | null; createdAt: string };
@@ -76,6 +76,7 @@ export default function AdminLibrary() {
     onError: (error: Error) => toast({ title: "Saqlanmadi", description: error.message, variant: "destructive" }),
   });
 
+  const sale=useMutation({mutationFn:async({book,enabled,pages}:{book:Book;enabled:boolean;pages:number})=>{const r=await fetch('/api/admin/library/books/'+book.id+'/sale',{method:'PATCH',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled,previewPages:pages})});if(!r.ok)throw Error(await errorMessage(r));},onSuccess:()=>{void queryClient.invalidateQueries({queryKey:['/api/admin/library/books']});toast({title:'Marketplace sozlamasi saqlandi',description:'Narx va nashr holatini asosiy admin kabinetida belgilang.'})},onError:(e:Error)=>toast({title:e.message,variant:'destructive'})});
   const toggleArchive = useMutation({
     mutationFn: async (book: Book) => {
       const response = await fetch(`/api/admin/library/books/${book.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: book.status === "active" ? "archived" : "active" }) });
@@ -101,6 +102,7 @@ export default function AdminLibrary() {
       {isLoading ? <p className="text-muted-foreground py-10 text-center">Yuklanmoqda...</p> : shownBooks.length === 0 ? <div className="text-center py-14"><Library className="w-12 h-12 mx-auto text-muted-foreground/40 mb-3" /><p className="font-medium">Hozircha kitob yo'q</p><p className="text-sm text-muted-foreground">Birinchi himoyalangan PDF manbani yuklang</p></div> : <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">{shownBooks.map(book => <Card key={book.id} className="p-4 border-l-4 border-l-purple-500">
         <div className="flex justify-between gap-3"><div className="min-w-0"><h3 className="font-semibold truncate">{book.title}</h3><p className="text-sm text-muted-foreground truncate">{book.author || "Muallif kiritilmagan"}</p></div><Badge variant={book.status === "active" ? "default" : "secondary"}>{book.status === "active" ? "Faol" : "Arxiv"}</Badge></div>
         <div className="flex flex-wrap gap-2 mt-4 text-xs"><Badge variant="outline">{book.pageCount} sahifa</Badge>{book.category && <Badge variant="outline">{book.category}</Badge>}{book.level && <Badge variant="outline">{book.level}</Badge>}</div>
+        <div className="mt-4 space-y-2"><label className="flex gap-2 text-sm"><input type="checkbox" checked={book.platformSale?.enabled||false} disabled={sale.isPending||book.status!=='active'} onChange={e=>sale.mutate({book,enabled:e.target.checked,pages:book.platformSale?.preview_pages||3})}/>Marketplace’da sotish</label><label className="flex gap-2 items-center text-sm">Demo sahifalar<select aria-label={book.title+' demo sahifalari'} value={book.platformSale?.preview_pages||3} disabled={sale.isPending} onChange={e=>sale.mutate({book,enabled:book.platformSale?.enabled||false,pages:Number(e.target.value)})}>{[1,2,3,4,5].map(n=><option key={n} value={n}>{n}</option>)}</select></label><p className="text-xs text-muted-foreground">Coin narxi, muddat va ochish limiti asosiy admin kabinetida belgilanadi.</p></div>
         <div className="flex items-center justify-between mt-4"><span className="text-xs text-muted-foreground">{(book.fileSize / 1024 / 1024).toFixed(1)} MB</span><Button size="sm" variant="ghost" onClick={() => toggleArchive.mutate(book)}>{book.status === "active" ? "Arxivlash" : "Faollashtirish"}</Button></div>
       </Card>)}</div>}
     </Card>

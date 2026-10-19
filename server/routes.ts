@@ -1,3 +1,4 @@
+import {quizEditor} from "./platform-editor";
 import { registerQuizPlatform } from "./platform-provider";
 import type { Express } from "express";
 import { createServer, type Server } from "http";
@@ -39,7 +40,9 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  await setupAuth(app);
+  const editor=quizEditor(app);
+  await setupAuth(app,editor.middleware);
+  editor.routes();
   await registerQuizPlatform(app);
   registerAuthRoutes(app);
   registerObjectStorageRoutes(app, isAuthenticated);

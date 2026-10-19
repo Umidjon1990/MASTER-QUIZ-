@@ -46,7 +46,7 @@ export function registerQuizSaleGuard(app: Express, pool: any) {
           ])
         ).rows[0]?.quiz_id;
       if (!id || !(await quizRequiresPlatformAccess(id))) return next();
-      const userId = (req.session as any)?.userId;
+      const userId = req.platformEditor?.nativeId || (req.session as any)?.userId;
       if (userId) {
         const row = (
           await pool.query(

@@ -1,3 +1,5 @@
+import {pool} from './db';
+import {z} from 'zod';
 import type { Express, RequestHandler } from "express";
 import multer from "multer";
 import { createHash, randomBytes, randomUUID } from "crypto";
@@ -177,9 +179,11 @@ export function registerLibraryRoutes(app: Express, requireAuth: RequestHandler,
   const viewerLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 1200, standardHeaders: "draft-7", legacyHeaders: false, message: { message: "Viewer so'rovlari limiti oshib ketdi" } });
   app.get("/api/admin/library/books", requireAuth, requireRole(["admin"]), async (_req, res) => {
     const books = await db.select().from(libraryBooks).orderBy(desc(libraryBooks.createdAt));
-    res.json({ books, storage: { configured: libraryFileStorage.configured, provider: libraryFileStorage.provider, maxPdfMb: MAX_PDF_MB } });
+    const sales=(await pool.query('SELECT * FROM platform_pdf_sales').catch((e:any)=>{if(e.code==='42P01')return{rows:[]};throw e})).rows;
+    res.json({ books:books.map(b=>({...b,platformSale:sales.find(s=>s.book_id===b.id)||{enabled:false,preview_pages:3}})), storage: { configured: libraryFileStorage.configured, provider: libraryFileStorage.provider, maxPdfMb: MAX_PDF_MB } });
   });
 
+  app.patch('/api/admin/library/books/:bookId/sale',requireAuth,requireRole(['admin']),async(req,res,next)=>{try{const v=z.object({enabled:z.boolean(),previewPages:z.number().int().min(1).max(5)}).strict().parse(req.body);const b=(await pool.query('SELECT id FROM library_books WHERE id=$1',[req.params.bookId])).rows[0];if(!b)return res.status(404).json({message:'PDF topilmadi'});await pool.query('INSERT INTO platform_pdf_sales(book_id,enabled,preview_pages) VALUES($1,$2,$3) ON CONFLICT(book_id) DO UPDATE SET enabled=excluded.enabled,preview_pages=excluded.preview_pages',[b.id,v.enabled,v.previewPages]);await audit(req,{action:'book.marketplace',bookId:b.id,result:'success',metadata:v});res.json({success:true});}catch(e){next(e)}});
   app.post("/api/admin/library/books", requireAuth, requireRole(["admin"]), uploadLimiter, acceptSinglePdf, async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "PDF fayl tanlanmagan" });

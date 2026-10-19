@@ -1,3 +1,4 @@
+import { registerPdfPlatform } from "./platform-pdf";
 import {
   loadQuizSaleLocks,
   protectQuizSale,
@@ -21,6 +22,7 @@ import {
 } from "./platform-engine";
 
 export async function registerQuizPlatform(app: Express) {
+  const pdf = await registerPdfPlatform(app, pool);
   await loadQuizSaleLocks(pool);
   registerQuizSaleGuard(app, pool);
   async function load(sourceId: string, purchased = false) {
@@ -132,7 +134,7 @@ export async function registerQuizPlatform(app: Express) {
             : null,
         });
       }
-      return products;
+      return [...products, ...(await pdf.catalog())];
     },
   });
   await registerLegacyBridge(app, engine, {
@@ -140,6 +142,7 @@ export async function registerQuizPlatform(app: Express) {
     pool,
     definition,
     purchases: async () => [],
+    extraImports: pdf.extraImports,
     verify: async (username, password) => {
       const rows = (
         await pool.query(

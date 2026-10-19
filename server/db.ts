@@ -23,6 +23,7 @@ async function runManualMigrations() {
   const client = await pool.connect();
   try {
     const alterQueries = [
+      `CREATE TABLE IF NOT EXISTS platform_pdf_sales(book_id varchar PRIMARY KEY,enabled boolean NOT NULL DEFAULT false,preview_pages int NOT NULL DEFAULT 3 CHECK(preview_pages BETWEEN 1 AND 5))`,
       `ALTER TABLE "quizzes" ADD COLUMN IF NOT EXISTS "scheduled_telegram_quiz_chat_id" varchar(100)`,
       `ALTER TABLE "quizzes" ADD COLUMN IF NOT EXISTS "allow_replay" boolean NOT NULL DEFAULT false`,
       `ALTER TABLE "quizzes" ADD COLUMN IF NOT EXISTS "folder_id" varchar`,

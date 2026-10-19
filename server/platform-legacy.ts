@@ -19,6 +19,11 @@ export type LegacyOptions = {
     username: string,
     password: string,
   ) => Promise<{ id: string; fullName: string } | null>;
+  extraImports?: (
+    nativeId: string,
+    externalUserId: string,
+    fullName: string,
+  ) => Promise<any[]>;
   purchases: (db: any, nativeId: string) => Promise<LegacyPurchase[]>;
 };
 export function legacyOrderId(provider: string, ref: any) {
@@ -66,7 +71,7 @@ export async function registerLegacyBridge(
         warnings.push(p.sourceId);
       }
     }
-    return engine.transaction(async (client: any) => {
+    const result = await engine.transaction(async (client: any) => {
       await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
         "legacy:" + nativeId,
       ]);
@@ -140,6 +145,11 @@ export async function registerLegacyBridge(
       }
       return { linked: true, provider, fullName, grants, warnings };
     });
+    if (options.extraImports)
+      result.grants.push(
+        ...(await options.extraImports(nativeId, externalUserId, fullName)),
+      );
+    return result;
   }
   app.post(
     "/api/platform/legacy/link",
