@@ -1,4 +1,6 @@
 import {quizEditor} from "./platform-editor";
+import { teacherReadOnly } from "./teacher-policy";
+import { initTeacherPanel, registerTeacherPanel } from "./teacher-panel";
 import { registerQuizPlatform } from "./platform-provider";
 import type { Express } from "express";
 import { createServer, type Server } from "http";
@@ -43,6 +45,7 @@ export async function registerRoutes(
   const editor=quizEditor(app);
   await setupAuth(app,editor.middleware);
   editor.routes();
+  app.use(teacherReadOnly);
   await registerQuizPlatform(app);
   registerAuthRoutes(app);
   registerObjectStorageRoutes(app, isAuthenticated);
@@ -123,6 +126,8 @@ export async function registerRoutes(
   };
 
   registerLibraryRoutes(app, requireAuth, requireRole);
+  await initTeacherPanel();
+  registerTeacherPanel(app, requireAuth, requireRole);
   registerAdminQuizAssignmentRoutes(app, requireAuth, requireRole);
 
   async function isTeacherOrAssistant(userId: string, cls: any, permission?: string): Promise<{ allowed: boolean; isAssistant: boolean; assistant?: any }> {
@@ -667,6 +672,8 @@ export async function registerRoutes(
 
   app.get("/api/shared-quizzes/:id/attempts", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
+      const own = (await storage.getSharedQuizzesByCreator(req.userId)).some(s => s.id === req.params.id);
+      if (!own && req.userProfile?.role !== "admin") return res.status(404).json({ message: "Topilmadi" });
       const attempts = await storage.getSharedQuizAttempts(req.params.id);
       res.json(attempts);
     } catch (error) {

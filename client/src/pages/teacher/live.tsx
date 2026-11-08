@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useProfile } from "@/lib/teacher-access";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { io, Socket } from "socket.io-client";
@@ -109,6 +110,8 @@ export default function TeacherLive() {
   const [connectionStatus, setConnectionStatus] = useState<"connected" | "disconnected" | "reconnecting">("disconnected");
 
   const { data: quizzes } = useQuery<Quiz[]>({ queryKey: ["/api/quizzes"] });
+  // O'qituvchilar uchun Telegram bot sozlamalari hozircha yashirilgan.
+  const isTeacher = useProfile().data?.role === "teacher";
 
   useEffect(() => {
     return () => {
@@ -399,7 +402,7 @@ export default function TeacherLive() {
                 <Play className="w-4 h-4 mr-1" /> Sessiya boshlash
               </Button>
 
-              {selectedQuizId && (
+              {selectedQuizId && !isTeacher && (
                 <div className="border-t pt-4 space-y-3">
                   <p className="text-sm font-medium">Telegram'da ulashish</p>
                   <div className="flex gap-2">

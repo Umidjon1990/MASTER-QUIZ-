@@ -237,7 +237,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPublicQuizzes(): Promise<Quiz[]> {
-    return db.select().from(quizzes).where(and(eq(quizzes.isPublic, true), eq(quizzes.status, "published"))).orderBy(desc(quizzes.createdAt));
+    // O'qituvchilarga berilgan tayyor quiz nusxalari ochiq katalogda ko'rinmaydi.
+    return db.select().from(quizzes).where(and(eq(quizzes.isPublic, true), eq(quizzes.status, "published"),
+      sql`NOT EXISTS (SELECT 1 FROM teacher_library_copies c WHERE c.copy_quiz_id = ${quizzes.id})`)).orderBy(desc(quizzes.createdAt));
   }
 
   async getAllQuizzes(): Promise<Quiz[]> {

@@ -18,7 +18,6 @@ import AdminDashboard from "@/pages/admin/index";
 import AdminUsers from "@/pages/admin/users";
 import AdminLibrary from "@/pages/admin/library";
 import AdminQuizzes from "@/pages/admin/quizzes";
-import TeacherDashboard from "@/pages/teacher/index";
 import TeacherQuizzes from "@/pages/teacher/quizzes";
 import QuizEditor from "@/pages/teacher/quiz-editor";
 import TeacherLive from "@/pages/teacher/live";
@@ -49,6 +48,11 @@ import SharedQuizPage from "@/pages/shared-quiz";
 import JoinAssistant from "@/pages/join-assistant";
 import AiClasses from "@/pages/teacher/ai-classes";
 import AiClassDetail from "@/pages/teacher/ai-class-detail";
+import TeacherTests from "@/pages/teacher/tests";
+import TeacherHome from "@/pages/teacher/home";
+import TeacherTestDetail from "@/pages/teacher/test-detail";
+import AdminTeacherLibrary from "@/pages/admin/teacher-library";
+import { isHiddenForTeacher, useProfile } from "@/lib/teacher-access";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -77,6 +81,18 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!user) return null;
 
+  return <TeacherScope>{children}</TeacherScope>;
+}
+
+/** O'qituvchi yashirilgan bo'limga (eski havola, bukmark) kirsa — Quizlar sahifasiga yo'naltiramiz. */
+function TeacherScope({ children }: { children: React.ReactNode }) {
+  const [location, navigate] = useLocation();
+  const { data: profile, isLoading } = useProfile();
+  const blocked = profile?.role === "teacher" && isHiddenForTeacher(location);
+  useEffect(() => {
+    if (blocked) navigate("/teacher/tests", { replace: true });
+  }, [blocked, navigate]);
+  if (isLoading || blocked) return null;
   return <>{children}</>;
 }
 
@@ -147,9 +163,18 @@ function App() {
             <Route path="/admin/library">
               {() => <ProtectedPage component={AdminLibrary} />}
             </Route>
+            <Route path="/admin/teacher-library">
+              {() => <ProtectedPage component={AdminTeacherLibrary} />}
+            </Route>
 
             <Route path="/teacher">
-              {() => <ProtectedPage component={TeacherDashboard} />}
+              {() => <ProtectedPage component={TeacherHome} />}
+            </Route>
+            <Route path="/teacher/tests">
+              {() => <ProtectedPage component={TeacherTests} />}
+            </Route>
+            <Route path="/teacher/test/:id">
+              {() => <ProtectedPage component={TeacherTestDetail} />}
             </Route>
             <Route path="/teacher/quizzes">
               {() => <ProtectedPage component={TeacherQuizzes} />}
