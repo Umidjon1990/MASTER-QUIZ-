@@ -153,7 +153,7 @@ export async function setupAuth(app: Express, editorMiddleware?: RequestHandler)
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const userId = req.platformEditor?.nativeId || (req.session as any)?.userId;
-  if (!userId || userId.startsWith("zt-editor-")&&!req.platformEditor) {
+  if (!userId || /^zt-(editor|teacher)-/.test(userId)&&!req.platformEditor) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 

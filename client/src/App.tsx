@@ -18,11 +18,9 @@ import AdminDashboard from "@/pages/admin/index";
 import AdminUsers from "@/pages/admin/users";
 import AdminLibrary from "@/pages/admin/library";
 import AdminQuizzes from "@/pages/admin/quizzes";
-import TeacherDashboard from "@/pages/teacher/index";
 import TeacherQuizzes from "@/pages/teacher/quizzes";
 import QuizEditor from "@/pages/teacher/quiz-editor";
 import TeacherLive from "@/pages/teacher/live";
-import TeacherResults from "@/pages/teacher/results";
 import TeacherAssignments from "@/pages/teacher/assignments";
 import TeacherClasses from "@/pages/teacher/classes";
 import TeacherQuestionBank from "@/pages/teacher/question-bank";
@@ -49,6 +47,16 @@ import SharedQuizPage from "@/pages/shared-quiz";
 import JoinAssistant from "@/pages/join-assistant";
 import AiClasses from "@/pages/teacher/ai-classes";
 import AiClassDetail from "@/pages/teacher/ai-class-detail";
+import TeacherTests from "@/pages/teacher/tests";
+import TeacherHome from "@/pages/teacher/home";
+import TeacherGroups from "@/pages/teacher/groups";
+import TeacherGroupDetail from "@/pages/teacher/group-detail";
+import TeacherResultsPanel from "@/pages/teacher/results-panel";
+import TeacherResultDetail from "@/pages/teacher/result-detail";
+import TeacherTestDetail from "@/pages/teacher/test-detail";
+import AdminTeacherLibrary from "@/pages/admin/teacher-library";
+import AdminTeacherStats from "@/pages/admin/teacher-stats";
+import { isHiddenForTeacher, useProfile } from "@/lib/teacher-access";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -77,6 +85,18 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!user) return null;
 
+  return <TeacherScope>{children}</TeacherScope>;
+}
+
+/** O'qituvchi yashirilgan bo'limga (eski havola, bukmark) kirsa — Quizlar sahifasiga yo'naltiramiz. */
+function TeacherScope({ children }: { children: React.ReactNode }) {
+  const [location, navigate] = useLocation();
+  const { data: profile, isLoading } = useProfile();
+  const blocked = profile?.role === "teacher" && isHiddenForTeacher(location);
+  useEffect(() => {
+    if (blocked) navigate("/teacher/tests", { replace: true });
+  }, [blocked, navigate]);
+  if (isLoading || blocked) return null;
   return <>{children}</>;
 }
 
@@ -147,9 +167,21 @@ function App() {
             <Route path="/admin/library">
               {() => <ProtectedPage component={AdminLibrary} />}
             </Route>
+            <Route path="/admin/teacher-stats">
+              {() => <ProtectedPage component={AdminTeacherStats} />}
+            </Route>
+            <Route path="/admin/teacher-library">
+              {() => <ProtectedPage component={AdminTeacherLibrary} />}
+            </Route>
 
             <Route path="/teacher">
-              {() => <ProtectedPage component={TeacherDashboard} />}
+              {() => <ProtectedPage component={TeacherHome} />}
+            </Route>
+            <Route path="/teacher/tests">
+              {() => <ProtectedPage component={TeacherTests} />}
+            </Route>
+            <Route path="/teacher/test/:id">
+              {() => <ProtectedPage component={TeacherTestDetail} />}
             </Route>
             <Route path="/teacher/quizzes">
               {() => <ProtectedPage component={TeacherQuizzes} />}
@@ -167,7 +199,16 @@ function App() {
               {() => <ProtectedPage component={TeacherLive} />}
             </Route>
             <Route path="/teacher/results">
-              {() => <ProtectedPage component={TeacherResults} />}
+              {() => <ProtectedPage component={TeacherResultsPanel} />}
+            </Route>
+            <Route path="/teacher/results/:kind/:id">
+              {() => <ProtectedPage component={TeacherResultDetail} />}
+            </Route>
+            <Route path="/teacher/groups">
+              {() => <ProtectedPage component={TeacherGroups} />}
+            </Route>
+            <Route path="/teacher/groups/:id">
+              {() => <ProtectedPage component={TeacherGroupDetail} />}
             </Route>
             <Route path="/teacher/assignments">
               {() => <ProtectedPage component={TeacherAssignments} />}

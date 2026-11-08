@@ -1,10 +1,11 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+export type EditorRole = "admin" | "teacher";
 export type EditorActor = {
   id: string;
   fullName: string;
   username: string;
-  role: "admin";
+  role: EditorRole;
 };
 export type EditorContext = {
   actor: EditorActor;
@@ -20,7 +21,10 @@ declare global {
 }
 type Options = {
   provider: string;
-  editorPath: string;
+  /** Kirgandan keyin ochiladigan sahifa; rolga qarab tanlanishi mumkin. */
+  editorPath: string | ((actor: EditorActor) => string);
+  /** Qaysi asosiy hisob rollari kira oladi. Odatiy holatda faqat admin. */
+  allowedRoles?: EditorRole[];
   resolve: (actor: EditorActor) => Promise<string>;
   attach?: (req: Request, ctx: EditorContext) => void;
   prepareBrowser?: (ctx: EditorContext) => Record<string, string>;
@@ -54,6 +58,9 @@ export function createEditorSource(app: Express, options: Options) {
   const secure = process.env.NODE_ENV === "production",
     cookies = { httpOnly: true, secure, sameSite: "lax" as const, path: "/" };
   const key = () => process.env.PLATFORM_SERVICE_SECRET || "";
+  const allowed = new Set<string>(options.allowedRoles || ["admin"]);
+  const permitted = (actor: any) =>
+    !!actor && allowed.has(actor.role) && typeof actor.id === "string";
   async function remote(path: string, body: any) {
     if (key().length < 32)
       throw Object.assign(new Error("Muharrir ulanishi sozlanmagan"), {
@@ -82,8 +89,8 @@ export function createEditorSource(app: Express, options: Options) {
     if (!valid(handle)) return null;
     const result = await remote("validate", { handle }),
       actor = result.actor;
-    if (actor?.role !== "admin" || typeof actor.id !== "string")
-      throw Object.assign(new Error("Admin ruxsati kerak"), { status: 403 });
+    if (!permitted(actor))
+      throw Object.assign(new Error("Bu bo‘limga ruxsat yo‘q"), { status: 403 });
     return { actor, nativeId: await options.resolve(actor), handle };
   }
   currentAuthenticate = authenticate;
@@ -172,13 +179,17 @@ export function createEditorSource(app: Express, options: Options) {
           return res
             .status(403)
             .send("Kirish holati mos emas. Asosiy kabinetdan qayta oching.");
-        const result = await remote("redeem", { code, state }),
-          ctx: EditorContext = {
+        const result = await remote("redeem", { code, state });
+        if (!permitted(result.actor))
+          throw Object.assign(new Error("Bu bo‘limga ruxsat yo‘q"), {
+            status: 403,
+          });
+        const ctx: EditorContext = {
             actor: result.actor,
             nativeId: await options.resolve(result.actor),
             handle: result.handle,
           };
-        if (!valid(ctx.handle) || ctx.actor?.role !== "admin")
+        if (!valid(ctx.handle) || !permitted(ctx.actor))
           throw new Error("Kirish javobi noto‘g‘ri");
         res.cookie("zt_editor", ctx.handle, {
           ...cookies,
@@ -201,7 +212,11 @@ export function createEditorSource(app: Express, options: Options) {
             "const values=" +
             JSON.stringify(values).replace(/</g, "\\u003c") +
             ";for(const [k,v] of Object.entries(values))localStorage.setItem(k,v);location.replace(" +
-            JSON.stringify(options.editorPath) +
+            JSON.stringify(
+              typeof options.editorPath === "function"
+                ? options.editorPath(ctx.actor)
+                : options.editorPath,
+            ) +
             ");";
         return res
           .type("html")

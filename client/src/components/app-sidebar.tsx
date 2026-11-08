@@ -15,30 +15,29 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Zap, LayoutDashboard, BookOpen, Users, Trophy, Settings, LogOut, Play, Upload, Send, ClipboardList, GraduationCap, Library, Search, Bot, Presentation, BrainCircuit } from "lucide-react";
+import { FolderOpen, PencilLine, ExternalLink, Zap, LayoutDashboard, BookOpen, Users, Trophy, Settings, LogOut, Play, Upload, Send, ClipboardList, GraduationCap, Library, Search, Bot, Presentation, BrainCircuit } from "lucide-react";
 import type { UserProfile } from "@shared/schema";
+import { PORTAL_URL } from "@/lib/teacher-access";
 import siteLogo from "@assets/photo_2024-09-08_23-13-48-removebg-preview_1771243223962.png";
 
 const adminMenu = [
   { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
   { title: "Foydalanuvchilar", url: "/admin/users", icon: Users },
-  { title: "Quizlar", url: "/admin/quizzes", icon: BookOpen },
+  { title: "Test tuzish", url: "/teacher/quizzes", icon: PencilLine },
+  { title: "Tayyor quizlar", url: "/admin/teacher-library", icon: FolderOpen },
+  { title: "O'qituvchilar", url: "/admin/teacher-stats", icon: GraduationCap },
+  { title: "Barcha quizlar", url: "/admin/quizzes", icon: BookOpen },
   { title: "Kutubxona", url: "/admin/library", icon: Library },
 ];
 
-const teacherMenu = [
-  { title: "Dashboard", url: "/teacher", icon: LayoutDashboard },
-  { title: "Quizlarim", url: "/teacher/quizzes", icon: BookOpen },
-  { title: "Jonli Quiz", url: "/teacher/live", icon: Play },
-  { title: "Jonli Dars", url: "/teacher/lessons", icon: Presentation },
-  { title: "Vazifalar", url: "/teacher/assignments", icon: ClipboardList },
-  { title: "Sinflarim", url: "/teacher/classes", icon: GraduationCap },
-  { title: "Savol Banki", url: "/teacher/question-bank", icon: Library },
+// O'qituvchi menyusi ataylab qisqa. Yashirilgan bo'limlar ro'yxati: lib/teacher-access.ts.
+const simpleTeacherMenu = [
+  { title: "Bosh sahifa", url: "/teacher", icon: LayoutDashboard },
+  { title: "Quizlar", url: "/teacher/tests", icon: BookOpen },
+  { title: "Sinflarim", url: "/teacher/groups", icon: GraduationCap },
   { title: "Natijalar", url: "/teacher/results", icon: Trophy },
-  { title: "AI Nazorat", url: "/teacher/ai-classes", icon: BrainCircuit },
-  { title: "Telegram Bot", url: "/teacher/telegram", icon: Bot },
-  { title: "Discover", url: "/discover", icon: Search },
 ];
+
 
 const studentMenu = [
   { title: "Dashboard", url: "/student", icon: LayoutDashboard },
@@ -64,8 +63,8 @@ export function AppSidebar() {
     enabled: !!user && role === "teacher",
   });
   const teacherItems = libraryAccess?.enabled
-    ? [...teacherMenu.slice(0, 4), { title: "Kutubxona", url: "/teacher/library", icon: Library }, ...teacherMenu.slice(4)]
-    : teacherMenu;
+    ? [...simpleTeacherMenu, { title: "Kitoblar", url: "/teacher/library", icon: Library }]
+    : simpleTeacherMenu;
   const menuItems = role === "admin" ? adminMenu : role === "teacher" ? teacherItems : studentMenu;
 
   const roleLabel = role === "admin" ? "Administrator" : role === "teacher" ? "O'qituvchi" : "O'quvchi";
@@ -92,7 +91,7 @@ export function AppSidebar() {
             <SidebarMenu>
               {menuItems.map((menuItem) => (
                 <SidebarMenuItem key={menuItem.title}>
-                  <SidebarMenuButton asChild data-active={location === menuItem.url}>
+                  <SidebarMenuButton asChild data-active={location === menuItem.url || (menuItem.url !== "/teacher" && menuItem.url.startsWith("/teacher/") && location.startsWith(menuItem.url + "/")) || (menuItem.url === "/teacher/tests" && location.startsWith("/teacher/test/"))}>
                     <Link href={menuItem.url}>
                       <menuItem.icon className="w-4 h-4" />
                       <span>{menuItem.title}</span>
@@ -105,7 +104,12 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-4 gap-3">
+        {role === "teacher" && (
+          <a href={PORTAL_URL + "/kabinet"} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground" data-testid="link-portal">
+            <ExternalLink className="w-4 h-4" /> Asosiy kabinetga qaytish
+          </a>
+        )}
         {user && (
           <div className="flex items-center gap-3">
             <Avatar className="w-9 h-9">

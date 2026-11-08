@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "wouter";
 import { getTextDir } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, CheckCircle, XCircle, ArrowRight, Trophy, Loader2, AlertCircle, User } from "lucide-react";
 import DuoAnswerInput, { isDuoType } from "@/components/duo-answer";
-import { gradeAnswer } from "@shared/grading";
 import type { QuestionConfig } from "@shared/schema";
 
 type QuestionData = {
@@ -16,7 +15,8 @@ type QuestionData = {
   questionText: string;
   type: string;
   options: string[] | null;
-  correctAnswer: string;
+  /** Javob tekshirilgandan keyin serverdan keladi (agar o'qituvchi ko'rsatishga ruxsat bergan bo'lsa). */
+  correctAnswer?: string;
   points: number;
   timeLimit: number;
   orderIndex: number;
@@ -47,6 +47,8 @@ type QuizData = {
   showCorrectAnswers: boolean;
   questions: QuestionData[];
   questionSections?: QuizSection[];
+  closesAt?: string | null;
+  group?: { name: string; students: { id: string; name: string; done: boolean }[] } | null;
 };
 
 type AnswerRecord = Record<string, { answer: string | string[]; isCorrect: boolean; points: number; timeSpent: number }>;
@@ -60,31 +62,8 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
-function balancedShuffleOptions(questions: QuestionData[]): QuestionData[] {
-  if (!questions.length) return questions;
-  const maxSlots = Math.max(...questions.filter(q => q.options && q.options.length >= 2).map(q => q.options!.length), 0);
-  if (maxSlots === 0) return questions;
-  const positionCounts = new Array(maxSlots).fill(0);
-
-  return questions.map(q => {
-    if (!q.options || q.options.length < 2 || !q.correctAnswer) return q;
-    const opts = [...q.options];
-    const correctIdx = opts.indexOf(q.correctAnswer);
-    if (correctIdx === -1) return { ...q, options: shuffleArray(opts) };
-
-    const correct = opts.splice(correctIdx, 1)[0];
-    const shuffledWrong = shuffleArray(opts);
-    const numSlots = shuffledWrong.length + 1;
-    const relevantCounts = positionCounts.slice(0, numSlots);
-    const minCount = Math.min(...relevantCounts);
-    const leastUsed = relevantCounts.map((c, i) => ({ count: c, index: i })).filter(x => x.count === minCount).map(x => x.index);
-    const targetPos = leastUsed[Math.floor(Math.random() * leastUsed.length)];
-    positionCounts[targetPos]++;
-
-    const result = [...shuffledWrong];
-    result.splice(targetPos, 0, correct);
-    return { ...q, options: result };
-  });
+function shuffleOptions(questions: QuestionData[]): QuestionData[] {
+  return questions.map(q => (q.options && q.options.length >= 2 ? { ...q, options: shuffleArray(q.options) } : q));
 }
 
 export default function SharedQuizPage() {
@@ -103,9 +82,13 @@ export default function SharedQuizPage() {
   const [submitting, setSubmitting] = useState(false);
   const [score, setScore] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const [processedQuestions, setProcessedQuestions] = useState<QuestionData[]>([]);
   const [passageExpanded, setPassageExpanded] = useState(true);
   const [passageFontSize, setPassageFontSize] = useState(14);
+  const [studentId, setStudentId] = useState("");
+  const [starting, setStarting] = useState(false);
+  const pendingAnswer = useRef(false);
 
   useEffect(() => {
     async function load() {
@@ -123,7 +106,7 @@ export default function SharedQuizPage() {
         let qs = [...data.questions];
         if (data.shuffleQuestions) qs = shuffleArray(qs);
         if (data.shuffleOptions) {
-          qs = balancedShuffleOptions(qs);
+          qs = shuffleOptions(qs);
         }
         setProcessedQuestions(qs);
         setPhase("name");
@@ -136,12 +119,15 @@ export default function SharedQuizPage() {
   }, [code]);
 
   const startQuiz = async () => {
-    if (!playerName.trim()) return;
+    const group = quizData?.group;
+    if (group ? !studentId : !playerName.trim()) return;
+    setStarting(true);
+    setError("");
     try {
       const res = await fetch(`/api/shared/${code}/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playerName: playerName.trim() }),
+        body: JSON.stringify(group ? { studentId } : { playerName: playerName.trim() }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -150,10 +136,19 @@ export default function SharedQuizPage() {
       }
       const attempt = await res.json();
       setAttemptId(attempt.id);
+      if (attempt.playerName) setPlayerName(attempt.playerName);
+      // Avval boshlab, chiqib ketgan o'quvchi qolgan savollardan davom etadi.
+      const answered = new Set<string>(attempt.answered || []);
+      const remaining = answered.size ? processedQuestions.filter(q => !answered.has(q.id)) : processedQuestions;
+      if (answered.size) setProcessedQuestions(remaining);
+      if (!remaining.length) {
+        await finishQuiz({}, attempt.id);
+        return;
+      }
       setCurrentIndex(0);
       setQuestionStartTime(Date.now());
-      if (quizData?.timerEnabled && processedQuestions[0]) {
-        const firstQ = processedQuestions[0];
+      if (quizData?.timerEnabled && remaining[0]) {
+        const firstQ = remaining[0];
         const sections = quizData?.questionSections || [];
         const firstQIdx = firstQ.orderIndex + 1;
         const firstSection = sections.find(s => firstQIdx >= s.fromIndex && firstQIdx <= s.toIndex);
@@ -162,6 +157,8 @@ export default function SharedQuizPage() {
       setPhase("playing");
     } catch {
       setError("Serverga ulanib bo'lmadi");
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -174,21 +171,29 @@ export default function SharedQuizPage() {
     return section?.passageText ? { title: section.passageTitle || "", text: section.passageText } : null;
   })();
 
-  const submitAnswer = useCallback(() => {
-    if (!currentQuestion || showFeedback) return;
+  const submitAnswer = useCallback(async () => {
+    if (!currentQuestion || showFeedback || pendingAnswer.current) return;
+    pendingAnswer.current = true;
     const timeSpent = Math.round((Date.now() - questionStartTime) / 1000);
     const answer = selectedAnswer || "";
-    let isCorrect = false;
-    let points = 0;
-
-    const graded = gradeAnswer(currentQuestion as any, answer);
-    isCorrect = graded.isCorrect;
-    if (graded.ratio > 0) {
-      const maxTime = currentQuestion.timeLimit;
-      const ratio = Math.max(0, 1 - (timeSpent / maxTime) * 0.5);
-      points = Math.round(currentQuestion.points * ratio * graded.ratio);
+    let result = { isCorrect: false, points: 0, correctAnswer: undefined as string | undefined };
+    try {
+      const res = await fetch(`/api/shared/${code}/answer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attemptId, questionId: currentQuestion.id, answer, timeSpent }),
+      });
+      if (res.ok) result = await res.json();
+      else if (res.status === 403 || res.status === 409) {
+        setError((await res.json().catch(() => ({}))).message || "Test yopilgan");
+        setPhase("error");
+        pendingAnswer.current = false;
+        return;
+      }
+    } catch {
+      // Tarmoq uzilsa ham o'quvchini to'xtatmaymiz; javob serverda saqlanmagan bo'ladi.
     }
-
+    const { isCorrect, points } = result;
     const newAnswers = { ...answers, [currentQuestion.id]: { answer: answer as string | string[], isCorrect, points, timeSpent } };
     setAnswers(newAnswers);
     if (isCorrect) {
@@ -197,14 +202,18 @@ export default function SharedQuizPage() {
     }
 
     if (quizData?.showCorrectAnswers) {
+      if (result.correctAnswer !== undefined)
+        setProcessedQuestions(qs => qs.map((q, i) => (i === currentIndex ? { ...q, correctAnswer: result.correctAnswer } : q)));
       setShowFeedback(true);
       setTimeout(() => {
+        pendingAnswer.current = false;
         goNext(newAnswers);
       }, 1500);
     } else {
+      pendingAnswer.current = false;
       goNext(newAnswers);
     }
-  }, [currentQuestion, selectedAnswer, questionStartTime, answers, showFeedback, quizData]);
+  }, [currentQuestion, selectedAnswer, questionStartTime, answers, showFeedback, quizData, attemptId, code, currentIndex]);
 
   const goNext = (updatedAnswers: AnswerRecord) => {
     setShowFeedback(false);
@@ -226,23 +235,26 @@ export default function SharedQuizPage() {
     }
   };
 
-  const finishQuiz = async (finalAnswers: AnswerRecord) => {
+  const finishQuiz = async (finalAnswers: AnswerRecord, id = attemptId) => {
     setSubmitting(true);
-    const totalCorrect = Object.values(finalAnswers).filter(a => a.isCorrect).length;
-    const totalScore = Object.values(finalAnswers).reduce((sum, a) => sum + a.points, 0);
+    // Natija serverda saqlangan javoblardan hisoblanadi (mashq rejimida — shu yerda).
+    let totalCorrect = Object.values(finalAnswers).filter(a => a.isCorrect).length;
+    let totalScore = Object.values(finalAnswers).reduce((sum, a) => sum + a.points, 0);
+    let total = processedQuestions.length;
     try {
-      await fetch(`/api/shared/${code}/submit`, {
+      const res = await fetch(`/api/shared/${code}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          attemptId,
-          answers: finalAnswers,
-          score: totalScore,
-          correctAnswers: totalCorrect,
-          totalQuestions: processedQuestions.length,
-        }),
+        body: JSON.stringify({ attemptId: id }),
       });
+      const data = await res.json();
+      if (res.ok && typeof data.correctAnswers === "number") {
+        totalCorrect = data.correctAnswers;
+        totalScore = data.score;
+        total = data.totalQuestions || total;
+      }
     } catch {}
+    setTotalCount(total);
     setScore(totalScore);
     setCorrectCount(totalCorrect);
     setSubmitting(false);
@@ -292,6 +304,36 @@ export default function SharedQuizPage() {
                 {quizData?.timerEnabled && <Badge variant="outline"><Clock className="w-3 h-3 mr-1" />{quizData.timePerQuestion >= 60 ? `${Math.floor(quizData.timePerQuestion / 60)} daqiqa` : `${quizData.timePerQuestion}s`}</Badge>}
               </div>
             </div>
+            {quizData?.group ? (
+              <div className="space-y-3 text-left">
+                <p className="text-sm font-medium text-center">{quizData.group.name} — ro‘yxatdan ismingizni tanlang</p>
+                <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1" role="radiogroup" aria-label="O‘quvchilar ro‘yxati">
+                  {quizData.group.students.map(st => (
+                    <button
+                      key={st.id}
+                      role="radio"
+                      aria-checked={studentId === st.id}
+                      disabled={st.done}
+                      onClick={() => setStudentId(st.id)}
+                      className={`w-full flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-sm transition-colors disabled:opacity-50 ${studentId === st.id ? "border-purple-500 bg-purple-50 dark:bg-purple-950 font-semibold" : "hover:bg-muted"}`}
+                      data-testid={`student-${st.id}`}
+                    >
+                      <span>{st.name}</span>
+                      {st.done && <span className="text-xs text-muted-foreground">ishlagan</span>}
+                    </button>
+                  ))}
+                </div>
+                {error && <p className="text-sm text-destructive text-center" role="alert">{error}</p>}
+                <Button
+                  className="w-full gradient-purple border-0 text-lg py-6"
+                  onClick={startQuiz}
+                  disabled={!studentId || starting}
+                  data-testid="button-start-quiz"
+                >
+                  {starting ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Boshlash <ArrowRight className="w-5 h-5 ml-2" /></>}
+                </Button>
+              </div>
+            ) : (
             <div className="space-y-3">
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -313,7 +355,12 @@ export default function SharedQuizPage() {
               >
                 Boshlash <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
+              {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
             </div>
+            )}
+            {quizData?.closesAt && (
+              <p className="text-xs text-muted-foreground">Ishlash muddati: {new Date(quizData.closesAt).toLocaleString("ru-RU", { timeZone: "Asia/Tashkent", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} gacha</p>
+            )}
           </Card>
         </motion.div>
       </div>
@@ -321,7 +368,8 @@ export default function SharedQuizPage() {
   }
 
   if (phase === "result") {
-    const pct = processedQuestions.length > 0 ? Math.round((correctCount / processedQuestions.length) * 100) : 0;
+    const totalQ = totalCount || processedQuestions.length;
+    const pct = totalQ > 0 ? Math.round((correctCount / totalQ) * 100) : 0;
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 p-4">
         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}>
@@ -337,7 +385,7 @@ export default function SharedQuizPage() {
                 <p className="text-xs text-muted-foreground">Ball</p>
               </div>
               <div className="p-3 rounded-lg bg-muted">
-                <p className="text-2xl font-bold" data-testid="text-correct">{correctCount}/{processedQuestions.length}</p>
+                <p className="text-2xl font-bold" data-testid="text-correct">{correctCount}/{totalQ}</p>
                 <p className="text-xs text-muted-foreground">To'g'ri</p>
               </div>
               <div className="p-3 rounded-lg bg-muted">
@@ -487,7 +535,7 @@ export default function SharedQuizPage() {
                       : selectedAnswer === opt;
                     const isCorrectOpt = showFeedback && (
                       isMultiSelect
-                        ? currentQuestion.correctAnswer.split(",").map(s => s.trim()).includes(opt)
+                        ? (currentQuestion.correctAnswer || "").split(",").map(s => s.trim()).includes(opt)
                         : opt === currentQuestion.correctAnswer
                     );
                     const isWrongSelected = showFeedback && isSelected && !isCorrectOpt;
@@ -514,7 +562,7 @@ export default function SharedQuizPage() {
               {!showFeedback && (
                 <Button
                   className="w-full gradient-purple border-0 text-lg py-5"
-                  onClick={submitAnswer}
+                  onClick={() => void submitAnswer()}
                   disabled={selectedAnswer === null || (Array.isArray(selectedAnswer) && selectedAnswer.length === 0)}
                   data-testid="button-submit-answer"
                 >

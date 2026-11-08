@@ -1,4 +1,8 @@
 import {quizEditor} from "./platform-editor";
+import { teacherReadOnly } from "./teacher-policy";
+import { initTeacherPanel, registerTeacherPanel } from "./teacher-panel";
+import { registerSharedTest } from "./shared-test";
+import { registerTeacherWork } from "./teacher-work";
 import { registerQuizPlatform } from "./platform-provider";
 import type { Express } from "express";
 import { createServer, type Server } from "http";
@@ -43,6 +47,7 @@ export async function registerRoutes(
   const editor=quizEditor(app);
   await setupAuth(app,editor.middleware);
   editor.routes();
+  app.use(teacherReadOnly);
   await registerQuizPlatform(app);
   registerAuthRoutes(app);
   registerObjectStorageRoutes(app, isAuthenticated);
@@ -123,6 +128,9 @@ export async function registerRoutes(
   };
 
   registerLibraryRoutes(app, requireAuth, requireRole);
+  await initTeacherPanel();
+  registerTeacherPanel(app, requireAuth, requireRole);
+  registerTeacherWork(app, requireAuth, requireRole);
   registerAdminQuizAssignmentRoutes(app, requireAuth, requireRole);
 
   async function isTeacherOrAssistant(userId: string, cls: any, permission?: string): Promise<{ allowed: boolean; isAssistant: boolean; assistant?: any }> {
@@ -667,6 +675,8 @@ export async function registerRoutes(
 
   app.get("/api/shared-quizzes/:id/attempts", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
+      const own = (await storage.getSharedQuizzesByCreator(req.userId)).some(s => s.id === req.params.id);
+      if (!own && req.userProfile?.role !== "admin") return res.status(404).json({ message: "Topilmadi" });
       const attempts = await storage.getSharedQuizAttempts(req.params.id);
       res.json(attempts);
     } catch (error) {
@@ -674,114 +684,8 @@ export async function registerRoutes(
     }
   });
 
-  // Public endpoints for students taking shared quiz
-  app.get("/api/shared/:code", async (req, res) => {
-    try {
-      const shared = await storage.getSharedQuizByCode(req.params.code);
-      if (!shared) return res.status(404).json({ message: "Test topilmadi" });
-      if (!shared.isActive) return res.status(403).json({ message: "Bu test hozircha yopilgan" });
-
-      const quiz = await storage.getQuiz(shared.quizId);
-      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
-
-      const questionsList = await storage.getQuestionsByQuiz(quiz.id);
-      res.json({
-        sharedId: shared.id,
-        quizId: quiz.id,
-        title: quiz.title,
-        description: quiz.description,
-        category: quiz.category,
-        coverImage: quiz.coverImage,
-        totalQuestions: quiz.totalQuestions,
-        timePerQuestion: quiz.timePerQuestion,
-        timerEnabled: quiz.timerEnabled,
-        shuffleQuestions: quiz.shuffleQuestions,
-        shuffleOptions: quiz.shuffleOptions,
-        showCorrectAnswers: quiz.showCorrectAnswers,
-        questionSections: (quiz as any).questionSections || [],
-        questions: questionsList.map(q => ({
-          id: q.id,
-          questionText: q.questionText,
-          type: q.type,
-          options: q.options,
-          correctAnswer: q.correctAnswer,
-          points: q.points,
-          timeLimit: q.timeLimit,
-          mediaUrl: q.mediaUrl,
-          mediaType: q.mediaType,
-          orderIndex: q.orderIndex,
-          config: (q as any).config ?? null,
-        })).sort((a, b) => a.orderIndex - b.orderIndex),
-      });
-    } catch (error) {
-      res.status(500).json({ message: "Server error" });
-    }
-  });
-
-  app.post("/api/shared/:code/start", async (req, res) => {
-    try {
-      const { playerName } = req.body;
-      if (!playerName || typeof playerName !== "string" || !playerName.trim()) {
-        return res.status(400).json({ message: "Ism kiriting" });
-      }
-      const shared = await storage.getSharedQuizByCode(req.params.code);
-      if (!shared) return res.status(404).json({ message: "Test topilmadi" });
-      if (!shared.isActive) return res.status(403).json({ message: "Bu test hozircha yopilgan" });
-
-      const quiz = await storage.getQuiz(shared.quizId);
-      if (!quiz) return res.status(404).json({ message: "Quiz topilmadi" });
-
-      // Mashq rejimi: natija saqlanmaydi
-      if (quiz.practiceMode) {
-        return res.json({ id: "practice_mode", playerName: playerName.trim() });
-      }
-
-      const attempt = await storage.createSharedQuizAttempt({
-        sharedQuizId: shared.id,
-        playerName: playerName.trim(),
-        totalQuestions: quiz.totalQuestions,
-      });
-      res.json(attempt);
-    } catch (error) {
-      res.status(500).json({ message: "Server error" });
-    }
-  });
-
-  app.post("/api/shared/:code/submit", async (req, res) => {
-    try {
-      const { attemptId, answers, score, correctAnswers, totalQuestions } = req.body;
-      if (!attemptId) return res.status(400).json({ message: "attemptId kerak" });
-
-      // Mashq rejimi: natija saqlanmaydi
-      if (attemptId === "practice_mode") {
-        return res.json({ id: "practice_mode", score: score || 0, correctAnswers: correctAnswers || 0, totalQuestions: totalQuestions || 0 });
-      }
-
-      const attempt = await storage.getSharedQuizAttempt(attemptId);
-      if (!attempt) return res.status(404).json({ message: "Urinish topilmadi" });
-
-      const updated = await storage.updateSharedQuizAttempt(attemptId, {
-        answers: answers || {},
-        score: score || 0,
-        correctAnswers: correctAnswers || 0,
-        totalQuestions: totalQuestions || 0,
-        completedAt: new Date(),
-      });
-
-      // Increment totalPlays via raw query
-      const shared = await storage.getSharedQuizByCode(req.params.code);
-      if (shared) {
-        const { db: dbInstance } = await import("./db");
-        const { quizzes: quizzesTable } = await import("@shared/schema");
-        const { eq: eqOp, sql: sqlOp } = await import("drizzle-orm");
-        await dbInstance.update(quizzesTable).set({ totalPlays: sqlOp`COALESCE(total_plays, 0) + 1` } as any).where(eqOp(quizzesTable.id, shared.quizId));
-      }
-
-      res.json(updated);
-    } catch (error) {
-      res.status(500).json({ message: "Server error" });
-    }
-  });
+  // O'quvchilar havola orqali ishlaydigan test (javoblar serverda tekshiriladi): server/shared-test.ts
+  registerSharedTest(app);
 
   app.post("/api/quizzes/:id/cancel-schedule", requireAuth, requireRole(["teacher", "admin"]), async (req: any, res) => {
     try {
