@@ -28,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { errorMessage, textDir, uzDate } from "@/lib/teacher-access";
 import { quizMeta } from "./tests";
+import { TeacherLinkDialog } from "@/components/teacher-link-dialog";
 
 type Detail = {
   id: string;
@@ -38,7 +39,7 @@ type Detail = {
   timePerQuestion: number;
   library: { sourceQuizId: string; outdated: boolean } | null;
   schedule: { at: string; status: string; code: string | null } | null;
-  links: { id: string; code: string; isActive: boolean; createdAt: string; finished: number }[];
+  links: { id: string; code: string; isActive: boolean; createdAt: string; closesAt: string | null; group: { id: string; name: string } | null; finished: number }[];
   questions: { id: string; type: string; text: string; options: string[]; correctAnswer: string; config: any; mediaType: string | null; mediaUrl: string | null }[];
 };
 
@@ -111,14 +112,7 @@ export default function TeacherTestDetail() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: key });
   const fail = (title: string) => (e: unknown) => toast({ title, description: errorMessage(e), variant: "destructive" });
 
-  const createLink = useMutation({
-    mutationFn: async () => (await apiRequest("POST", `/api/quizzes/${id}/share`)).json() as Promise<{ code: string }>,
-    onSuccess: (d) => {
-      setLinkOpen(d.code);
-      void refresh();
-    },
-    onError: fail("Havola yaratilmadi"),
-  });
+  const [newLink, setNewLink] = useState(false);
   const toggleLink = useMutation({
     mutationFn: async (linkId: string) => apiRequest("PATCH", `/api/shared-quizzes/${linkId}/toggle`),
     onSuccess: () => void refresh(),
@@ -196,10 +190,10 @@ export default function TeacherTestDetail() {
     {
       icon: Link2,
       title: "Havola bilan yuborish",
-      text: "O‘quvchilar istalgan vaqtda mustaqil ishlaydi. Har biri ismini yozib boshlaydi, natijasi sizga saqlanadi.",
+      text: "O‘quvchilar o‘zlari ishlaydi. Guruhingizga biriktirsangiz — har biri ro‘yxatdan ismini tanlaydi. Muddat ham qo‘yish mumkin.",
       button: "Havola yaratish",
-      onClick: () => createLink.mutate(),
-      busy: createLink.isPending,
+      onClick: () => setNewLink(true),
+      busy: false,
       accent: "",
     },
     {
@@ -287,12 +281,16 @@ export default function TeacherTestDetail() {
             {d.links.map((l) => (
               <div key={l.id} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="font-mono text-sm truncate">{shareUrl(l.code)}</p>
+                  <p className="text-sm font-medium truncate">{l.group ? `Guruh: ${l.group.name}` : "Hamma uchun havola"}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {uzDate(l.createdAt, false)} · {l.finished} kishi ishladi · {l.isActive ? "ochiq" : "yopilgan"}
+                    {uzDate(l.createdAt, false)}
+                    {l.closesAt ? ` · muddat ${uzDate(l.closesAt)}` : ""} · {l.finished} kishi ishladi · {l.isActive ? "ochiq" : "yopilgan"}
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="ghost" asChild>
+                    <Link href={`/teacher/results/${l.group ? "group" : "link"}/${l.id}`}>Natijalar</Link>
+                  </Button>
                   <Button size="sm" variant="outline" onClick={() => setLinkOpen(l.code)}>
                     <Copy className="w-4 h-4" /> Ulashish
                   </Button>
@@ -348,6 +346,8 @@ export default function TeacherTestDetail() {
           ))}
         </Card>
       </section>
+
+      <TeacherLinkDialog open={newLink} onOpenChange={(v) => { setNewLink(v); if (!v) void refresh(); }} quiz={{ id: d.id, title: d.title }} />
 
       <Dialog open={!!linkOpen} onOpenChange={(o) => !o && setLinkOpen(null)}>
         <DialogContent className="max-w-md">

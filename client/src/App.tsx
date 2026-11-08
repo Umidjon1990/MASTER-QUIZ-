@@ -21,7 +21,6 @@ import AdminQuizzes from "@/pages/admin/quizzes";
 import TeacherQuizzes from "@/pages/teacher/quizzes";
 import QuizEditor from "@/pages/teacher/quiz-editor";
 import TeacherLive from "@/pages/teacher/live";
-import TeacherResults from "@/pages/teacher/results";
 import TeacherAssignments from "@/pages/teacher/assignments";
 import TeacherClasses from "@/pages/teacher/classes";
 import TeacherQuestionBank from "@/pages/teacher/question-bank";
@@ -50,8 +49,13 @@ import AiClasses from "@/pages/teacher/ai-classes";
 import AiClassDetail from "@/pages/teacher/ai-class-detail";
 import TeacherTests from "@/pages/teacher/tests";
 import TeacherHome from "@/pages/teacher/home";
+import TeacherGroups from "@/pages/teacher/groups";
+import TeacherGroupDetail from "@/pages/teacher/group-detail";
+import TeacherResultsPanel from "@/pages/teacher/results-panel";
+import TeacherResultDetail from "@/pages/teacher/result-detail";
 import TeacherTestDetail from "@/pages/teacher/test-detail";
 import AdminTeacherLibrary from "@/pages/admin/teacher-library";
+import AdminTeacherStats from "@/pages/admin/teacher-stats";
 import { isHiddenForTeacher, useProfile } from "@/lib/teacher-access";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -163,6 +167,9 @@ function App() {
             <Route path="/admin/library">
               {() => <ProtectedPage component={AdminLibrary} />}
             </Route>
+            <Route path="/admin/teacher-stats">
+              {() => <ProtectedPage component={AdminTeacherStats} />}
+            </Route>
             <Route path="/admin/teacher-library">
               {() => <ProtectedPage component={AdminTeacherLibrary} />}
             </Route>
@@ -192,7 +199,16 @@ function App() {
               {() => <ProtectedPage component={TeacherLive} />}
             </Route>
             <Route path="/teacher/results">
-              {() => <ProtectedPage component={TeacherResults} />}
+              {() => <ProtectedPage component={TeacherResultsPanel} />}
+            </Route>
+            <Route path="/teacher/results/:kind/:id">
+              {() => <ProtectedPage component={TeacherResultDetail} />}
+            </Route>
+            <Route path="/teacher/groups">
+              {() => <ProtectedPage component={TeacherGroups} />}
+            </Route>
+            <Route path="/teacher/groups/:id">
+              {() => <ProtectedPage component={TeacherGroupDetail} />}
             </Route>
             <Route path="/teacher/assignments">
               {() => <ProtectedPage component={TeacherAssignments} />}

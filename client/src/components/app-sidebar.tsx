@@ -25,6 +25,7 @@ const adminMenu = [
   { title: "Foydalanuvchilar", url: "/admin/users", icon: Users },
   { title: "Test tuzish", url: "/teacher/quizzes", icon: PencilLine },
   { title: "Tayyor quizlar", url: "/admin/teacher-library", icon: FolderOpen },
+  { title: "O'qituvchilar", url: "/admin/teacher-stats", icon: GraduationCap },
   { title: "Barcha quizlar", url: "/admin/quizzes", icon: BookOpen },
   { title: "Kutubxona", url: "/admin/library", icon: Library },
 ];
@@ -33,6 +34,7 @@ const adminMenu = [
 const simpleTeacherMenu = [
   { title: "Bosh sahifa", url: "/teacher", icon: LayoutDashboard },
   { title: "Quizlar", url: "/teacher/tests", icon: BookOpen },
+  { title: "Sinflarim", url: "/teacher/groups", icon: GraduationCap },
   { title: "Natijalar", url: "/teacher/results", icon: Trophy },
 ];
 
@@ -89,7 +91,7 @@ export function AppSidebar() {
             <SidebarMenu>
               {menuItems.map((menuItem) => (
                 <SidebarMenuItem key={menuItem.title}>
-                  <SidebarMenuButton asChild data-active={location === menuItem.url || (menuItem.url === "/teacher/tests" && location.startsWith("/teacher/test/"))}>
+                  <SidebarMenuButton asChild data-active={location === menuItem.url || (menuItem.url !== "/teacher" && menuItem.url.startsWith("/teacher/") && location.startsWith(menuItem.url + "/")) || (menuItem.url === "/teacher/tests" && location.startsWith("/teacher/test/"))}>
                     <Link href={menuItem.url}>
                       <menuItem.icon className="w-4 h-4" />
                       <span>{menuItem.title}</span>

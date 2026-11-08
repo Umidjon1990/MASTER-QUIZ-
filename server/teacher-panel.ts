@@ -24,7 +24,29 @@ CREATE TABLE IF NOT EXISTS teacher_library_copies(
  source_version text NOT NULL,
  created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS teacher_library_copies_teacher_idx ON teacher_library_copies(teacher_id,source_quiz_id,created_at DESC);`);
+CREATE INDEX IF NOT EXISTS teacher_library_copies_teacher_idx ON teacher_library_copies(teacher_id,source_quiz_id,created_at DESC);
+CREATE TABLE IF NOT EXISTS teacher_groups(
+ id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+ teacher_id varchar NOT NULL,
+ name varchar(100) NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ archived_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS teacher_groups_teacher_idx ON teacher_groups(teacher_id);
+CREATE TABLE IF NOT EXISTS teacher_group_students(
+ id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+ group_id varchar NOT NULL REFERENCES teacher_groups(id) ON DELETE CASCADE,
+ name varchar(100) NOT NULL,
+ sort_order integer NOT NULL DEFAULT 0,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ removed_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS teacher_group_students_group_idx ON teacher_group_students(group_id);
+ALTER TABLE shared_quizzes ADD COLUMN IF NOT EXISTS group_id varchar;
+ALTER TABLE shared_quizzes ADD COLUMN IF NOT EXISTS closes_at timestamptz;
+ALTER TABLE shared_quiz_attempts ADD COLUMN IF NOT EXISTS student_id varchar;
+CREATE INDEX IF NOT EXISTS shared_quizzes_group_idx ON shared_quizzes(group_id);
+CREATE INDEX IF NOT EXISTS shared_quiz_attempts_shared_idx ON shared_quiz_attempts(shared_quiz_id);`);
 }
 
 const QUIZ_FIELDS =
@@ -196,10 +218,11 @@ export function registerTeacherPanel(app: Express, requireAuth: RequestHandler, 
       ).rows;
       const links = (
         await pool.query(
-          `SELECT s.id,s.code,s.is_active,s.created_at,
+          `SELECT s.id,s.code,s.is_active,s.created_at,s.closes_at,s.group_id,g.name AS group_name,
              count(a.id) FILTER (WHERE a.completed_at IS NOT NULL)::int AS finished
            FROM shared_quizzes s LEFT JOIN shared_quiz_attempts a ON a.shared_quiz_id=s.id
-           WHERE s.quiz_id=$1 AND s.creator_id=$2 GROUP BY s.id ORDER BY s.created_at DESC`,
+           LEFT JOIN teacher_groups g ON g.id=s.group_id
+           WHERE s.quiz_id=$1 AND s.creator_id=$2 GROUP BY s.id,g.name ORDER BY s.created_at DESC`,
           [quiz.id, req.userId],
         )
       ).rows;
@@ -235,6 +258,8 @@ export function registerTeacherPanel(app: Express, requireAuth: RequestHandler, 
           code: l.code,
           isActive: l.is_active,
           createdAt: l.created_at,
+          closesAt: l.closes_at,
+          group: l.group_id ? { id: l.group_id, name: l.group_name } : null,
           finished: l.finished,
         })),
         questions: questions.map((q) => ({
